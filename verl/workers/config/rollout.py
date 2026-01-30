@@ -23,6 +23,8 @@ from verl.workers.config.model import MtpConfig
 
 __all__ = [
     "SamplingConfig",
+    "CacheConfig",
+    "VideoResolutionConfig",
     "MultiTurnConfig",
     "CustomAsyncServerConfig",
     "AgentLoopConfig",
@@ -43,6 +45,24 @@ class SamplingConfig(BaseConfig):
 
 
 @dataclass
+class CacheConfig(BaseConfig):
+    """Cache configuration for video frame caching in VideoReasoningAgentLoop"""
+    cache_dir: str = ".cache"
+    fps: int = 1
+    max_frames: int = 512
+    max_frames_per_segment: int = 16
+
+
+@dataclass
+class VideoResolutionConfig(BaseConfig):
+    """Video resolution configuration for initial overview and segment detail views."""
+    fps: int = 1
+    max_frames: int = 512
+    min_pixels: int = 784
+    max_pixels: int = 12544
+
+
+@dataclass
 class MultiTurnConfig(BaseConfig):
     _mutable_fields = {"max_assistant_turns", "max_user_turns"}
 
@@ -58,6 +78,11 @@ class MultiTurnConfig(BaseConfig):
     tokenization_sanity_check_mode: str = "strict"
     format: str = "hermes"
     num_repeat_rollouts: Optional[int] = None
+    cache_config: CacheConfig = field(default_factory=CacheConfig)
+    initial_video_config: VideoResolutionConfig = field(default_factory=VideoResolutionConfig)
+    segment_video_config: VideoResolutionConfig = field(default_factory=lambda: VideoResolutionConfig(
+        max_frames=32, min_pixels=784, max_pixels=50176
+    ))
 
 
 @dataclass

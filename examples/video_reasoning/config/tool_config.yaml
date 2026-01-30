@@ -1,0 +1,36 @@
+# Tool configuration for video reasoning - 方案二
+# 复用 ToolAgentLoop 的 tool call 机制
+
+tools:
+  - class_name: verl.tools.fetch_frames_tool.FetchFramesTool
+    config:
+      type: native
+      # Frame cache configuration (should match training script)
+      cache_dir: .cache
+      fps: 1
+      max_frames: 512
+      max_frames_per_segment: 16
+    tool_schema:
+      type: function
+      function:
+        name: fetch_frames
+        description: |
+          Fetch video frames for specified time segments from the video.
+          Use this tool when you need to examine specific parts of the video more closely.
+          The tool will return frames from the cached video at the specified time ranges.
+        parameters:
+          type: object
+          properties:
+            segments:
+              type: array
+              description: |
+                List of time segment pairs [start_time, end_time] in seconds.
+                Example: [[10, 20], [30, 40]] to fetch frames from 10-20s and 30-40s.
+              items:
+                type: array
+                items:
+                  type: number
+                minItems: 2
+                maxItems: 2
+          required:
+            - segments

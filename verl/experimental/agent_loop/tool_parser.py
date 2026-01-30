@@ -159,3 +159,63 @@ class GptOssToolParser(ToolParser):
         content = regex.sub(self.tool_call_pattern, "", text)
 
         return content, function_calls
+
+
+@ToolParser.register("segment")
+class SegmentToolParser(ToolParser):
+    """
+    Tool parser for video reasoning segment format.
+
+    Parses <segment>[(start, end), ...]</segment> tags and converts them to
+    FunctionCall(name="fetch_frames", arguments={"segments": [[start, end], ...]})
+
+    This allows using ToolAgentLoop with SFT models trained on segment format
+    instead of function calling format.
+
+    Args:
+        tokenizer: The tokenizer to use.
+        tool_name: Name of the tool to call (default: "fetch_frames")
+    """
+
+    def __init__(self, tokenizer, tool_name: str = "fetch_frames") -> None:
+        super().__init__(tokenizer)
+        self.tool_name = tool_name
+        # Match <segment>[(...)...]</segment> pattern
+        self.segment_regex = regex.compile(r"<segment>\s*\[(.*?)\]\s*</segment>", regex.DOTALL | regex.IGNORECASE)
+        # Match individual (start, end) or [start, end] pairs
+        self.pair_pattern = regex.compile(r'[\(\[]\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*[\)\]]')
+
+    def _parse_segments(self, segment_str: str) -> list[list[float]]:
+        """Parse segment string into list of [start, end] pairs."""
+        segments = []
+        for match in self.pair_pattern.finditer(segment_str):
+            start = float(match.group(1))
+            end = float(match.group(2))
+            segments.append([start, end])
+        return segments
+
+    @rollout_trace_op
+    async def extract_tool_calls(self, responses_ids: list[int]) -> tuple[str, list[FunctionCall]]:
+        loop = get_event_loop()
+        text = await loop.run_in_executor(None, self.tokenizer.decode, responses_ids)
+
+        # Find all <segment>...</segment> matches
+        matches = self.segment_regex.findall(text)
+        if not matches:
+            return text, []
+
+        function_calls = []
+        for match in matches:
+            try:
+                segments = self._parse_segments(match)
+                if segments:
+                    # Convert to FunctionCall format
+                    arguments = json.dumps({"segments": segments}, ensure_ascii=False)
+                    function_calls.append(FunctionCall(name=self.tool_name, arguments=arguments))
+            except Exception as e:
+                logger.error(f"Failed to parse segment: {e}")
+
+        # Remaining text excluding segment tags
+        content = self.segment_regex.sub("", text)
+
+        return content, function_calls

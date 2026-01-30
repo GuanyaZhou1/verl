@@ -1,0 +1,54 @@
+hydra:
+  searchpath:
+    - file://verl/trainer/config
+
+defaults:
+  - ppo_trainer
+  - _self_
+
+data:
+  max_prompt_length: 2048
+  max_response_length: 4096
+  train_batch_size: 64
+  return_raw_chat: True
+
+actor_rollout_ref:
+  hybrid_engine: True
+  rollout:
+    name: sglang
+    multi_turn:
+      enable: True
+      max_assistant_turns: 5
+      max_user_turns: 5
+      # Frame cache configuration for VideoReasoningAgentLoop
+      cache_config:
+        cache_dir: .cache
+        fps: 1
+        max_frames: 512
+        max_frames_per_segment: 16
+        use_cached_initial_video: False
+      # Initial video resolution (low-res overview)
+      initial_video_config:
+        fps: 1
+        max_frames: 512
+        min_pixels: 784
+        max_pixels: 12544
+      # Segment video resolution (high-res detail)
+      segment_video_config:
+        fps: 1
+        max_frames: 32
+        min_pixels: 784
+        max_pixels: 50176
+    agent:
+      # Use our custom VideoReasoningAgentLoop instead of tool_agent
+      default_agent_loop: video_reasoning
+
+# Disable reward model (using custom reward function instead)
+reward_model:
+  enable: False
+
+# Custom reward function for video reasoning (must be at top level, not under reward_model)
+custom_reward_function:
+  path: pkg://verl.utils.reward_score.video_reasoning
+  name: compute_score
+  reward_kwargs: {}

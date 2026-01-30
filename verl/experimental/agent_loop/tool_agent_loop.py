@@ -281,6 +281,7 @@ class ToolAgentLoop(AgentLoopBase):
         """Handle the processing tools state: execute tool calls and prepare tool responses."""
         add_messages: list[dict[str, Any]] = []
         new_images_this_turn: list[Any] = []  # Local variable instead of agent_data attribute
+        new_video_messages: list[dict] = []  # Messages containing video for process_vision_info
 
         tasks = []
         tool_call_names = []
@@ -307,7 +308,10 @@ class ToolAgentLoop(AgentLoopBase):
                 if tool_response.image:
                     content.append({"type": "image"})
                 if tool_response.video:
-                    content.append({"type": "video"})
+                    # video field contains list of frame path lists: [[path1, path2, ...], ...]
+                    # Each element is a "video" (list of jpg paths)
+                    for video_paths in tool_response.video:
+                        content.append({"type": "video", "video": video_paths})
                 if tool_response.text:
                     content.append({"type": "text", "text": tool_response.text})
                 message = {"role": "tool", "content": content}
@@ -330,18 +334,22 @@ class ToolAgentLoop(AgentLoopBase):
                     if tool_response.image is not None:
                         new_images_this_turn.append(tool_response.image)  # Using local variable
 
-            # Handle video data
+            # Handle video data - collect messages for process_vision_info
             if tool_response.video:
-                # Currently not supported, raise informative error
-                logger.warning("Multimedia type 'video' is not currently supported. Only 'image' is supported.")
-                raise NotImplementedError(
-                    "Multimedia type 'video' is not currently supported. Only 'image' is supported."
-                )
+                # message already contains {"type": "video", "video": paths} in content
+                # We'll process it later with process_vision_info
+                new_video_messages.append(message)
 
             if tool_reward is not None:
                 agent_data.tool_rewards.append(tool_reward)
 
         agent_data.messages.extend(add_messages)
+
+        # Process video messages to get correct format for apply_chat_template
+        new_videos_this_turn = []
+        if new_video_messages:
+            video_multi_modal = await self.process_vision_info(new_video_messages)
+            new_videos_this_turn = video_multi_modal.get("videos", [])
 
         if self.tool_parser_name == "gpt-oss":
             logger.info("manually format tool responses for gpt-oss")
@@ -352,8 +360,8 @@ class ToolAgentLoop(AgentLoopBase):
         else:
             response_ids = await self.apply_chat_template(
                 add_messages,
-                images=new_images_this_turn,  # Using local variable
-                videos=None,
+                images=new_images_this_turn if new_images_this_turn else None,
+                videos=new_videos_this_turn if new_videos_this_turn else None,
                 remove_system_prompt=True,
             )
 
@@ -368,6 +376,15 @@ class ToolAgentLoop(AgentLoopBase):
                 agent_data.image_data = [agent_data.image_data]
             for img in new_images_this_turn:
                 agent_data.image_data.append(img)
+
+        # Accumulate video data
+        if new_videos_this_turn:
+            if agent_data.video_data is None:
+                agent_data.video_data = []
+            elif not isinstance(agent_data.video_data, list):
+                agent_data.video_data = [agent_data.video_data]
+            for video in new_videos_this_turn:
+                agent_data.video_data.append(video)
 
         agent_data.prompt_ids += response_ids
         agent_data.response_mask += [0] * len(response_ids)
