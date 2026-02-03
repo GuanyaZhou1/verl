@@ -46,7 +46,7 @@ class SingleTurnAgentLoop(AgentLoopBase):
         videos = multi_modal_data.get("videos")
 
         # 2. apply chat template and tokenize
-        prompt_ids = await self.apply_chat_template(
+        prompt_ids, _ = await self.apply_chat_template(
             messages,
             tools=self.tool_schemas,
             images=images,

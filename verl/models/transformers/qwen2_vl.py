@@ -362,6 +362,7 @@ def _get_input_embeds(
 
     if pixel_values_videos is not None:
         pixel_values_videos = pixel_values_videos.type(model.visual.dtype)
+
         video_embeds = model.visual(pixel_values_videos, grid_thw=video_grid_thw)
         n_video_tokens = (input_ids == model.config.video_token_id).sum().item()
         n_video_features = video_embeds.shape[0]

@@ -29,6 +29,7 @@ from verl.experimental.agent_loop.agent_loop import (
     AsyncLLMServerManager,
     DictConfigWrap,
     register,
+    _merge_multi_modal_inputs,
 )
 from verl.utils.video_frame_cache import VideoFrameCache, CacheNotFoundError
 from verl.utils.profiler import simple_timer
@@ -300,16 +301,18 @@ class VideoReasoningAgentLoop(AgentLoopBase):
         prompt_ids = []
         response_mask = []
         response_logprobs = []
+        accumulated_mm_inputs = {}  # Accumulated multi_modal_inputs from processor
 
         user_turns = 0
         assistant_turns = 0
 
-        # Tokenize initial prompt
-        prompt_ids = await self.apply_chat_template(
+        # Tokenize initial prompt and get multi_modal_inputs
+        prompt_ids, initial_mm_inputs = await self.apply_chat_template(
             messages,
             images=images if images else None,
             videos=videos if videos else None,
         )
+        accumulated_mm_inputs = _merge_multi_modal_inputs(accumulated_mm_inputs, initial_mm_inputs)
 
         # Main reasoning loop
         for turn in range(self.max_assistant_turns):
@@ -422,12 +425,15 @@ class VideoReasoningAgentLoop(AgentLoopBase):
             videos = videos + obs_videos
 
             # Tokenize observation message with processed videos
-            obs_ids = await self.apply_chat_template(
+            obs_ids, obs_mm_inputs = await self.apply_chat_template(
                 [observation_message],
                 images=None,
                 videos=obs_videos if obs_videos else None,
                 remove_system_prompt=True,
             )
+
+            # Accumulate multi_modal_inputs from observation
+            accumulated_mm_inputs = _merge_multi_modal_inputs(accumulated_mm_inputs, obs_mm_inputs)
 
             # Check if adding observation would exceed response length
             if len(response_mask) + len(obs_ids) >= self.response_length:
@@ -458,6 +464,7 @@ class VideoReasoningAgentLoop(AgentLoopBase):
             response_ids=final_response_ids[:self.response_length],
             response_mask=response_mask[:self.response_length],
             multi_modal_data=output_multi_modal_data,
+            accumulated_multi_modal_inputs=accumulated_mm_inputs,
             num_turns=user_turns + assistant_turns + 1,
             metrics=AgentLoopMetrics(**metrics) if isinstance(metrics, dict) else metrics,
         )

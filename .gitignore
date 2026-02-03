@@ -17,6 +17,9 @@ tensorflow/my_graph/*
 .idea/
 # C extensions
 *.so
+reward_logs/
+reward_logs_zsr/
+tensorboard_log/
 
 # Distribution / packaging
 .Python

@@ -210,7 +210,7 @@ class ToolAgentLoop(AgentLoopBase):
 
     async def _handle_pending_state(self, agent_data: AgentData, sampling_params: dict[str, Any]) -> AgentState:
         """Handle the pending state: prepare the prompt and start generation."""
-        prompt_ids = await self.apply_chat_template(
+        prompt_ids, _ = await self.apply_chat_template(
             agent_data.messages,
             tools=self.tool_schemas,
             images=agent_data.image_data,
@@ -358,7 +358,7 @@ class ToolAgentLoop(AgentLoopBase):
                 None, lambda: self.tokenizer.encode(tool_response_text, add_special_tokens=False)
             )
         else:
-            response_ids = await self.apply_chat_template(
+            response_ids, _ = await self.apply_chat_template(
                 add_messages,
                 images=new_images_this_turn if new_images_this_turn else None,
                 videos=new_videos_this_turn if new_videos_this_turn else None,
@@ -412,7 +412,7 @@ class ToolAgentLoop(AgentLoopBase):
             agent_data.turn_scores.append(reward)
 
         # Update prompt with user responses (similar to _handle_processing_tools_state)
-        response_ids = await self.apply_chat_template(
+        response_ids, _ = await self.apply_chat_template(
             add_messages,
             remove_system_prompt=True,
         )

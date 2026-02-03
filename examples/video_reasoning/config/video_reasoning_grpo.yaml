@@ -49,6 +49,38 @@ reward_model:
 
 # Custom reward function for video reasoning (must be at top level, not under reward_model)
 custom_reward_function:
-  path: pkg://verl.utils.reward_score.video_reasoning
+  path: pkg://verl.utils.reward_score.video_reasoning_async
   name: compute_score
-  reward_kwargs: {}
+  reward_kwargs:
+    # VLM service configuration (for bbox verification and answer scoring)
+    vlm_endpoint: null  # e.g., "localhost:8081"
+    vlm_model_name: "Qwen3-VL-30B-A3B-Instruct"
+    vlm_api_key: "123456"
+    # Frame cache configuration (should match rollout cache config)
+    cache_dir: ".cache"
+    cache_fps: 1
+    cache_max_frames: 512
+    # Temp directory for bbox verification images
+    temp_image_dir: "/tmp/bbox_verify"
+    # Feature toggles
+    # use_vlm_scoring: 使用 VLM 判断答案正确性 (支持开放题和选择题)
+    #   - 如果 true 且 vlm_endpoint 可用: 使用 VLM 判断答案是否语义等价
+    #   - 如果 false 或 vlm_endpoint 为空: 回退到规则匹配 (仅适用于选择题)
+    use_vlm_scoring: true
+    use_bbox_verification: true
+    # Score weights
+    # final_score = (answer_weight * answer_score + bbox_weight * bbox_score) / (answer_weight + bbox_weight)
+    answer_weight: 1.0
+    bbox_weight: 0.3
+    # BBox coordinate range (model outputs bbox in [0, bbox_coord_range])
+    # Current model: [0, 1] range; future models may use [0, 1000]
+    bbox_coord_range: 1.0
+    # BBox visualization (for debugging)
+    save_bbox_visualization: true
+    bbox_vis_sample_rate: 0.1  # 采样率 (0.1 = 10% 的 bbox 保存可视化图片)
+    # Logging configuration
+    enable_logging: true
+    save_samples: true
+    save_every_n: 10  # 每 N 个样本保存一次 (1=全部, 10=每10个保存1个)
+    log_dir: "./reward_logs"
+    log_every_n: 10

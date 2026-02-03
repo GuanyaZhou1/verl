@@ -217,6 +217,8 @@ def process_sample(sample: Dict[str, Any], video_base_path: str) -> Dict[str, An
         "video_id": video_id,
         "question": question,
         "correct_answer": correct_answer,
+        # Ground truth bboxes for reward function comparison (if available)
+        "gt_bboxes": sample.get("ground_truth_bboxes", []),
         # For tool-based approach (方案二)
         "need_tools_kwargs": True,
         "tools_kwargs": tools_kwargs,

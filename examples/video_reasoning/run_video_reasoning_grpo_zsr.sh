@@ -10,12 +10,8 @@ ulimit -n 65535
 export VLLM_USE_V1=1
 export LD_LIBRARY_PATH=/usr/local/cuda-13.1/compat:$LD_LIBRARY_PATH
 
-# 强制 Ray 使用本地模式，不连接已存在的远程集群
-# "local" 会让 ray.init() 启动一个全新的本地实例
-export RAY_ADDRESS=local
-
 # ===== 模型路径（需要修改）=====
-MODEL_PATH="/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-self_holmes_multiturn_1k5-self_longvideoreason_multiturn_2k5-sft-lr5e-5-bs32"
+MODEL_PATH="/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-self_holmes_multiturn_1k5-self_longvideoreason_multiturn_5k3-sft-lr5e-5-bs32"
 
 # ===== 数据路径（固定）=====
 DATA_DIR="./long_video_data"
@@ -55,7 +51,7 @@ TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
 EXPERIMENT_NAME="video_reasoning_grpo_${TIMESTAMP}"
 
 # ===== 日志配置 =====
-LOG_DIR="./logs"
+LOG_DIR="./logs_zsr"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/${EXPERIMENT_NAME}.log"
 echo "Log file: $LOG_FILE"
@@ -176,21 +172,20 @@ nohup python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.agent.num_workers=$AGENT_NUM_WORKERS \
     algorithm.use_kl_in_reward=False \
     trainer.critic_warmup=0 \
-    trainer.logger='["console", "tensorboard"]' \
+    trainer.logger='["console", "wandb"]' \
     trainer.project_name='video-reasoning-grpo' \
     trainer.experiment_name=$EXPERIMENT_NAME \
     trainer.n_gpus_per_node=$N_GPUS \
     trainer.nnodes=1 \
-    trainer.save_freq=100 \
+    trainer.save_freq=30 \
     trainer.test_freq=20 \
-    trainer.resume_mode=resume_path \
-    trainer.resume_from_path=/data_gpu/songlin/rl/verl/checkpoints/video-reasoning-grpo/video_reasoning_grpo_20260131-085501/global_step_200 \
     trainer.val_before_train=True \
     data.train_files="$DATA_DIR/train.parquet" \
     data.val_files="$DATA_DIR/val.parquet" \
     reward_model.enable=False \
     custom_reward_function.path=pkg://verl.utils.reward_score.video_reasoning_async \
     custom_reward_function.name=compute_score \
+    custom_reward_function.reward_kwargs.log_dir="./reward_logs_zsr" \
     custom_reward_function.reward_kwargs.use_vlm_scoring=true \
     custom_reward_function.reward_kwargs.use_bbox_verification=true \
     custom_reward_function.reward_kwargs.vlm_endpoint="10.96.11.3:8081" \
@@ -200,6 +195,8 @@ nohup python3 -m verl.trainer.main_ppo \
     custom_reward_function.reward_kwargs.cache_fps=$CACHE_FPS \
     custom_reward_function.reward_kwargs.cache_max_frames=$CACHE_MAX_FRAMES \
     trainer.total_epochs=5 \
+    trainer.rollout_data_dir="$LOG_DIR/${EXPERIMENT_NAME}/rollout" \
+    trainer.validation_data_dir="$LOG_DIR/${EXPERIMENT_NAME}/validation" \
     actor_rollout_ref.rollout.update_weights_bucket_megabytes=512 "$@" 2>&1 | tee -a "$LOG_FILE" &
 
 echo "Training started in background. PID: $!"

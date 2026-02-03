@@ -145,6 +145,8 @@ class AgentLoopOutput(BaseModel):
     """Routed experts for the total tokens."""
     multi_modal_data: Optional[dict[str, Any]] = None
     """Multi-modal data for multi-modal tools."""
+    accumulated_multi_modal_inputs: Optional[dict[str, Any]] = None
+    """Accumulated multi-modal inputs from processor (pixel_values, grid_thw, etc.) for training."""
     reward_score: Optional[float] = None
     """Reward score for the trajectory."""
     num_turns: int = 0
@@ -251,7 +253,7 @@ class AgentLoopBase(ABC):
         images: list[Image.Image] = None,
         videos: list[tuple[torch.Tensor, dict]] = None,
         remove_system_prompt: bool = False,
-    ):
+    ) -> tuple[list[int], dict[str, Any]]:
         """Apply chat template to messages with optional tools, images, and videos.
 
         Args:
@@ -262,8 +264,12 @@ class AgentLoopBase(ABC):
             remove_system_prompt (bool, optional): Whether to remove system prompt. Defaults to False.
 
         Returns:
-            list[int]: Prompt token ids.
+            tuple[list[int], dict[str, Any]]: Tuple of (prompt_ids, multi_modal_inputs).
+                - prompt_ids: Token ids from chat template
+                - multi_modal_inputs: Dict containing pixel_values, grid_thw, etc. from processor
         """
+        multi_modal_inputs = {}
+
         if self.processor is not None:
             raw_prompt = await self.loop.run_in_executor(
                 None,
@@ -292,6 +298,10 @@ class AgentLoopBase(ABC):
                 do_sample_frames=False,
             )
             prompt_ids = model_inputs.pop("input_ids").squeeze(0).tolist()
+
+            # Extract multi_modal_inputs (pixel_values, grid_thw, etc.)
+            model_inputs.pop("attention_mask", None)
+            multi_modal_inputs = dict(model_inputs.convert_to_tensors("pt"))
         else:
             prompt_ids = await self.loop.run_in_executor(
                 None,
@@ -307,7 +317,7 @@ class AgentLoopBase(ABC):
         if remove_system_prompt:
             prompt_ids = prompt_ids[len(self.system_prompt) :]
 
-        return prompt_ids
+        return prompt_ids, multi_modal_inputs
 
     @abstractmethod
     async def run(self, sampling_params: dict[str, Any], **kwargs) -> AgentLoopOutput:
@@ -329,6 +339,30 @@ used by hydra.utils.instantiate to initialize agent loop instance.
 https://hydra.cc/docs/advanced/instantiate_objects/overview/
 """
 _agent_loop_registry: dict[str, dict] = {}
+
+
+def _merge_multi_modal_inputs(base: dict, new: dict) -> dict:
+    """Merge two multi_modal_inputs dicts by concatenating tensors along dim=0.
+
+    Args:
+        base: Base multi_modal_inputs dict.
+        new: New multi_modal_inputs dict to merge.
+
+    Returns:
+        Merged dict with tensors concatenated.
+    """
+    if not base:
+        return dict(new) if new else {}
+    if not new:
+        return dict(base)
+
+    result = dict(base)
+    for key, value in new.items():
+        if key in result and isinstance(value, torch.Tensor) and isinstance(result[key], torch.Tensor):
+            result[key] = torch.cat([result[key], value], dim=0)
+        elif key not in result:
+            result[key] = value
+    return result
 
 
 def register(agent_name: str):
@@ -640,11 +674,31 @@ class AgentLoopWorker:
         )
 
     def _compute_multi_modal_inputs(self, output, input_ids) -> dict[str, torch.Tensor]:
-        """Compute multi-modal inputs with image and video."""
+        """Compute multi-modal inputs with image and video.
+
+        If output has accumulated_multi_modal_inputs (from agent loops that properly
+        track multi_modal_inputs across turns), use those directly to avoid the
+        token/feature mismatch issue that occurs when re-processing videos.
+        """
         multi_modal_inputs = {}
         if self.processor is None:
             return multi_modal_inputs
 
+        # Check if accumulated multi_modal_inputs are available (from video_reasoning_agent_loop)
+        # This avoids re-processing videos which can cause token/feature mismatches
+        if output.accumulated_multi_modal_inputs:
+            multi_modal_inputs = dict(output.accumulated_multi_modal_inputs)
+            # Compute images_seqlens if image_grid_thw is present
+            image_grid_thw = multi_modal_inputs.get("image_grid_thw")
+            if image_grid_thw is not None:
+                images_seqlens = torch.repeat_interleave(
+                    image_grid_thw[:, 1] * image_grid_thw[:, 2], image_grid_thw[:, 0]
+                )
+                multi_modal_inputs["images_seqlens"] = images_seqlens
+            return multi_modal_inputs
+
+        # Fallback: re-process from multi_modal_data (original behavior)
+        # This may cause issues with multi-turn video scenarios
         images = output.multi_modal_data.get("images")
         videos = output.multi_modal_data.get("videos")
         # split the videos and according metadatas
