@@ -147,6 +147,8 @@ class AgentLoopOutput(BaseModel):
     """Multi-modal data for multi-modal tools."""
     accumulated_multi_modal_inputs: Optional[dict[str, Any]] = None
     """Accumulated multi-modal inputs from processor (pixel_values, grid_thw, etc.) for training."""
+    accumulated_multi_modal_inputs_no_watermark: Optional[dict[str, Any]] = None
+    """Accumulated multi-modal inputs without watermark (for logp calculation during training)."""
     reward_score: Optional[float] = None
     """Reward score for the trajectory."""
     num_turns: int = 0
@@ -676,7 +678,11 @@ class AgentLoopWorker:
     def _compute_multi_modal_inputs(self, output, input_ids) -> dict[str, torch.Tensor]:
         """Compute multi-modal inputs with image and video.
 
-        If output has accumulated_multi_modal_inputs (from agent loops that properly
+        If output has accumulated_multi_modal_inputs_no_watermark (from agent loops that
+        use timestamp watermarks), use those for logp calculation to ensure the model
+        learns from original frames without watermarks.
+
+        Otherwise, if output has accumulated_multi_modal_inputs (from agent loops that properly
         track multi_modal_inputs across turns), use those directly to avoid the
         token/feature mismatch issue that occurs when re-processing videos.
         """
@@ -684,7 +690,20 @@ class AgentLoopWorker:
         if self.processor is None:
             return multi_modal_inputs
 
-        # Check if accumulated multi_modal_inputs are available (from video_reasoning_agent_loop)
+        # Priority 1: Use non-watermark version for logp calculation (for timestamp watermark feature)
+        # This ensures the model is trained on original frames without watermarks
+        if output.accumulated_multi_modal_inputs_no_watermark:
+            multi_modal_inputs = dict(output.accumulated_multi_modal_inputs_no_watermark)
+            # Compute images_seqlens if image_grid_thw is present
+            image_grid_thw = multi_modal_inputs.get("image_grid_thw")
+            if image_grid_thw is not None:
+                images_seqlens = torch.repeat_interleave(
+                    image_grid_thw[:, 1] * image_grid_thw[:, 2], image_grid_thw[:, 0]
+                )
+                multi_modal_inputs["images_seqlens"] = images_seqlens
+            return multi_modal_inputs
+
+        # Priority 2: Check if accumulated multi_modal_inputs are available (from video_reasoning_agent_loop)
         # This avoids re-processing videos which can cause token/feature mismatches
         if output.accumulated_multi_modal_inputs:
             multi_modal_inputs = dict(output.accumulated_multi_modal_inputs)

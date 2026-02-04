@@ -25,6 +25,7 @@ __all__ = [
     "SamplingConfig",
     "CacheConfig",
     "VideoResolutionConfig",
+    "WatermarkConfig",
     "MultiTurnConfig",
     "CustomAsyncServerConfig",
     "AgentLoopConfig",
@@ -51,6 +52,7 @@ class CacheConfig(BaseConfig):
     fps: int = 1
     max_frames: int = 512
     max_frames_per_segment: int = 16
+    use_cached_initial_video: bool = False
 
 
 @dataclass
@@ -60,6 +62,21 @@ class VideoResolutionConfig(BaseConfig):
     max_frames: int = 512
     min_pixels: int = 784
     max_pixels: int = 12544
+
+
+@dataclass
+class WatermarkConfig(BaseConfig):
+    """Timestamp watermark configuration for video frames during rollout.
+
+    When enabled, adds timestamp watermarks (e.g., "12s") to frames during rollout
+    to help the model understand temporal sequence. Original frames (no watermark)
+    are used for logp calculation during training.
+    """
+    enable: bool = False
+    position: str = "top_left"  # top_left, top_right, bottom_left, bottom_right
+    font_size: int = 24
+    font_color: list = field(default_factory=lambda: [255, 255, 255])
+    bg_color: list = field(default_factory=lambda: [0, 0, 0, 128])
 
 
 @dataclass
@@ -83,6 +100,7 @@ class MultiTurnConfig(BaseConfig):
     segment_video_config: VideoResolutionConfig = field(default_factory=lambda: VideoResolutionConfig(
         max_frames=32, min_pixels=784, max_pixels=50176
     ))
+    watermark_config: WatermarkConfig = field(default_factory=WatermarkConfig)
 
 
 @dataclass

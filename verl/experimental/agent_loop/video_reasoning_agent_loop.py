@@ -8,6 +8,7 @@ This AgentLoop:
 3. Uses {"type": "video", "video": [jpg_paths]} format to generate <|video_pad|> token
    (aligned with SFT training)
 4. Continues until <answer> is found or max turns reached
+5. Optionally adds timestamp watermarks to frames for rollout (but uses original frames for logp)
 
 Format aligned with eval_holmes_qwen_multiturn_spatial.py
 """
@@ -31,7 +32,7 @@ from verl.experimental.agent_loop.agent_loop import (
     register,
     _merge_multi_modal_inputs,
 )
-from verl.utils.video_frame_cache import VideoFrameCache, CacheNotFoundError
+from verl.utils.video_frame_cache import VideoFrameCache, CacheNotFoundError, add_timestamp_watermark
 from verl.utils.profiler import simple_timer
 
 logger = logging.getLogger(__file__)
@@ -142,6 +143,16 @@ class VideoReasoningAgentLoop(AgentLoopBase):
         # Whether to use cached frames for initial video (saves CPU memory by skipping video decoding)
         self.use_cached_initial_video = cache_config.get("use_cached_initial_video", False)
 
+        # Timestamp watermark configuration
+        # When enabled, adds timestamp watermarks to frames during rollout (for model to understand time)
+        # but uses original frames (no watermark) for logp calculation during training
+        watermark_config = config.actor_rollout_ref.rollout.multi_turn.get("watermark_config", {})
+        self.use_timestamp_watermark = watermark_config.get("enable", False)
+        self.watermark_position = watermark_config.get("position", "top_left")
+        self.watermark_font_size = watermark_config.get("font_size", 24)
+        self.watermark_font_color = tuple(watermark_config.get("font_color", [255, 255, 255]))
+        self.watermark_bg_color = tuple(watermark_config.get("bg_color", [0, 0, 0, 128]))
+
         # Initialize frame cache (shared across all instances)
         self.frame_cache = VideoFrameCache(
             cache_dir=self.cache_dir,
@@ -170,6 +181,29 @@ class VideoReasoningAgentLoop(AgentLoopBase):
             logger.warning(f"Cache not found for {video_path}")
             return []
 
+    def _get_frame_paths_with_timestamps_for_segments(
+        self,
+        video_path: str,
+        segments: List[Tuple[float, float]],
+    ) -> List[Tuple[str, float]]:
+        """
+        Load frame jpg paths along with their timestamps from cache for given segments.
+
+        This is used when timestamp watermarks are enabled.
+
+        Returns list of (path, timestamp) tuples.
+        """
+        try:
+            frame_paths_with_ts = self.frame_cache.load_frame_paths_with_timestamps(
+                video_path,
+                segments,
+                max_frames_per_segment=self.max_frames_per_segment,
+            )
+            return frame_paths_with_ts
+        except CacheNotFoundError:
+            logger.warning(f"Cache not found for {video_path}")
+            return []
+
     def _get_initial_frame_paths(self, video_path: str) -> List[str]:
         """
         Load all cached frame paths for initial video (no segment filtering).
@@ -189,6 +223,52 @@ class VideoReasoningAgentLoop(AgentLoopBase):
             logger.warning(f"Cache not found for {video_path}, falling back to original video")
             return []
 
+    def _get_initial_frame_paths_with_timestamps(self, video_path: str) -> List[Tuple[str, float]]:
+        """
+        Load all cached frame paths with timestamps for initial video (no segment filtering).
+
+        This is used when use_cached_initial_video=True and timestamp watermarks are enabled.
+        Returns list of (path, timestamp) tuples.
+        """
+        try:
+            # Load all frames without segment filtering (segments=None)
+            frame_paths_with_ts = self.frame_cache.load_frame_paths_with_timestamps(
+                video_path,
+                segments=None,  # Load all cached frames
+                max_frames_per_segment=self.initial_max_frames,  # Use initial_max_frames as limit
+            )
+            return frame_paths_with_ts
+        except CacheNotFoundError:
+            logger.warning(f"Cache not found for {video_path}, falling back to original video")
+            return []
+
+    def _add_watermarks_to_frames(
+        self,
+        frame_paths_with_ts: List[Tuple[str, float]],
+    ) -> List[Image.Image]:
+        """
+        Add timestamp watermarks to frames.
+
+        Args:
+            frame_paths_with_ts: List of (frame_path, timestamp) tuples
+
+        Returns:
+            List of PIL Images with watermarks added
+        """
+        watermarked_frames = []
+        for frame_path, timestamp in frame_paths_with_ts:
+            img = Image.open(frame_path)
+            watermarked_img = add_timestamp_watermark(
+                img,
+                timestamp,
+                position=self.watermark_position,
+                font_size=self.watermark_font_size,
+                font_color=self.watermark_font_color,
+                bg_color=self.watermark_bg_color,
+            )
+            watermarked_frames.append(watermarked_img)
+        return watermarked_frames
+
     def _replace_video_with_cached_frames(
         self,
         messages: List[dict],
@@ -206,6 +286,28 @@ class VideoReasoningAgentLoop(AgentLoopBase):
                     if isinstance(item, dict) and item.get("type") == "video":
                         # Replace video path with frame paths
                         item["video"] = frame_paths
+        return messages
+
+    def _replace_video_with_pil_images(
+        self,
+        messages: List[dict],
+        pil_images: List[Image.Image],
+    ) -> List[dict]:
+        """
+        Replace video path in messages with PIL Images.
+
+        This is used when timestamp watermarks are enabled - we pass PIL Images
+        directly instead of file paths so the watermarked images can be processed.
+
+        This modifies the messages in-place.
+        """
+        for message in messages:
+            content = message.get("content", "")
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "video":
+                        # Replace video path with PIL images
+                        item["video"] = pil_images
         return messages
 
     def _inject_video_params(
@@ -262,6 +364,10 @@ class VideoReasoningAgentLoop(AgentLoopBase):
            - Add observation to prompt_ids
         5. Check for <answer> tags, if found terminate
         6. Continue until max turns or answer found
+
+        When timestamp watermarks are enabled:
+        - Frames with watermarks are used for rollout generation (helps model understand time)
+        - Original frames (no watermark) are tracked separately for logp calculation
         """
         raw_prompt = kwargs.get("raw_prompt", [])
         extra_info = kwargs.get("extra_info", {})
@@ -271,6 +377,8 @@ class VideoReasoningAgentLoop(AgentLoopBase):
         video_duration = extra_info.get("video_duration")
 
         messages = list(raw_prompt)
+        # Also keep a copy for non-watermark processing (when watermarks are enabled)
+        messages_no_watermark = list(raw_prompt) if self.use_timestamp_watermark else None
 
         # Inject initial video params from config (allows parquet to only store video path)
         self._inject_video_params(
@@ -280,19 +388,48 @@ class VideoReasoningAgentLoop(AgentLoopBase):
             min_pixels=self.initial_min_pixels,
             max_pixels=self.initial_max_pixels,
         )
+        if messages_no_watermark:
+            self._inject_video_params(
+                messages_no_watermark,
+                fps=self.initial_fps,
+                max_frames=self.initial_max_frames,
+                min_pixels=self.initial_min_pixels,
+                max_pixels=self.initial_max_pixels,
+            )
 
         # If use_cached_initial_video is enabled, replace video path with cached frame paths
         # This avoids video decoding and reduces CPU memory usage
         if self.use_cached_initial_video and video_path:
-            initial_frame_paths = self._get_initial_frame_paths(video_path)
-            if initial_frame_paths:
-                self._replace_video_with_cached_frames(messages, initial_frame_paths)
-                logger.info(f"Using {len(initial_frame_paths)} cached frames for initial video")
+            if self.use_timestamp_watermark:
+                # Get frame paths with timestamps for watermarking
+                initial_frame_paths_with_ts = self._get_initial_frame_paths_with_timestamps(video_path)
+                if initial_frame_paths_with_ts:
+                    # For rollout: use watermarked frames (as PIL Images)
+                    watermarked_frames = self._add_watermarks_to_frames(initial_frame_paths_with_ts)
+                    self._replace_video_with_pil_images(messages, watermarked_frames)
+                    # For logp: use original frame paths
+                    original_frame_paths = [fp for fp, _ in initial_frame_paths_with_ts]
+                    self._replace_video_with_cached_frames(messages_no_watermark, original_frame_paths)
+                    logger.info(f"Using {len(watermarked_frames)} watermarked frames for initial video")
+            else:
+                initial_frame_paths = self._get_initial_frame_paths(video_path)
+                if initial_frame_paths:
+                    self._replace_video_with_cached_frames(messages, initial_frame_paths)
+                    logger.info(f"Using {len(initial_frame_paths)} cached frames for initial video")
 
         # Process initial vision info using parent class method
         multi_modal_data = await self.process_vision_info(messages)
         images = multi_modal_data.get("images", [])
         videos = multi_modal_data.get("videos", [])
+
+        # Process non-watermark version if needed
+        multi_modal_data_no_watermark = None
+        images_no_watermark = None
+        videos_no_watermark = None
+        if self.use_timestamp_watermark and messages_no_watermark:
+            multi_modal_data_no_watermark = await self.process_vision_info(messages_no_watermark)
+            images_no_watermark = multi_modal_data_no_watermark.get("images", [])
+            videos_no_watermark = multi_modal_data_no_watermark.get("videos", [])
 
         metrics = {}
         request_id = uuid4().hex
@@ -301,18 +438,30 @@ class VideoReasoningAgentLoop(AgentLoopBase):
         prompt_ids = []
         response_mask = []
         response_logprobs = []
-        accumulated_mm_inputs = {}  # Accumulated multi_modal_inputs from processor
+        accumulated_mm_inputs = {}  # Accumulated multi_modal_inputs from processor (with watermark)
+        accumulated_mm_inputs_no_watermark = {}  # Accumulated multi_modal_inputs without watermark
 
         user_turns = 0
         assistant_turns = 0
 
-        # Tokenize initial prompt and get multi_modal_inputs
+        # Tokenize initial prompt and get multi_modal_inputs (with watermark for rollout)
         prompt_ids, initial_mm_inputs = await self.apply_chat_template(
             messages,
             images=images if images else None,
             videos=videos if videos else None,
         )
         accumulated_mm_inputs = _merge_multi_modal_inputs(accumulated_mm_inputs, initial_mm_inputs)
+
+        # Also process non-watermark version for logp calculation
+        if self.use_timestamp_watermark and messages_no_watermark:
+            _, initial_mm_inputs_no_watermark = await self.apply_chat_template(
+                messages_no_watermark,
+                images=images_no_watermark if images_no_watermark else None,
+                videos=videos_no_watermark if videos_no_watermark else None,
+            )
+            accumulated_mm_inputs_no_watermark = _merge_multi_modal_inputs(
+                accumulated_mm_inputs_no_watermark, initial_mm_inputs_no_watermark
+            )
 
         # Main reasoning loop
         for turn in range(self.max_assistant_turns):
@@ -366,10 +515,17 @@ class VideoReasoningAgentLoop(AgentLoopBase):
 
             # Add assistant response to messages (like ToolAgentLoop line 269-270)
             messages.append({"role": "assistant", "content": response_text})
+            if messages_no_watermark:
+                messages_no_watermark.append({"role": "assistant", "content": response_text})
 
             # Load frame jpg paths from cache
             with simple_timer("tool_calls", metrics):
-                frame_paths = self._get_frame_paths_for_segments(video_path, segments)
+                if self.use_timestamp_watermark:
+                    frame_paths_with_ts = self._get_frame_paths_with_timestamps_for_segments(video_path, segments)
+                    frame_paths = [fp for fp, _ in frame_paths_with_ts]
+                else:
+                    frame_paths = self._get_frame_paths_for_segments(video_path, segments)
+                    frame_paths_with_ts = None
             metrics["num_frames"] = len(frame_paths)
 
             if not frame_paths:
@@ -386,6 +542,9 @@ class VideoReasoningAgentLoop(AgentLoopBase):
             content_list = [
                 {"type": "text", "text": "<observation>Here are the cropped video segments."}
             ]
+            content_list_no_watermark = [
+                {"type": "text", "text": "<observation>Here are the cropped video segments."}
+            ] if self.use_timestamp_watermark else None
 
             # Add segment info and video for each segment
             for start, end in segments:
@@ -397,22 +556,53 @@ class VideoReasoningAgentLoop(AgentLoopBase):
                     end = video_duration
 
                 content_list.append({"type": "text", "text": f"\nFrom {start}s to {end}s:"})
+                if content_list_no_watermark:
+                    content_list_no_watermark.append({"type": "text", "text": f"\nFrom {start}s to {end}s:"})
 
             # Add video using jpg paths - this generates <|video_pad|> token
             # All segment frames as one video entry
             # Use segment config params (default aligned with eval script)
-            content_list.append({
-                "type": "video",
-                "video": frame_paths,
-                "fps": self.segment_fps,
-                "max_frames": self.segment_max_frames,
-                "min_pixels": self.segment_min_pixels,
-                "max_pixels": self.segment_max_pixels,
-            })
+            if self.use_timestamp_watermark and frame_paths_with_ts:
+                # For rollout: use watermarked frames (as PIL Images)
+                watermarked_frames = self._add_watermarks_to_frames(frame_paths_with_ts)
+                content_list.append({
+                    "type": "video",
+                    "video": watermarked_frames,  # PIL Images instead of paths
+                    "fps": self.segment_fps,
+                    "max_frames": self.segment_max_frames,
+                    "min_pixels": self.segment_min_pixels,
+                    "max_pixels": self.segment_max_pixels,
+                })
+                # For logp: use original frame paths
+                content_list_no_watermark.append({
+                    "type": "video",
+                    "video": frame_paths,  # Original paths
+                    "fps": self.segment_fps,
+                    "max_frames": self.segment_max_frames,
+                    "min_pixels": self.segment_min_pixels,
+                    "max_pixels": self.segment_max_pixels,
+                })
+            else:
+                content_list.append({
+                    "type": "video",
+                    "video": frame_paths,
+                    "fps": self.segment_fps,
+                    "max_frames": self.segment_max_frames,
+                    "min_pixels": self.segment_min_pixels,
+                    "max_pixels": self.segment_max_pixels,
+                })
+
             content_list.append({"type": "text", "text": "\n</observation>"})
+            if content_list_no_watermark:
+                content_list_no_watermark.append({"type": "text", "text": "\n</observation>"})
 
             observation_message = {"role": "user", "content": content_list}
             messages.append(observation_message)
+
+            observation_message_no_watermark = None
+            if content_list_no_watermark:
+                observation_message_no_watermark = {"role": "user", "content": content_list_no_watermark}
+                messages_no_watermark.append(observation_message_no_watermark)
 
             # Process observation message to extract videos in correct format
             # process_vision_info will load jpg files and return (tensor, metadata) tuples
@@ -434,6 +624,25 @@ class VideoReasoningAgentLoop(AgentLoopBase):
 
             # Accumulate multi_modal_inputs from observation
             accumulated_mm_inputs = _merge_multi_modal_inputs(accumulated_mm_inputs, obs_mm_inputs)
+
+            # Also process non-watermark observation for logp
+            if self.use_timestamp_watermark and observation_message_no_watermark:
+                obs_multi_modal_no_watermark = await self.process_vision_info([observation_message_no_watermark])
+                obs_videos_no_watermark = obs_multi_modal_no_watermark.get("videos", [])
+
+                if videos_no_watermark is None:
+                    videos_no_watermark = []
+                videos_no_watermark = videos_no_watermark + obs_videos_no_watermark
+
+                _, obs_mm_inputs_no_watermark = await self.apply_chat_template(
+                    [observation_message_no_watermark],
+                    images=None,
+                    videos=obs_videos_no_watermark if obs_videos_no_watermark else None,
+                    remove_system_prompt=True,
+                )
+                accumulated_mm_inputs_no_watermark = _merge_multi_modal_inputs(
+                    accumulated_mm_inputs_no_watermark, obs_mm_inputs_no_watermark
+                )
 
             # Check if adding observation would exceed response length
             if len(response_mask) + len(obs_ids) >= self.response_length:
@@ -465,6 +674,7 @@ class VideoReasoningAgentLoop(AgentLoopBase):
             response_mask=response_mask[:self.response_length],
             multi_modal_data=output_multi_modal_data,
             accumulated_multi_modal_inputs=accumulated_mm_inputs,
+            accumulated_multi_modal_inputs_no_watermark=accumulated_mm_inputs_no_watermark if self.use_timestamp_watermark else None,
             num_turns=user_turns + assistant_turns + 1,
             metrics=AgentLoopMetrics(**metrics) if isinstance(metrics, dict) else metrics,
         )

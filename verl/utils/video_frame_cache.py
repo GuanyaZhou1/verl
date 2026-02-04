@@ -12,8 +12,109 @@ import json
 from pathlib import Path
 from typing import List, Tuple, Dict, Optional
 from tqdm import tqdm
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import numpy as np
+
+
+def add_timestamp_watermark(
+    image: Image.Image,
+    timestamp: float,
+    position: str = "top_left",
+    font_size: int = 24,
+    font_color: tuple = (255, 255, 255),
+    bg_color: tuple = (0, 0, 0, 128),
+) -> Image.Image:
+    """
+    Add a timestamp watermark to an image.
+
+    Args:
+        image: PIL Image to add watermark to
+        timestamp: Timestamp in seconds
+        position: Watermark position, one of "top_left", "top_right", "bottom_left", "bottom_right"
+        font_size: Font size for the timestamp text
+        font_color: RGB tuple for text color (default white)
+        bg_color: RGBA tuple for background color (default semi-transparent black)
+
+    Returns:
+        New PIL Image with watermark added
+    """
+    # Create a copy to avoid modifying the original
+    img = image.copy()
+
+    # Convert to RGBA if needed for alpha blending
+    if img.mode != 'RGBA':
+        img = img.convert('RGBA')
+
+    # Create overlay for the watermark
+    overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+
+    # Format timestamp as integer seconds (e.g., "12s")
+    timestamp_text = f"{int(timestamp)}s"
+
+    # Try to use a default font, fall back to default if not available
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
+    except (IOError, OSError):
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeSansBold.ttf", font_size)
+        except (IOError, OSError):
+            try:
+                font = ImageFont.truetype("arial.ttf", font_size)
+            except (IOError, OSError):
+                # Use default font if no TrueType font is available
+                font = ImageFont.load_default()
+
+    # Get text bounding box
+    bbox = draw.textbbox((0, 0), timestamp_text, font=font)
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
+
+    # Add padding around text
+    padding = 5
+    box_width = text_width + 2 * padding
+    box_height = text_height + 2 * padding
+
+    # Calculate position
+    img_width, img_height = img.size
+    margin = 10
+
+    if position == "top_left":
+        box_x = margin
+        box_y = margin
+    elif position == "top_right":
+        box_x = img_width - box_width - margin
+        box_y = margin
+    elif position == "bottom_left":
+        box_x = margin
+        box_y = img_height - box_height - margin
+    elif position == "bottom_right":
+        box_x = img_width - box_width - margin
+        box_y = img_height - box_height - margin
+    else:
+        # Default to top_left
+        box_x = margin
+        box_y = margin
+
+    # Draw background rectangle
+    draw.rectangle(
+        [box_x, box_y, box_x + box_width, box_y + box_height],
+        fill=bg_color
+    )
+
+    # Draw text
+    text_x = box_x + padding
+    text_y = box_y + padding
+    draw.text((text_x, text_y), timestamp_text, font=font, fill=font_color + (255,))
+
+    # Composite the overlay onto the original image
+    img = Image.alpha_composite(img, overlay)
+
+    # Convert back to RGB if the original was RGB
+    if image.mode == 'RGB':
+        img = img.convert('RGB')
+
+    return img
 
 
 class VideoFrameCache:
@@ -118,6 +219,66 @@ class VideoFrameCache:
 
         # Return all frame paths
         return [str(cache_dir / f['path']) for f in all_frame_info]
+
+    def load_frame_paths_with_timestamps(
+        self,
+        video_path: str,
+        segments: Optional[List[Tuple[float, float]]] = None,
+        auto_cache: bool = True,
+        max_frames_per_segment: int = 16,
+    ) -> List[Tuple[str, float]]:
+        """
+        Load frame jpg file paths along with their timestamps from cache.
+
+        This is useful for adding timestamp watermarks to frames.
+
+        Args:
+            video_path: Path to the video file
+            segments: Optional list of time segments to load. If None, loads all frames.
+            auto_cache: If True, automatically cache the video if cache doesn't exist.
+            max_frames_per_segment: Maximum number of frames to return per segment.
+
+        Returns:
+            List of (path, timestamp) tuples
+        """
+        cache_dir = self._get_cache_dir_for_video(video_path)
+        metadata_path = self._get_metadata_path(video_path)
+
+        # Try to load from cache
+        if not metadata_path.exists():
+            if auto_cache:
+                print(f"[VideoFrameCache] Cache miss for {video_path}")
+                print(f"[VideoFrameCache] Parameters: fps={self.fps}, max_frames={self.max_frames}")
+                print(f"[VideoFrameCache] Auto-caching...")
+                self.cache_video(video_path)
+            else:
+                raise CacheNotFoundError(
+                    f"Cache not found for {video_path} with fps={self.fps}, max_frames={self.max_frames}. "
+                    f"Expected cache dir: {cache_dir}"
+                )
+
+        # Load metadata
+        with open(metadata_path, 'r') as f:
+            metadata = json.load(f)
+
+        all_frame_info = metadata['frames']  # List of {"path": str, "timestamp": float}
+
+        # Filter by segments if provided
+        if segments is not None:
+            filtered_results = []
+            for start, end in segments:
+                segment_results = []
+                for frame_info in all_frame_info:
+                    ts = frame_info['timestamp']
+                    if start <= ts <= end:
+                        segment_results.append((str(cache_dir / frame_info['path']), ts))
+                        if len(segment_results) >= max_frames_per_segment:
+                            break
+                filtered_results.extend(segment_results)
+            return filtered_results
+
+        # Return all frame paths with timestamps
+        return [(str(cache_dir / f['path']), f['timestamp']) for f in all_frame_info]
 
     def load_frames(
         self,

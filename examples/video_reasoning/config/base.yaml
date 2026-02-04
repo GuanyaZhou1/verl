@@ -1,0 +1,96 @@
+# Video Reasoning Base Config
+# 最小配置：只做继承，所有实际参数在 shell 脚本中配置
+#
+# 使用方式：
+#   python3 -m recipe.dapo.main_dapo \
+#       --config-path="$(pwd)/examples/video_reasoning/config" \
+#       --config-name='base' \
+#       key=value ...
+
+hydra:
+  searchpath:
+    - file://verl/trainer/config
+
+defaults:
+  - ppo_trainer
+  - _self_
+
+# 以下为必须在 YAML 中设置的结构化默认值（shell 中覆盖会比较麻烦的嵌套结构）
+# 其他所有参数都在 shell 脚本中配置
+
+# DAPO 需要 gen_batch_size（生成批次大于训练批次，给过滤留余量）
+data:
+  gen_batch_size: ${data.train_batch_size}
+
+# Video reasoning 需要的 multi_turn 嵌套配置结构
+actor_rollout_ref:
+  rollout:
+    multi_turn:
+      # 帧缓存配置
+      cache_config:
+        cache_dir: ".cache"
+        fps: 1
+        max_frames: 512
+        max_frames_per_segment: 16
+        use_cached_initial_video: False
+      # 初始视频分辨率配置
+      initial_video_config:
+        fps: 1
+        max_frames: 512
+        min_pixels: 784
+        max_pixels: 12544
+      # Segment 视频分辨率配置
+      segment_video_config:
+        fps: 1
+        max_frames: 32
+        min_pixels: 784
+        max_pixels: 50176
+      # 时间戳水印配置
+      watermark_config:
+        enable: False
+        position: "top_left"
+        font_size: 24
+        font_color: [255, 255, 255]
+        bg_color: [0, 0, 0, 128]
+
+# Video reasoning 自定义奖励函数配置
+custom_reward_function:
+  reward_kwargs:
+    # VLM 评分配置
+    vlm_endpoint: null
+    vlm_model_name: null
+    vlm_api_key: null
+    use_vlm_scoring: false
+    # BBox 验证配置
+    use_bbox_verification: false
+    answer_weight: 1.0
+    bbox_weight: 0.3
+    bbox_coord_range: 1.0
+    # 缓存配置（与上面 cache_config 保持一致）
+    cache_dir: ".cache"
+    cache_fps: 1
+    cache_max_frames: 512
+    # 可视化和日志配置
+    save_bbox_visualization: false
+    bbox_vis_sample_rate: 0.1
+    enable_logging: false
+    save_samples: false
+    save_every_n: 10
+    log_dir: "./reward_logs"
+    log_every_n: 10
+
+# DAPO filter_groups 结构（值在 shell 中覆盖）
+algorithm:
+  filter_groups:
+    _target_: verl.trainer.config.FilterGroupsConfig
+    enable: False
+    metric: null
+    max_num_gen_batches: 0
+
+# DAPO overlong_buffer 结构
+reward_model:
+  overlong_buffer:
+    enable: False
+    len: 0
+    penalty_factor: 0.0
+    log: False

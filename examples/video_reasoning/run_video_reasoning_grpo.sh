@@ -41,6 +41,13 @@ SEGMENT_VIDEO_MAX_FRAMES=32
 SEGMENT_VIDEO_MIN_PIXELS=784          # 28*28, 对齐 eval 脚本
 SEGMENT_VIDEO_MAX_PIXELS=50176        # ~224x224, 高分辨率看细节
 
+# ===== 时间戳水印参数（可选功能）=====
+# 启用后，rollout 时帧上会显示时间戳（如 "12s"），帮助模型理解时序
+# logp 计算时使用原始帧（无水印），避免模型只学会从水印获取时序
+USE_TIMESTAMP_WATERMARK=False         # 是否启用时间戳水印
+WATERMARK_POSITION="top_left"         # 水印位置: top_left, top_right, bottom_left, bottom_right
+WATERMARK_FONT_SIZE=24                # 字体大小
+
 # ===== 训练参数（8卡配置）=====
 TRAIN_BATCH_SIZE=16
 MAX_PROMPT_LENGTH=36000
@@ -171,6 +178,9 @@ nohup python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.multi_turn.segment_video_config.max_frames=$SEGMENT_VIDEO_MAX_FRAMES \
     actor_rollout_ref.rollout.multi_turn.segment_video_config.min_pixels=$SEGMENT_VIDEO_MIN_PIXELS \
     actor_rollout_ref.rollout.multi_turn.segment_video_config.max_pixels=$SEGMENT_VIDEO_MAX_PIXELS \
+    actor_rollout_ref.rollout.multi_turn.watermark_config.enable=$USE_TIMESTAMP_WATERMARK \
+    actor_rollout_ref.rollout.multi_turn.watermark_config.position=$WATERMARK_POSITION \
+    actor_rollout_ref.rollout.multi_turn.watermark_config.font_size=$WATERMARK_FONT_SIZE \
     actor_rollout_ref.rollout.multi_turn.format=hermes \
     actor_rollout_ref.rollout.agent.default_agent_loop=video_reasoning \
     actor_rollout_ref.rollout.agent.num_workers=$AGENT_NUM_WORKERS \

@@ -25,6 +25,18 @@ import aiohttp
 from PIL import Image, ImageDraw
 
 
+# ============== 默认配置常量 ==============
+# 修改这里的值会影响所有使用默认参数的调用
+
+DEFAULT_IOU_THRESHOLD = 0.3          # IOU 阈值，低于此值 spatial_score=0
+DEFAULT_TEMPORAL_WEIGHT = 0.5        # 时序奖励权重 (物体是否存在)
+DEFAULT_SPATIAL_WEIGHT = 0.5         # 空间奖励权重 (IOU 分数)
+DEFAULT_BBOX_COORD_RANGE = 1000.0    # bbox 坐标范围 (1.0 = [0,1], 1000.0 = [0,1000])
+DEFAULT_ANSWER_WEIGHT = 0.4          # 答案分数权重
+DEFAULT_BBOX_WEIGHT = 0.3            # bbox 分数权重
+DEFAULT_VLM_WEIGHT = 0.3             # VLM 打分权重
+
+
 # ============== 日志和样本保存 ==============
 
 # 全局计数器和统计
@@ -270,119 +282,113 @@ def draw_bbox_on_image(
 
 # ============== VLM bbox 验证 ==============
 
-# Detailed prompt encouraging gradient scoring, stricter evaluation
-BBOX_VERIFY_PROMPT = """A red bounding box labeled "{object_name}" is drawn on the image.
+# New prompt: Ask VLM to detect the object and return its bbox (JSON format for stable parsing)
+BBOX_DETECT_PROMPT = """Look at this image carefully.
 
-Step 1: Is "{object_name}" visible ANYWHERE in this image frame?
-- If "{object_name}" is NOT visible in the image at all, score 0 immediately.
+Task: Find and locate "{object_name}" in this image.
+Context from video analysis: {context}
 
-Step 2: If "{object_name}" IS visible, evaluate the red bounding box:
-- Does the box overlap with the object?
-- Does the box tightly fit the object without too much extra background?
-- Is the object fully contained in the box, or partially cut off?
+Instructions:
+1. If "{object_name}" is NOT visible anywhere in this image, output: {{"found": false}}
+2. If "{object_name}" IS visible, provide its bounding box in normalized [0,1] coordinates.
 
-Scoring guide:
-0: "{object_name}" is NOT visible anywhere in this image frame
-5: "{object_name}" is visible in the frame, but the box does NOT overlap with it (wrong location)
-6: Box partially overlaps, but major offset or very loose (mostly background)
-7: Box covers the object but too large (significant extra background) or partially cuts it off
-8: Box mostly accurate, slight offset or slightly too large/small
-9: Box accurately covers the object with minor imperfection
-10: Box tightly and precisely fits the object, minimal extra background
+Output format (JSON only, no other text):
+- Object not visible: {{"found": false}}
+- Object visible: {{"found": true, "bbox": [x1, y1, x2, y2]}}
 
-Output only a single integer (0-10)."""
+where (x1,y1) = top-left corner, (x2,y2) = bottom-right corner, all values between 0.0 and 1.0.
+
+Output ONLY the JSON, no explanation or other text."""
 
 
-async def verify_single_bbox_with_vlm(
+def compute_iou(bbox1: List[float], bbox2: List[float]) -> float:
+    """
+    计算两个 bbox 的 IOU (Intersection over Union)
+
+    Args:
+        bbox1: [x1, y1, x2, y2] 归一化坐标
+        bbox2: [x1, y1, x2, y2] 归一化坐标
+
+    Returns:
+        IOU 值 (0-1)
+    """
+    # 计算交集区域
+    x1 = max(bbox1[0], bbox2[0])
+    y1 = max(bbox1[1], bbox2[1])
+    x2 = min(bbox1[2], bbox2[2])
+    y2 = min(bbox1[3], bbox2[3])
+
+    inter_area = max(0, x2 - x1) * max(0, y2 - y1)
+
+    # 计算各自面积
+    bbox1_area = (bbox1[2] - bbox1[0]) * (bbox1[3] - bbox1[1])
+    bbox2_area = (bbox2[2] - bbox2[0]) * (bbox2[3] - bbox2[1])
+
+    # 计算并集面积
+    union_area = bbox1_area + bbox2_area - inter_area
+
+    return inter_area / union_area if union_area > 0 else 0.0
+
+
+def extract_bbox_context(solution_str: str, object_name: str) -> str:
+    """
+    从 solution_str 中提取与 bbox 相关的上下文信息
+
+    Args:
+        solution_str: 模型的完整输出
+        object_name: 目标物体名称
+
+    Returns:
+        上下文字符串，帮助 VLM 理解要找什么物体
+    """
+    # 尝试提取 <think> 标签中的内容
+    think_matches = re.findall(r'<think>(.*?)</think>', solution_str, re.DOTALL | re.IGNORECASE)
+
+    context_parts = []
+    for think_content in think_matches[-2:]:  # 取最后两个 think 块
+        # 查找与物体相关的句子
+        sentences = think_content.split('.')
+        for sentence in sentences:
+            if object_name.lower() in sentence.lower():
+                context_parts.append(sentence.strip())
+
+    if context_parts:
+        return ". ".join(context_parts[:3])  # 最多3句
+
+    return f"Looking for {object_name} in the video frame."
+
+
+async def get_gt_bbox_from_vlm(
     frame_path: str,
-    bbox: List[float],
     object_name: str,
+    context: str,
     vlm_endpoint: str,
     vlm_model_name: str,
     vlm_api_key: str = "",
-    temp_image_dir: str = "/tmp/bbox_verify",
-    save_visualization: bool = False,
-    visualization_dir: str = "./reward_logs/bbox_vis",
-    bbox_coord_range: float = 1.0,  # bbox 坐标范围 (1.0 = [0,1], 1000.0 = [0,1000])
-) -> Tuple[float, str]:
+) -> Tuple[Optional[List[float]], str]:
     """
-    使用 VLM 验证单个 bbox 的准确性
+    调用 VLM 获取 GT bbox
 
     Args:
         frame_path: 帧图片路径
-        bbox: [x1, y1, x2, y2] 坐标
         object_name: 目标物体名称
+        context: 上下文信息
         vlm_endpoint: VLM 服务地址
         vlm_model_name: VLM 模型名称
         vlm_api_key: VLM API Key
-        temp_image_dir: 临时图片目录 (unused, kept for API compatibility)
-        save_visualization: 是否保存可视化图片
-        visualization_dir: 可视化图片保存目录
-        bbox_coord_range: bbox 坐标的范围 (1.0 = [0,1], 1000.0 = [0,1000])
 
     Returns:
-        (score, explanation): 分数(0-1) 和解释
+        (gt_bbox, raw_response): GT bbox [x1,y1,x2,y2] 或 None，以及原始响应
     """
     logger = get_reward_logger()
-    saved_vis_path = None
-    score = 0.5
-    response_text = ""
 
     try:
-        # 1. 加载图片并绘制 bbox
+        # 加载图片并转为 base64
         img = Image.open(frame_path).convert("RGB")
-        img_width, img_height = img.size
-
-        # 将坐标归一化到 [0, 1] 再转为像素坐标
-        x1, y1, x2, y2 = bbox
-        x1_norm = x1 / bbox_coord_range
-        y1_norm = y1 / bbox_coord_range
-        x2_norm = x2 / bbox_coord_range
-        y2_norm = y2 / bbox_coord_range
-
-        x1_px = int(x1_norm * img_width)
-        y1_px = int(y1_norm * img_height)
-        x2_px = int(x2_norm * img_width)
-        y2_px = int(y2_norm * img_height)
-
-        draw = ImageDraw.Draw(img)
-
-        # 绘制更醒目的 bbox：粗红框 + 半透明填充
-        line_width = max(4, min(img_width, img_height) // 150)  # 自适应线宽
-        draw.rectangle([x1_px, y1_px, x2_px, y2_px], outline="red", width=line_width)
-
-        # 绘制物体名称标签（大字体 + 背景色）
-        try:
-            # 尝试加载大字体
-            from PIL import ImageFont
-            font_size = max(20, min(img_width, img_height) // 25)  # 自适应字体大小
-            try:
-                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
-            except Exception:
-                try:
-                    font = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", font_size)
-                except Exception:
-                    font = ImageFont.load_default()
-
-            label_text = f" {object_name} "
-            label_y = max(0, y1_px - font_size - 8)
-
-            # 绘制标签背景
-            text_bbox = draw.textbbox((x1_px, label_y), label_text, font=font)
-            draw.rectangle(
-                [text_bbox[0] - 2, text_bbox[1] - 2, text_bbox[2] + 2, text_bbox[3] + 2],
-                fill="red"
-            )
-            draw.text((x1_px, label_y), label_text, fill="white", font=font)
-        except Exception:
-            # 回退：默认字体
-            draw.text((x1_px, max(0, y1_px - 15)), f"{object_name}", fill="red")
-
-        # 2. 转换为 base64 (用于 VLM 调用)
         img_base64_url = image_to_base64(img, format="JPEG")
 
-        # 3. 构建请求 (OpenAI兼容格式，使用 base64)
-        prompt = BBOX_VERIFY_PROMPT.format(object_name=object_name)
+        # 构建请求
+        prompt = BBOX_DETECT_PROMPT.format(object_name=object_name, context=context)
 
         payload = {
             "model": vlm_model_name,
@@ -396,11 +402,10 @@ async def verify_single_bbox_with_vlm(
                     {"type": "text", "text": prompt}
                 ]
             }],
-            "temperature": 0.3,  # 稍高 temperature 增加评分差异
-            "max_tokens": 16,
+            "temperature": 0.1,  # 低温度以获得更稳定的输出
+            "max_tokens": 64,
         }
 
-        # 4. 发送请求 (带 API Key)
         headers = {"Content-Type": "application/json"}
         if vlm_api_key:
             headers["Authorization"] = f"Bearer {vlm_api_key}"
@@ -413,100 +418,332 @@ async def verify_single_bbox_with_vlm(
                     result = await resp.json()
                     response_text = result["choices"][0]["message"]["content"].strip()
 
-                    # 解析分数
-                    score_match = re.search(r'(\d+(?:\.\d+)?)', response_text)
-                    if score_match:
-                        score = float(score_match.group(1)) / 10.0  # 归一化到 0-1
-                        score = min(1.0, max(0.0, score))
+                    def normalize_bbox_if_needed(bbox_coords: List[float]) -> Optional[List[float]]:
+                        """如果 bbox 是像素坐标，将其归一化到 [0,1]"""
+                        if not bbox_coords or len(bbox_coords) != 4:
+                            return None
+
+                        max_val = max(bbox_coords)
+                        if max_val <= 1.0:
+                            # 已经是归一化坐标
+                            if all(0 <= c <= 1 for c in bbox_coords):
+                                return bbox_coords
+                            return None
+
+                        # 像素坐标，需要归一化
+                        # 使用图片实际尺寸进行归一化
+                        normalized = [
+                            bbox_coords[0] / img_width,
+                            bbox_coords[1] / img_height,
+                            bbox_coords[2] / img_width,
+                            bbox_coords[3] / img_height,
+                        ]
+                        # 裁剪到 [0, 1] 范围
+                        normalized = [min(1.0, max(0.0, c)) for c in normalized]
+
+                        # 验证有效性
+                        if normalized[0] < normalized[2] and normalized[1] < normalized[3]:
+                            logger.debug(f"Normalized VLM bbox from {bbox_coords} to {normalized}")
+                            return normalized
+                        return None
+
+                    # 尝试解析 JSON 格式响应
+                    try:
+                        # 尝试直接解析 JSON
+                        json_match = re.search(r'\{[^{}]*\}', response_text)
+                        if json_match:
+                            json_str = json_match.group(0)
+                            parsed = json.loads(json_str)
+
+                            # 检查 found 字段
+                            if not parsed.get("found", False):
+                                return None, response_text
+
+                            # 提取 bbox
+                            gt_bbox = parsed.get("bbox")
+                            if gt_bbox and len(gt_bbox) == 4:
+                                gt_bbox = [float(c) for c in gt_bbox]
+                                # 归一化 bbox（如果是像素坐标）
+                                gt_bbox = normalize_bbox_if_needed(gt_bbox)
+                                if gt_bbox:
+                                    return gt_bbox, response_text
+                                else:
+                                    logger.debug(f"GT bbox normalization failed")
+                                    return None, response_text
+                    except (json.JSONDecodeError, ValueError, TypeError):
+                        pass  # JSON 解析失败，尝试旧格式
+
+                    # 兼容旧格式：检查 None 响应
+                    if response_text.lower() == "none" or "none" in response_text.lower():
+                        return None, response_text
+
+                    # 兼容旧格式：尝试解析 bbox 坐标 [x1, y1, x2, y2]
+                    bbox_match = re.search(r'\[\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\]', response_text)
+                    if bbox_match:
+                        gt_bbox = [
+                            float(bbox_match.group(1)),
+                            float(bbox_match.group(2)),
+                            float(bbox_match.group(3)),
+                            float(bbox_match.group(4)),
+                        ]
+                        # 归一化 bbox（如果是像素坐标）
+                        gt_bbox = normalize_bbox_if_needed(gt_bbox)
+                        if gt_bbox:
+                            return gt_bbox, response_text
+                        else:
+                            logger.debug(f"GT bbox normalization failed (old format)")
+                            return None, response_text
+
+                    return None, response_text
                 else:
                     error_text = await resp.text()
-                    logger.warning(f"BBox verify HTTP error {resp.status}: {error_text[:100]}")
-                    response_text = f"HTTP error {resp.status}: {error_text[:200]}"
+                    logger.warning(f"VLM detect HTTP error {resp.status}: {error_text[:100]}")
+                    return None, f"HTTP error {resp.status}"
 
-        # 5. 保存可视化图片 (在 VLM 调用之后，包含评分)
+    except Exception as e:
+        logger.warning(f"VLM detect exception: {str(e)}")
+        return None, f"Error: {str(e)}"
+
+
+async def verify_single_bbox_with_vlm(
+    frame_path: str,
+    bbox: List[float],
+    object_name: str,
+    context: str,
+    vlm_endpoint: str,
+    vlm_model_name: str,
+    vlm_api_key: str = "",
+    bbox_coord_range: float = DEFAULT_BBOX_COORD_RANGE,
+    temporal_weight: float = DEFAULT_TEMPORAL_WEIGHT,
+    spatial_weight: float = DEFAULT_SPATIAL_WEIGHT,
+    iou_threshold: float = DEFAULT_IOU_THRESHOLD,
+    save_visualization: bool = False,
+    visualization_dir: str = "./reward_logs/bbox_vis",
+) -> Tuple[float, float, float, Optional[List[float]], str, str, str, Optional[str]]:
+    """
+    使用 VLM 验证单个 bbox 的准确性（基于 IOU 的双维度奖励）
+
+    Args:
+        frame_path: 帧图片路径
+        bbox: [x1, y1, x2, y2] 坐标
+        object_name: 目标物体名称
+        context: 上下文信息，帮助 VLM 理解要找什么物体
+        vlm_endpoint: VLM 服务地址
+        vlm_model_name: VLM 模型名称
+        vlm_api_key: VLM API Key
+        bbox_coord_range: bbox 坐标的范围 (1.0 = [0,1], 1000.0 = [0,1000])
+        temporal_weight: 时序奖励权重
+        spatial_weight: 空间奖励权重
+        iou_threshold: IOU 阈值，低于此值 spatial_score=0
+        save_visualization: 是否保存可视化图片
+        visualization_dir: 可视化图片保存目录
+
+    Returns:
+        (total_score, temporal_score, spatial_score, gt_bbox, explanation, vlm_prompt, vlm_response, vis_path)
+        vis_path: 可视化图片的绝对路径，如果未保存则为 None
+    """
+    logger = get_reward_logger()
+
+    # 构建 VLM prompt
+    vlm_prompt = BBOX_DETECT_PROMPT.format(object_name=object_name, context=context)
+
+    try:
+        # 1. 调用 VLM 获取 GT bbox
+        gt_bbox, raw_response = await get_gt_bbox_from_vlm(
+            frame_path=frame_path,
+            object_name=object_name,
+            context=context,
+            vlm_endpoint=vlm_endpoint,
+            vlm_model_name=vlm_model_name,
+            vlm_api_key=vlm_api_key,
+        )
+
+        # 2. 计算时序分数（物体是否存在）
+        temporal_score = 1.0 if gt_bbox is not None else 0.0
+
+        # 智能检测 bbox 坐标范围
+        # - 如果所有值都 <= 1，则是 [0,1] 归一化范围
+        # - 否则是 [0,1000] 范围，需要先除以 1000 归一化
+        if all(c <= 1.0 for c in bbox):
+            effective_coord_range = 1.0
+        else:
+            effective_coord_range = 1000.0
+            logger.debug(f"Auto-detected bbox in [0,1000] range: {bbox}")
+
+        # 3. 计算空间分数（IOU）
+        iou = 0.0
+        spatial_score = 0.0
+        if gt_bbox is not None:
+            # 归一化预测 bbox 到 [0, 1]
+            pred_normalized = [c / effective_coord_range for c in bbox]
+            iou = compute_iou(pred_normalized, gt_bbox)
+            spatial_score = iou if iou >= iou_threshold else 0.0
+
+        # 4. 计算总分
+        total_score = temporal_weight * temporal_score + spatial_weight * spatial_score
+
+        # 5. 保存可视化图片
+        saved_vis_path = None
         if save_visualization:
             os.makedirs(visualization_dir, exist_ok=True)
 
-            # 在图片上添加 VLM 评分
+            img = Image.open(frame_path).convert("RGB")
+            img_width, img_height = img.size
+            draw = ImageDraw.Draw(img)
+
+            # 绘制预测 bbox（红色）- 使用自动检测的坐标范围
+            pred_normalized = [c / effective_coord_range for c in bbox]
+            pred_px = [
+                int(pred_normalized[0] * img_width),
+                int(pred_normalized[1] * img_height),
+                int(pred_normalized[2] * img_width),
+                int(pred_normalized[3] * img_height),
+            ]
+            line_width = max(3, min(img_width, img_height) // 200)
+            draw.rectangle(pred_px, outline="red", width=line_width)
+
+            # 绘制 GT bbox（绿色，如果存在）
+            if gt_bbox is not None:
+                gt_px = [
+                    int(gt_bbox[0] * img_width),
+                    int(gt_bbox[1] * img_height),
+                    int(gt_bbox[2] * img_width),
+                    int(gt_bbox[3] * img_height),
+                ]
+                draw.rectangle(gt_px, outline="green", width=line_width)
+
+            # 绘制物体名称标签（在预测 bbox 上方）
             try:
                 from PIL import ImageFont
-                score_font_size = max(24, min(img_width, img_height) // 20)
+                label_font_size = max(16, min(img_width, img_height) // 40)
                 try:
-                    score_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", score_font_size)
+                    label_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", label_font_size)
                 except Exception:
-                    try:
-                        score_font = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", score_font_size)
-                    except Exception:
-                        score_font = ImageFont.load_default()
+                    label_font = ImageFont.load_default()
 
-                score_text = f"Score: {score*10:.0f}/10"
-                score_color = "green" if score >= 0.7 else "orange" if score >= 0.4 else "red"
+                label_text = f" {object_name} "
+                label_y = max(0, pred_px[1] - label_font_size - 8)
 
-                # 绘制评分背景
-                text_bbox = draw.textbbox((5, 5), score_text, font=score_font)
+                label_bbox = draw.textbbox((pred_px[0], label_y), label_text, font=label_font)
+                # 绘制标签背景
                 draw.rectangle(
-                    [text_bbox[0] - 4, text_bbox[1] - 4, text_bbox[2] + 4, text_bbox[3] + 4],
-                    fill="white", outline=score_color, width=2
+                    [label_bbox[0] - 2, label_bbox[1] - 2, label_bbox[2] + 2, label_bbox[3] + 2],
+                    fill="red"
                 )
-                draw.text((5, 5), score_text, fill=score_color, font=score_font)
+                # 绘制标签文字
+                draw.text((pred_px[0], label_y), label_text, fill="white", font=label_font)
             except Exception:
-                draw.text((5, 5), f"Score: {score*10:.0f}/10", fill="green" if score >= 0.7 else "red")
+                # 降级：简单绘制
+                draw.text((pred_px[0], max(0, pred_px[1] - 15)), object_name, fill="red")
 
-            vis_filename = f"bbox_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}_score{score*10:.0f}.jpg"
-            saved_vis_path = os.path.join(visualization_dir, vis_filename)
+            # 添加评分信息（包含物体名称）
+            try:
+                from PIL import ImageFont
+                font_size = max(14, min(img_width, img_height) // 35)
+                try:
+                    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
+                except Exception:
+                    font = ImageFont.load_default()
+
+                # 第一行：物体名称
+                obj_text = f"Object: {object_name[:30]}{'...' if len(object_name) > 30 else ''}"
+                # 第二行：分数
+                score_text = f"T:{temporal_score:.1f} S:{spatial_score:.2f} IOU:{iou:.2f} Total:{total_score:.2f}"
+                # 第三行：图例
+                legend_text = "Red=Pred, Green=GT"
+
+                # 计算背景大小
+                lines = [obj_text, score_text, legend_text]
+                max_width = 0
+                total_height = 5
+                for line in lines:
+                    bbox_line = draw.textbbox((0, 0), line, font=font)
+                    max_width = max(max_width, bbox_line[2] - bbox_line[0])
+                    total_height += bbox_line[3] - bbox_line[1] + 5
+
+                # 绘制半透明背景
+                draw.rectangle(
+                    [3, 3, max_width + 12, total_height + 5],
+                    fill="white"
+                )
+
+                # 绘制文字
+                y_pos = 5
+                for line in lines:
+                    draw.text((5, y_pos), line, fill="black", font=font)
+                    bbox_line = draw.textbbox((0, 0), line, font=font)
+                    y_pos += bbox_line[3] - bbox_line[1] + 5
+            except Exception:
+                draw.text((5, 5), f"Obj:{object_name[:20]} T:{temporal_score:.1f} S:{spatial_score:.2f}", fill="black")
+
+            vis_filename = f"bbox_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}_iou{iou:.2f}.jpg"
+            saved_vis_path = os.path.abspath(os.path.join(visualization_dir, vis_filename))
             img.save(saved_vis_path, "JPEG", quality=90)
             logger.debug(f"Saved bbox vis: {saved_vis_path}")
+        else:
+            saved_vis_path = None
 
-        logger.debug(f"BBox verify: obj={object_name}, bbox={bbox}, score={score:.2f}, vis={saved_vis_path}")
-        return score, response_text
+        explanation = f"temporal={temporal_score:.1f}, spatial={spatial_score:.2f}, iou={iou:.2f}, gt_bbox={gt_bbox}, vlm_response={raw_response[:100]}"
+        logger.debug(f"BBox verify: obj={object_name}, pred={bbox}, {explanation}")
+
+        return total_score, temporal_score, spatial_score, gt_bbox, explanation, vlm_prompt, raw_response, saved_vis_path
 
     except Exception as e:
         logger.warning(f"BBox verify exception: {str(e)}")
-        return 0.5, f"Error: {str(e)}"
+        return 0.5, 0.5, 0.0, None, f"Error: {str(e)}", vlm_prompt, "", None
 
 
 async def verify_bboxes_with_vlm(
     bboxes: List[Dict],
     video_path: str,
+    solution_str: str,
     vlm_endpoint: str,
     vlm_model_name: str,
     vlm_api_key: str = "",
     cache_dir: str = ".cache",
     cache_fps: int = 1,
     cache_max_frames: int = 512,
-    temp_image_dir: str = "/tmp/bbox_verify",
     save_bbox_visualization: bool = False,
     bbox_vis_sample_rate: float = 0.1,
     visualization_dir: str = "./reward_logs/bbox_vis",
-    bbox_coord_range: float = 1.0,
-) -> Tuple[float, List[Dict]]:
+    bbox_coord_range: float = DEFAULT_BBOX_COORD_RANGE,
+    temporal_weight: float = DEFAULT_TEMPORAL_WEIGHT,
+    spatial_weight: float = DEFAULT_SPATIAL_WEIGHT,
+    iou_threshold: float = DEFAULT_IOU_THRESHOLD,
+) -> Tuple[float, float, float, List[Dict]]:
     """
-    验证所有 bbox 并返回平均分数
+    验证所有 bbox 并返回平均分数（基于 IOU 的双维度奖励）
 
     Args:
         bboxes: 从模型输出提取的 bbox 列表
         video_path: 视频路径（用于加载帧）
+        solution_str: 模型的完整输出（用于提取上下文）
         vlm_endpoint: VLM 服务地址
         vlm_model_name: VLM 模型名称
         vlm_api_key: VLM API Key
         cache_dir: 帧缓存目录
         cache_fps: 缓存帧的fps
         cache_max_frames: 缓存的最大帧数
-        temp_image_dir: 临时图片目录
         save_bbox_visualization: 是否保存 bbox 可视化图片
         bbox_vis_sample_rate: 可视化采样率 (0.1 = 10%)
         visualization_dir: 可视化图片保存目录
+        bbox_coord_range: bbox 坐标范围
+        temporal_weight: 时序奖励权重
+        spatial_weight: 空间奖励权重
+        iou_threshold: IOU 阈值
 
     Returns:
-        (average_score, details): 平均分数和详细信息
+        (avg_total_score, avg_temporal_score, avg_spatial_score, details)
     """
     logger = get_reward_logger()
 
     if not bboxes:
-        return 0.5, []  # 没有 bbox 返回中性分数
+        return 0.5, 0.5, 0.0, []  # 没有 bbox 返回中性分数
 
     details = []
-    scores = []
+    total_scores = []
+    temporal_scores = []
+    spatial_scores = []
 
     # 并行验证所有 bbox
     tasks = []
@@ -522,43 +759,61 @@ async def verify_bboxes_with_vlm(
             max_frames=cache_max_frames,
         )
         if frame_path and os.path.exists(frame_path):
+            # 提取上下文
+            context = extract_bbox_context(solution_str, bbox_info['object'])
             # 按采样率决定是否保存可视化
             should_save_vis = save_bbox_visualization and (random.random() < bbox_vis_sample_rate)
             tasks.append(verify_single_bbox_with_vlm(
                 frame_path=frame_path,
                 bbox=bbox_info['bbox'],
                 object_name=bbox_info['object'],
+                context=context,
                 vlm_endpoint=vlm_endpoint,
                 vlm_model_name=vlm_model_name,
                 vlm_api_key=vlm_api_key,
-                temp_image_dir=temp_image_dir,
+                bbox_coord_range=bbox_coord_range,
+                temporal_weight=temporal_weight,
+                spatial_weight=spatial_weight,
+                iou_threshold=iou_threshold,
                 save_visualization=should_save_vis,
                 visualization_dir=visualization_dir,
-                bbox_coord_range=bbox_coord_range,
             ))
-            valid_bbox_indices.append(i)
+            valid_bbox_indices.append((i, frame_path))  # 同时保存 frame_path
         else:
             logger.debug(f"Frame not found for timestamp {bbox_info['time']}, video={video_path}")
 
     if tasks:
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        for idx, result in zip(valid_bbox_indices, results):
+        for (idx, frame_path), result in zip(valid_bbox_indices, results):
             bbox_info = bboxes[idx]
             if isinstance(result, Exception):
-                score, explanation = 0.5, str(result)
+                total_score, temporal_score, spatial_score = 0.5, 0.5, 0.0
+                gt_bbox, explanation, vlm_prompt, vlm_response, vis_path = None, str(result), "", "", None
             else:
-                score, explanation = result
+                total_score, temporal_score, spatial_score, gt_bbox, explanation, vlm_prompt, vlm_response, vis_path = result
 
-            scores.append(score)
+            total_scores.append(total_score)
+            temporal_scores.append(temporal_score)
+            spatial_scores.append(spatial_score)
             details.append({
                 "bbox_info": bbox_info,
-                "score": score,
+                "total_score": total_score,
+                "temporal_score": temporal_score,
+                "spatial_score": spatial_score,
+                "gt_bbox": gt_bbox,
                 "explanation": explanation[:200] if explanation else "",
+                "vlm_prompt": vlm_prompt,
+                "vlm_response": vlm_response,
+                "frame_path": os.path.abspath(frame_path),  # 原始帧图片的绝对路径
+                "vis_path": vis_path,  # 可视化图片的绝对路径 (如果保存了)
             })
 
-    avg_score = sum(scores) / len(scores) if scores else 0.5
-    logger.debug(f"BBox verification: {len(tasks)} tasks, avg_score={avg_score:.4f}")
-    return avg_score, details
+    avg_total = sum(total_scores) / len(total_scores) if total_scores else 0.5
+    avg_temporal = sum(temporal_scores) / len(temporal_scores) if temporal_scores else 0.5
+    avg_spatial = sum(spatial_scores) / len(spatial_scores) if spatial_scores else 0.0
+
+    logger.debug(f"BBox verification: {len(tasks)} tasks, avg_total={avg_total:.4f}, avg_temporal={avg_temporal:.4f}, avg_spatial={avg_spatial:.4f}")
+    return avg_total, avg_temporal, avg_spatial, details
 
 
 # ============== 答案评分 (VLM) ==============
@@ -584,7 +839,7 @@ async def score_answer_with_vlm(
     vlm_api_key: str = "",
 ) -> Tuple[float, str]:
     """
-    使用 VLM 判断答案是否正确（用于开放题）
+    使用 VLM 判断答案是否正确（二元分类：正确=1.0，错误=0.0）
     """
     logger = get_reward_logger()
 
@@ -616,17 +871,20 @@ async def score_answer_with_vlm(
 
                     score_match = re.search(r'(\d+(?:\.\d+)?)', response_text)
                     if score_match:
-                        score = float(score_match.group(1)) / 10.0
-                        logger.debug(f"VLM answer score: {score:.2f}, response: {response_text[:50]}")
-                        return min(1.0, max(0.0, score)), response_text
-                    return 0.5, response_text
+                        raw_score = float(score_match.group(1))
+                        # 二元分类：>=5 视为正确(1.0)，<5 视为错误(0.0)
+                        score = 1.0 if raw_score >= 5 else 0.0
+                        logger.debug(f"VLM answer score: {score:.0f} (raw={raw_score}), response: {response_text[:50]}")
+                        return score, response_text
+                    # 解析失败返回 0（错误）
+                    return 0.0, response_text
                 else:
                     error_text = await resp.text()
                     logger.warning(f"VLM score HTTP error {resp.status}: {error_text[:100]}")
-                    return 0.5, f"HTTP error {resp.status}: {error_text[:200]}"
+                    return 0.0, f"HTTP error {resp.status}: {error_text[:200]}"
     except Exception as e:
         logger.warning(f"VLM score exception: {str(e)}")
-        return 0.5, f"Error: {str(e)}"
+        return 0.0, f"Error: {str(e)}"
 
 
 # ============== 主函数 ==============
@@ -719,16 +977,19 @@ async def compute_score(
     cache_dir: str = ".cache",
     cache_fps: int = 1,
     cache_max_frames: int = 512,
-    temp_image_dir: str = "/tmp/bbox_verify",
     use_vlm_scoring: bool = True,
     use_bbox_verification: bool = True,
-    answer_weight: float = 0.4,
-    bbox_weight: float = 0.3,
-    vlm_weight: float = 0.3,
+    answer_weight: float = DEFAULT_ANSWER_WEIGHT,
+    bbox_weight: float = DEFAULT_BBOX_WEIGHT,
+    vlm_weight: float = DEFAULT_VLM_WEIGHT,
     # BBox 参数
-    bbox_coord_range: float = 1.0,  # bbox 坐标范围 (1000 = [0,1000], 1 = [0,1])
+    bbox_coord_range: float = DEFAULT_BBOX_COORD_RANGE,  # bbox 坐标范围 (1000 = [0,1000], 1 = [0,1])
     save_bbox_visualization: bool = False,
     bbox_vis_sample_rate: float = 0.1,  # 采样率：0.1 = 10% 的 bbox 保存可视化
+    # IOU-based bbox scoring parameters
+    temporal_weight: float = DEFAULT_TEMPORAL_WEIGHT,  # 时序奖励权重
+    spatial_weight: float = DEFAULT_SPATIAL_WEIGHT,   # 空间奖励权重
+    iou_threshold: float = DEFAULT_IOU_THRESHOLD,    # IOU 阈值，低于此值 spatial_score=0
     # 日志相关参数
     enable_logging: bool = True,
     save_samples: bool = True,
@@ -751,12 +1012,14 @@ async def compute_score(
         cache_dir: 帧缓存目录
         cache_fps: 缓存帧的fps
         cache_max_frames: 缓存的最大帧数
-        temp_image_dir: 临时图片目录
         use_vlm_scoring: 是否使用 VLM 对答案打分
         use_bbox_verification: 是否验证 bbox
         answer_weight: 答案分数权重
         bbox_weight: bbox 分数权重
         vlm_weight: VLM 打分权重
+        temporal_weight: 时序奖励权重 (bbox 内部)
+        spatial_weight: 空间奖励权重 (bbox 内部)
+        iou_threshold: IOU 阈值，低于此值 spatial_score=0
         enable_logging: 是否启用日志
         save_samples: 是否保存样本
         save_every_n: 每 N 个样本保存一次 (1=全部保存, 10=每10个保存1个)
@@ -764,7 +1027,7 @@ async def compute_score(
         log_every_n: 每 N 个样本打印一次统计
 
     Returns:
-        dict: {score, acc, answer_score, bbox_score, vlm_score, ...}
+        float: 最终奖励分数
     """
     global _reward_stats, _sample_counter
 
@@ -794,26 +1057,42 @@ async def compute_score(
     # 4. 统计多轮信息
     turn_counts = count_turns(solution_str)
 
-    # 5. BBox 验证分数 (VLM, 异步)
+    # 预先确定这个样本是否会被保存到 JSONL
+    # 这样可以确保：只有保存到 JSONL 的样本才保存可视化，且保存所有 bbox 的可视化
+    stats_key = data_source or "default"
+    current_count = _reward_stats[stats_key]["total_calls"] + 1  # 预测下一个计数
+    should_save_sample = save_samples and (current_count % save_every_n == 0)
+
+    # 5. BBox 验证分数 (VLM, 异步) - 基于 IOU 的双维度奖励
     bbox_score = 0.5
+    bbox_temporal_score = 0.5
+    bbox_spatial_score = 0.0
     bbox_details = []
     bbox_verified = False
 
     if use_bbox_verification and vlm_endpoint and bboxes and video_path:
-        bbox_score, bbox_details = await verify_bboxes_with_vlm(
+        # 如果这个样本会被保存到 JSONL，则保存所有 bbox 的可视化 (sample_rate=1.0)
+        # 否则不保存可视化
+        effective_save_vis = save_bbox_visualization and should_save_sample
+        effective_sample_rate = 1.0 if should_save_sample else bbox_vis_sample_rate
+
+        bbox_score, bbox_temporal_score, bbox_spatial_score, bbox_details = await verify_bboxes_with_vlm(
             bboxes=bboxes,
             video_path=video_path,
+            solution_str=solution_str,
             vlm_endpoint=vlm_endpoint,
             vlm_model_name=vlm_model_name,
             vlm_api_key=vlm_api_key,
             cache_dir=cache_dir,
             cache_fps=cache_fps,
             cache_max_frames=cache_max_frames,
-            temp_image_dir=temp_image_dir,
-            save_bbox_visualization=save_bbox_visualization,
-            bbox_vis_sample_rate=bbox_vis_sample_rate,
+            save_bbox_visualization=effective_save_vis,
+            bbox_vis_sample_rate=effective_sample_rate,
             visualization_dir=os.path.join(log_dir, "bbox_vis"),
             bbox_coord_range=bbox_coord_range,
+            temporal_weight=temporal_weight,
+            spatial_weight=spatial_weight,
+            iou_threshold=iou_threshold,
         )
         bbox_verified = len(bbox_details) > 0
 
@@ -852,11 +1131,10 @@ async def compute_score(
 
     elapsed_time = time.time() - start_time
 
-    # 更新统计
-    stats_key = data_source or "default"
+    # 更新统计 (stats_key 已在前面定义)
     _reward_stats[stats_key]["total_calls"] += 1
     _reward_stats[stats_key]["total_score"] += final_score
-    if answer_score > 0.5:  # VLM 返回 > 0.5 视为正确
+    if answer_score == 1.0:  # 二元分类：答案正确
         _reward_stats[stats_key]["answer_correct"] += 1
     if bboxes:
         _reward_stats[stats_key]["bbox_found"] += 1
@@ -874,7 +1152,7 @@ async def compute_score(
             f"gt={ground_truth}, method={score_method}, "
             f"turns=(think={turn_counts['think']}, seg={turn_counts['segment']}, obs={turn_counts['observation']}), "
             f"num_bboxes={len(bboxes)}, "
-            f"scores=(ans={answer_score:.2f}, bbox={bbox_score:.2f}), "
+            f"scores=(ans={answer_score:.2f}, bbox={bbox_score:.2f}, temporal={bbox_temporal_score:.2f}, spatial={bbox_spatial_score:.2f}), "
             f"final={final_score:.4f}, time={elapsed_time:.2f}s"
         )
 
@@ -882,15 +1160,15 @@ async def compute_score(
         if _reward_stats[stats_key]["total_calls"] % log_every_n == 0:
             print_reward_stats()
 
-    # 保存样本 (按间隔)
-    if save_samples and (_reward_stats[stats_key]["total_calls"] % save_every_n == 0):
+    # 保存样本 (使用预先计算的 should_save_sample，确保与可视化保存同步)
+    if should_save_sample:
         sample_data = {
             "video_id": video_id,
             "video_path": video_path,
             "question": question[:500] if question else "",
             "ground_truth": ground_truth,
             "predicted_answer": predicted_answer,
-            "answer_correct": answer_score > 0.5,
+            "answer_correct": answer_score == 1.0,  # 二元分类
             "score_method": "VLM" if use_vlm_for_answer else "rule",
             # 多轮统计
             "turn_counts": turn_counts,
@@ -909,6 +1187,8 @@ async def compute_score(
             "scores": {
                 "answer_score": answer_score,
                 "bbox_score": bbox_score,
+                "bbox_temporal_score": bbox_temporal_score,
+                "bbox_spatial_score": bbox_spatial_score,
                 "final_score": final_score,
             },
             "vlm_explanation": vlm_explanation[:200] if vlm_explanation else "",
@@ -919,11 +1199,21 @@ async def compute_score(
                 "weights": {
                     "answer": answer_weight,
                     "bbox": bbox_weight,
+                },
+                "bbox_iou_config": {
+                    "temporal_weight": temporal_weight,
+                    "spatial_weight": spatial_weight,
+                    "iou_threshold": iou_threshold,
                 }
             },
             "elapsed_time": elapsed_time,
         }
         save_reward_sample(sample_data, output_dir=os.path.join(log_dir, "samples"))
 
-    # 返回 float 分数 (veRL metrics 处理期望 float，不是 dict)
-    return final_score
+    # 返回字典格式，支持 FILTER_GROUPS_METRIC=acc 或 score
+    # - score: 最终分数 (float)
+    # - acc: 答案是否正确 (bool，用于 filter_groups)
+    return {
+        "score": final_score,
+        "acc": answer_score == 1.0,  # 二元分类：答案正确为 True
+    }
