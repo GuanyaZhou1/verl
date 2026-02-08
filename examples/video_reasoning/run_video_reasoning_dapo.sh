@@ -34,6 +34,7 @@ ulimit -n 65535
 export VLLM_USE_V1=1
 export LD_LIBRARY_PATH=/usr/local/cuda-13.1/compat:$LD_LIBRARY_PATH
 export RAY_ADDRESS=local
+#export CUDA_VISIBLE_DEVICES=4,5,6,7
 
 # =============================================================================
 # 路径配置
@@ -218,7 +219,7 @@ mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/${EXPERIMENT_NAME}.log"
 echo "Log file: $LOG_FILE"
 
-nohup python3 -m recipe.dapo.main_dapo \
+python3 -m recipe.dapo.main_dapo \
     --config-path="$CONFIG_PATH" \
     --config-name='base' \
     data.train_files="$DATA_DIR/train.parquet" \
@@ -317,14 +318,50 @@ nohup python3 -m recipe.dapo.main_dapo \
     trainer.critic_warmup=0 \
     trainer.resume_mode=$RESUME_MODE \
     trainer.logger='["console", "tensorboard"]' \
-    "$@" 2>&1 | tee -a "$LOG_FILE" &
+    "$@" 2>&1 | tee -a "$LOG_FILE"
 
 # trainer.resume_from_path=/data_gpu/songlin/rl/verl/checkpoints/video-reasoning-grpo/video_reasoning_grpo_20260131-085501/global_step_200
+
 echo ""
-echo "===== Training Started ====="
-echo "PID: $!"
-echo "Log: tail -f $LOG_FILE"
+echo "===== Step 2 Complete: Training Finished ====="
+
+# =============================================================================
+# Step 3: 自动合并模型 (Merge FSDP checkpoints to HuggingFace format)
+# =============================================================================
+CKPT_BASE="./checkpoints/${PROJECT_NAME}/${EXPERIMENT_NAME}"
+
+if [ -f "$CKPT_BASE/latest_checkpointed_iteration.txt" ]; then
+    LATEST_STEP=$(cat "$CKPT_BASE/latest_checkpointed_iteration.txt")
+    echo ""
+    echo "===== Step 3: Merging checkpoint global_step_${LATEST_STEP} ====="
+    echo "Source: $CKPT_BASE/global_step_${LATEST_STEP}/actor"
+    echo "Target: $CKPT_BASE/merged_model"
+
+    python -m verl.model_merger merge \
+        --backend fsdp \
+        --local_dir "$CKPT_BASE/global_step_${LATEST_STEP}/actor" \
+        --target_dir "$CKPT_BASE/merged_model" \
+        --trust-remote-code
+
+    if [ $? -eq 0 ]; then
+        echo ""
+        echo "===== Step 3 Complete: Model Merged Successfully ====="
+        echo "Merged model saved to: $CKPT_BASE/merged_model"
+        echo ""
+        echo "You can load the model with:"
+        echo "  from transformers import AutoModelForVision2Seq, AutoProcessor"
+        echo "  model = AutoModelForVision2Seq.from_pretrained('$CKPT_BASE/merged_model', trust_remote_code=True)"
+    else
+        echo "ERROR: Failed to merge model"
+        exit 1
+    fi
+else
+    echo ""
+    echo "WARNING: No checkpoint found at $CKPT_BASE"
+    echo "Skipping model merge step."
+fi
+
 echo ""
-echo "Monitor commands:"
-echo "  tail -f $LOG_FILE"
-echo "  tensorboard --logdir=./tensorboard_log"
+echo "===== All Steps Complete ====="
+echo "Log file: $LOG_FILE"
+echo "TensorBoard: tensorboard --logdir=./tensorboard_log"

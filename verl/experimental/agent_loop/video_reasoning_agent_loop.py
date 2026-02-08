@@ -622,7 +622,14 @@ class VideoReasoningAgentLoop(AgentLoopBase):
                 remove_system_prompt=True,
             )
 
-            # Accumulate multi_modal_inputs from observation
+            # IMPORTANT: Check if adding observation would exceed response length BEFORE
+            # accumulating multi_modal_inputs. This prevents the mismatch where
+            # accumulated_mm_inputs contains video features but prompt_ids doesn't have
+            # the corresponding video tokens.
+            if len(response_mask) + len(obs_ids) >= self.response_length:
+                break
+
+            # Accumulate multi_modal_inputs from observation (only after length check passes)
             accumulated_mm_inputs = _merge_multi_modal_inputs(accumulated_mm_inputs, obs_mm_inputs)
 
             # Also process non-watermark observation for logp
@@ -643,10 +650,6 @@ class VideoReasoningAgentLoop(AgentLoopBase):
                 accumulated_mm_inputs_no_watermark = _merge_multi_modal_inputs(
                     accumulated_mm_inputs_no_watermark, obs_mm_inputs_no_watermark
                 )
-
-            # Check if adding observation would exceed response length
-            if len(response_mask) + len(obs_ids) >= self.response_length:
-                break
 
             # Add observation to prompt_ids (like ToolAgentLoop line 372-373)
             prompt_ids = prompt_ids + obs_ids

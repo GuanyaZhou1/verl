@@ -675,6 +675,90 @@ class AgentLoopWorker:
             extra_fields=output.extra_fields,
         )
 
+    def _truncate_video_mm_inputs_to_match_tokens(
+        self,
+        multi_modal_inputs: dict,
+        input_ids: torch.Tensor,
+        merge_size: int = 2,
+    ) -> dict:
+        """Truncate video multi_modal_inputs to match the number of video tokens in input_ids.
+
+        This is a defensive measure to prevent the "Video features and video tokens do not match"
+        error that can occur when multi_modal_inputs are accumulated but the corresponding
+        tokens are not added to input_ids (e.g., due to response length limits).
+
+        Args:
+            multi_modal_inputs: Dict containing video_grid_thw, pixel_values_videos, etc.
+            input_ids: The input token ids tensor.
+            merge_size: The merge size used in video feature extraction (default: 2 for Qwen2-VL).
+
+        Returns:
+            Truncated multi_modal_inputs dict that matches the video token count.
+        """
+        if "video_grid_thw" not in multi_modal_inputs:
+            return multi_modal_inputs
+
+        video_grid_thw = multi_modal_inputs["video_grid_thw"]
+
+        # Get video token id from processor config
+        video_token_id = getattr(self.processor, "video_token_id", None)
+        if video_token_id is None:
+            # Fallback: try to get from tokenizer
+            video_token = getattr(self.tokenizer, "video_token", "<|video_pad|>")
+            video_token_id = self.tokenizer.convert_tokens_to_ids(video_token)
+
+        # Count video tokens in input_ids
+        input_ids_flat = input_ids.view(-1)
+        n_video_tokens = (input_ids_flat == video_token_id).sum().item()
+
+        # Calculate features per video
+        features_per_video = []
+        for thw in video_grid_thw:
+            t, h, w = thw[0].item(), thw[1].item(), thw[2].item()
+            # Each video contributes t * (h // merge_size) * (w // merge_size) features
+            features = t * (h // merge_size) * (w // merge_size)
+            features_per_video.append(features)
+
+        total_features = sum(features_per_video)
+
+        if total_features <= n_video_tokens:
+            # No truncation needed
+            return multi_modal_inputs
+
+        # Log warning about truncation
+        logger.warning(
+            f"Video features ({total_features}) exceed video tokens ({n_video_tokens}). "
+            f"Truncating video multi_modal_inputs to match token count."
+        )
+
+        # Calculate how many videos to keep
+        cumulative = 0
+        keep_count = 0
+        for i, feat in enumerate(features_per_video):
+            if cumulative + feat <= n_video_tokens:
+                cumulative += feat
+                keep_count = i + 1
+            else:
+                break
+
+        # Truncate the multi_modal_inputs
+        result = dict(multi_modal_inputs)
+        if keep_count == 0:
+            # No videos can fit, remove all video-related inputs
+            result.pop("video_grid_thw", None)
+            result.pop("pixel_values_videos", None)
+        else:
+            result["video_grid_thw"] = video_grid_thw[:keep_count]
+            if "pixel_values_videos" in result:
+                # Calculate the number of pixels to keep
+                # pixel_values_videos is a tensor of shape (total_pixels, C)
+                # where total_pixels = sum of (t * h * w) for each video
+                pixel_counts = [thw[0].item() * thw[1].item() * thw[2].item() for thw in video_grid_thw]
+                keep_pixels = sum(pixel_counts[:keep_count])
+                result["pixel_values_videos"] = result["pixel_values_videos"][:keep_pixels]
+
+        return result
+
     def _compute_multi_modal_inputs(self, output, input_ids) -> dict[str, torch.Tensor]:
         """Compute multi-modal inputs with image and video.
 
@@ -694,6 +778,8 @@ class AgentLoopWorker:
         # This ensures the model is trained on original frames without watermarks
         if output.accumulated_multi_modal_inputs_no_watermark:
             multi_modal_inputs = dict(output.accumulated_multi_modal_inputs_no_watermark)
+            # Apply defensive truncation to ensure video features match tokens
+            multi_modal_inputs = self._truncate_video_mm_inputs_to_match_tokens(multi_modal_inputs, input_ids)
             # Compute images_seqlens if image_grid_thw is present
             image_grid_thw = multi_modal_inputs.get("image_grid_thw")
             if image_grid_thw is not None:
@@ -707,6 +793,8 @@ class AgentLoopWorker:
         # This avoids re-processing videos which can cause token/feature mismatches
         if output.accumulated_multi_modal_inputs:
             multi_modal_inputs = dict(output.accumulated_multi_modal_inputs)
+            # Apply defensive truncation to ensure video features match tokens
+            multi_modal_inputs = self._truncate_video_mm_inputs_to_match_tokens(multi_modal_inputs, input_ids)
             # Compute images_seqlens if image_grid_thw is present
             image_grid_thw = multi_modal_inputs.get("image_grid_thw")
             if image_grid_thw is not None:

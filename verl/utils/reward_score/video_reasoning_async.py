@@ -28,7 +28,7 @@ from PIL import Image, ImageDraw
 # ============== 默认配置常量 ==============
 # 修改这里的值会影响所有使用默认参数的调用
 
-DEFAULT_IOU_THRESHOLD = 0.3          # IOU 阈值，低于此值 spatial_score=0
+DEFAULT_IOU_THRESHOLD = 0.2          # IOU 阈值，低于此值 spatial_score=0
 DEFAULT_TEMPORAL_WEIGHT = 0.5        # 时序奖励权重 (物体是否存在)
 DEFAULT_SPATIAL_WEIGHT = 0.5         # 空间奖励权重 (IOU 分数)
 DEFAULT_BBOX_COORD_RANGE = 1000.0    # bbox 坐标范围 (1.0 = [0,1], 1000.0 = [0,1000])
@@ -282,23 +282,32 @@ def draw_bbox_on_image(
 
 # ============== VLM bbox 验证 ==============
 
-# New prompt: Ask VLM to detect the object and return its bbox (JSON format for stable parsing)
-BBOX_DETECT_PROMPT = """Look at this image carefully.
+# Prompt: 让 VLM 先简短推理再输出 bbox（参考 long_ver5_zgy.py，[0,1000] 坐标范围更稳定）
+BBOX_DETECT_PROMPT = """Find and locate "{object_name}" in this image.
+{context_section}
+Briefly analyze in <reasoning></reasoning>, then output bbox in <bbox></bbox>.
 
-Task: Find and locate "{object_name}" in this image.
-Context from video analysis: {context}
+Rules:
+- Coordinates in [0, 1000] range (0=top-left, 1000=bottom-right)
+- If NOT visible: <bbox>None</bbox>
+- Keep reasoning SHORT (1-2 sentences)
 
-Instructions:
-1. If "{object_name}" is NOT visible anywhere in this image, output: {{"found": false}}
-2. If "{object_name}" IS visible, provide its bounding box in normalized [0,1] coordinates.
+Example:
+<reasoning>
+The red car is in the lower-right area, ~650-850 horizontally, ~550-780 vertically.
+</reasoning>
+<bbox>[650, 550, 850, 780]</bbox>"""
 
-Output format (JSON only, no other text):
-- Object not visible: {{"found": false}}
-- Object visible: {{"found": true, "bbox": [x1, y1, x2, y2]}}
 
-where (x1,y1) = top-left corner, (x2,y2) = bottom-right corner, all values between 0.0 and 1.0.
-
-Output ONLY the JSON, no explanation or other text."""
+def _format_bbox_detect_prompt(object_name: str, context: str = "") -> str:
+    """格式化 bbox 检测 prompt"""
+    context_section = ""
+    if context:
+        context_section = f"\nContext from video analysis:\n\"{context}\"\n"
+    return BBOX_DETECT_PROMPT.format(
+        object_name=object_name,
+        context_section=context_section,
+    )
 
 
 def compute_iou(bbox1: List[float], bbox2: List[float]) -> float:
@@ -367,7 +376,7 @@ async def get_gt_bbox_from_vlm(
     vlm_api_key: str = "",
 ) -> Tuple[Optional[List[float]], str]:
     """
-    调用 VLM 获取 GT bbox
+    调用 VLM 获取 GT bbox（使用 <reasoning>/<bbox> 格式，[0,1000] 坐标范围）
 
     Args:
         frame_path: 帧图片路径
@@ -378,7 +387,7 @@ async def get_gt_bbox_from_vlm(
         vlm_api_key: VLM API Key
 
     Returns:
-        (gt_bbox, raw_response): GT bbox [x1,y1,x2,y2] 或 None，以及原始响应
+        (gt_bbox, raw_response): GT bbox [x1,y1,x2,y2] 归一化到 [0,1]，以及原始响应
     """
     logger = get_reward_logger()
 
@@ -387,8 +396,8 @@ async def get_gt_bbox_from_vlm(
         img = Image.open(frame_path).convert("RGB")
         img_base64_url = image_to_base64(img, format="JPEG")
 
-        # 构建请求
-        prompt = BBOX_DETECT_PROMPT.format(object_name=object_name, context=context)
+        # 使用 chain-of-thought prompt（参考 long_ver5_zgy.py）
+        prompt = _format_bbox_detect_prompt(object_name, context)
 
         payload = {
             "model": vlm_model_name,
@@ -402,15 +411,15 @@ async def get_gt_bbox_from_vlm(
                     {"type": "text", "text": prompt}
                 ]
             }],
-            "temperature": 0.1,  # 低温度以获得更稳定的输出
-            "max_tokens": 64,
+            "temperature": 0.2,    # 略高温度允许更好的推理
+            "max_tokens": 256,     # 简短推理 + bbox 足够
         }
 
         headers = {"Content-Type": "application/json"}
         if vlm_api_key:
             headers["Authorization"] = f"Bearer {vlm_api_key}"
 
-        timeout = aiohttp.ClientTimeout(total=60)
+        timeout = aiohttp.ClientTimeout(total=120)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             url = f"http://{vlm_endpoint}/v1/chat/completions"
             async with session.post(url, json=payload, headers=headers) as resp:
@@ -418,80 +427,19 @@ async def get_gt_bbox_from_vlm(
                     result = await resp.json()
                     response_text = result["choices"][0]["message"]["content"].strip()
 
-                    def normalize_bbox_if_needed(bbox_coords: List[float]) -> Optional[List[float]]:
-                        """如果 bbox 是像素坐标，将其归一化到 [0,1]"""
-                        if not bbox_coords or len(bbox_coords) != 4:
-                            return None
+                    # 使用多层解析器解析响应
+                    gt_bbox = _parse_vlm_bbox_response(response_text)
 
-                        max_val = max(bbox_coords)
-                        if max_val <= 1.0:
-                            # 已经是归一化坐标
-                            if all(0 <= c <= 1 for c in bbox_coords):
-                                return bbox_coords
-                            return None
-
-                        # 像素坐标，需要归一化
-                        # 使用图片实际尺寸进行归一化
-                        normalized = [
-                            bbox_coords[0] / img_width,
-                            bbox_coords[1] / img_height,
-                            bbox_coords[2] / img_width,
-                            bbox_coords[3] / img_height,
-                        ]
-                        # 裁剪到 [0, 1] 范围
-                        normalized = [min(1.0, max(0.0, c)) for c in normalized]
-
+                    if gt_bbox is not None:
+                        # VLM 输出是 [0,1000] 范围，归一化到 [0,1]
+                        gt_bbox = [c / 1000.0 for c in gt_bbox]
+                        # 裁剪到 [0,1]
+                        gt_bbox = [min(1.0, max(0.0, c)) for c in gt_bbox]
                         # 验证有效性
-                        if normalized[0] < normalized[2] and normalized[1] < normalized[3]:
-                            logger.debug(f"Normalized VLM bbox from {bbox_coords} to {normalized}")
-                            return normalized
-                        return None
-
-                    # 尝试解析 JSON 格式响应
-                    try:
-                        # 尝试直接解析 JSON
-                        json_match = re.search(r'\{[^{}]*\}', response_text)
-                        if json_match:
-                            json_str = json_match.group(0)
-                            parsed = json.loads(json_str)
-
-                            # 检查 found 字段
-                            if not parsed.get("found", False):
-                                return None, response_text
-
-                            # 提取 bbox
-                            gt_bbox = parsed.get("bbox")
-                            if gt_bbox and len(gt_bbox) == 4:
-                                gt_bbox = [float(c) for c in gt_bbox]
-                                # 归一化 bbox（如果是像素坐标）
-                                gt_bbox = normalize_bbox_if_needed(gt_bbox)
-                                if gt_bbox:
-                                    return gt_bbox, response_text
-                                else:
-                                    logger.debug(f"GT bbox normalization failed")
-                                    return None, response_text
-                    except (json.JSONDecodeError, ValueError, TypeError):
-                        pass  # JSON 解析失败，尝试旧格式
-
-                    # 兼容旧格式：检查 None 响应
-                    if response_text.lower() == "none" or "none" in response_text.lower():
-                        return None, response_text
-
-                    # 兼容旧格式：尝试解析 bbox 坐标 [x1, y1, x2, y2]
-                    bbox_match = re.search(r'\[\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\]', response_text)
-                    if bbox_match:
-                        gt_bbox = [
-                            float(bbox_match.group(1)),
-                            float(bbox_match.group(2)),
-                            float(bbox_match.group(3)),
-                            float(bbox_match.group(4)),
-                        ]
-                        # 归一化 bbox（如果是像素坐标）
-                        gt_bbox = normalize_bbox_if_needed(gt_bbox)
-                        if gt_bbox:
+                        if gt_bbox[0] < gt_bbox[2] and gt_bbox[1] < gt_bbox[3]:
                             return gt_bbox, response_text
                         else:
-                            logger.debug(f"GT bbox normalization failed (old format)")
+                            logger.debug(f"Invalid GT bbox after normalization: {gt_bbox}")
                             return None, response_text
 
                     return None, response_text
@@ -503,6 +451,96 @@ async def get_gt_bbox_from_vlm(
     except Exception as e:
         logger.warning(f"VLM detect exception: {str(e)}")
         return None, f"Error: {str(e)}"
+
+
+def _parse_vlm_bbox_response(response: str) -> Optional[List[float]]:
+    """
+    多层解析 VLM bbox 响应（参考 long_ver5_zgy.py 的解析逻辑）
+
+    支持格式:
+    1. <bbox>[x1, y1, x2, y2]</bbox>  (推荐格式)
+    2. <answer>[x1, y1, x2, y2]</answer>
+    3. JSON: {"found": true, "bbox": [x1, y1, x2, y2]}
+    4. 裸坐标: [x1, y1, x2, y2]
+
+    返回 [0,1000] 范围的坐标，或 None
+    """
+    if not response:
+        return None
+
+    # 检查 None / not visible
+    for tag in ['bbox', 'answer']:
+        tag_match = re.search(rf'<{tag}>\s*(.*?)\s*</{tag}>', response, re.DOTALL)
+        if tag_match:
+            content = tag_match.group(1).strip()
+            if content.lower() == 'none' or 'not visible' in content.lower():
+                return None
+
+    # 方法 1: 解析 <bbox>[x1, y1, x2, y2]</bbox> 或 <answer>[...]</answer>
+    for tag in ['bbox', 'answer']:
+        tag_match = re.search(rf'<{tag}>\s*\[([^\]]+)\]\s*</{tag}>', response, re.DOTALL)
+        if tag_match:
+            try:
+                coords = [float(x.strip()) for x in tag_match.group(1).split(',')]
+                if len(coords) == 4:
+                    coords = [max(0, min(1000, c)) for c in coords]
+                    if coords[0] < coords[2] and coords[1] < coords[3]:
+                        return coords
+            except (ValueError, TypeError):
+                pass
+
+    # 方法 1b: <bbox> 内有数字但格式不规范
+    for tag in ['bbox', 'answer']:
+        tag_match = re.search(rf'<{tag}>(.*?)</{tag}>', response, re.DOTALL)
+        if tag_match:
+            content = tag_match.group(1).strip()
+            if content.lower() == 'none':
+                return None
+            numbers = re.findall(r'[\d.]+', content)
+            if len(numbers) >= 4:
+                try:
+                    coords = [float(numbers[i]) for i in range(4)]
+                    coords = [max(0, min(1000, c)) for c in coords]
+                    if coords[0] < coords[2] and coords[1] < coords[3]:
+                        return coords
+                except (ValueError, TypeError):
+                    pass
+
+    # 方法 2: JSON 格式 {"found": true, "bbox": [...]}
+    try:
+        json_match = re.search(r'\{[^{}]*\}', response)
+        if json_match:
+            parsed = json.loads(json_match.group(0))
+            if not parsed.get("found", False):
+                return None
+            bbox = parsed.get("bbox")
+            if bbox and len(bbox) == 4:
+                coords = [float(c) for c in bbox]
+                coords = [max(0, min(1000, c)) for c in coords]
+                if coords[0] < coords[2] and coords[1] < coords[3]:
+                    return coords
+    except (json.JSONDecodeError, ValueError, TypeError):
+        pass
+
+    # 方法 3: 裸 [x1, y1, x2, y2]
+    bracket_match = re.search(
+        r'\[(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\]',
+        response
+    )
+    if bracket_match:
+        try:
+            coords = [float(bracket_match.group(i)) for i in range(1, 5)]
+            coords = [max(0, min(1000, c)) for c in coords]
+            if coords[0] < coords[2] and coords[1] < coords[3]:
+                return coords
+        except (ValueError, TypeError):
+            pass
+
+    # 检查全局 None
+    if 'none' in response.lower() and 'not visible' in response.lower():
+        return None
+
+    return None
 
 
 async def verify_single_bbox_with_vlm(
@@ -544,8 +582,8 @@ async def verify_single_bbox_with_vlm(
     """
     logger = get_reward_logger()
 
-    # 构建 VLM prompt
-    vlm_prompt = BBOX_DETECT_PROMPT.format(object_name=object_name, context=context)
+    # 构建 VLM prompt（用于保存到 JSONL 调试）
+    vlm_prompt = _format_bbox_detect_prompt(object_name, context)
 
     try:
         # 1. 调用 VLM 获取 GT bbox

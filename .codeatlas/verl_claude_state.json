@@ -1,0 +1,5328 @@
+{
+  "project_name": "verl_claude",
+  "repo_path": "/data_gpu/songlin/rl/verl",
+  "last_build_time": "2026-02-06T04:50:27.056265+00:00",
+  "files": {
+    "verl/protocol.py": {
+      "path": "verl/protocol.py",
+      "content_hash": "5534fbefdcc564fc84a6167b6f459d56",
+      "last_modified": 1769138297.6220505,
+      "size": 48471,
+      "language": "python",
+      "node_count": 0
+    },
+    "eval_holmes_qwen_multiturn_spatial.py": {
+      "path": "eval_holmes_qwen_multiturn_spatial.py",
+      "content_hash": "09d43506e8abf9ae7e6a764b263a8540",
+      "last_modified": 1769669170.7969294,
+      "size": 31314,
+      "language": "python",
+      "node_count": 0
+    },
+    "scripts/converter_hf_to_mcore.py": {
+      "path": "scripts/converter_hf_to_mcore.py",
+      "content_hash": "82c8f4c96f1866c4df5c38a196e93003",
+      "last_modified": 1769138295.8405597,
+      "size": 29649,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/__init__.py": {
+      "path": "verl/__init__.py",
+      "content_hash": "154972e325afa777a1b8b222d8ccbeeb",
+      "last_modified": 1769138296.725113,
+      "size": 4021,
+      "language": "python",
+      "node_count": 0
+    },
+    "scripts/init_random_model.py": {
+      "path": "scripts/init_random_model.py",
+      "content_hash": "2c49909a740d49f7f3fcdff4529fcc65",
+      "last_modified": 1769138295.8484275,
+      "size": 4194,
+      "language": "python",
+      "node_count": 0
+    },
+    "scripts/print_cfg.py": {
+      "path": "scripts/print_cfg.py",
+      "content_hash": "eeb500b4c9e6018767058caed039e1c2",
+      "last_modified": 1769138295.8595357,
+      "size": 1255,
+      "language": "python",
+      "node_count": 0
+    },
+    "scripts/rollout_viewer.py": {
+      "path": "scripts/rollout_viewer.py",
+      "content_hash": "c9ea23e5cf5e8e36e439030bb5c56a0c",
+      "last_modified": 1769138295.8622484,
+      "size": 20341,
+      "language": "python",
+      "node_count": 0
+    },
+    "scripts/diagnose.py": {
+      "path": "scripts/diagnose.py",
+      "content_hash": "91fb9223a78ac62277320a039eec74a5",
+      "last_modified": 1769138295.843337,
+      "size": 10050,
+      "language": "python",
+      "node_count": 0
+    },
+    "scripts/__init__.py": {
+      "path": "scripts/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1769138295.8373625,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "scripts/megatron_merge_lora.py": {
+      "path": "scripts/megatron_merge_lora.py",
+      "content_hash": "5b258bba224811246f3825052b958ef9",
+      "last_modified": 1769138295.8570313,
+      "size": 4248,
+      "language": "python",
+      "node_count": 0
+    },
+    "docs/conf.py": {
+      "path": "docs/conf.py",
+      "content_hash": "2e960748f31ea67c48a7a3a7e6e91e15",
+      "last_modified": 1769138294.8598342,
+      "size": 3870,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/test_base_config_on_cpu.py": {
+      "path": "tests/test_base_config_on_cpu.py",
+      "content_hash": "326e1f99c176e1d78368f6191e8d0c95",
+      "last_modified": 1769138296.4652734,
+      "size": 1471,
+      "language": "python",
+      "node_count": 0
+    },
+    "setup.py": {
+      "path": "setup.py",
+      "content_hash": "1268737c9911a0f61177d0a5af22569d",
+      "last_modified": 1769138295.8710063,
+      "size": 3080,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/test_protocol_on_cpu.py": {
+      "path": "tests/test_protocol_on_cpu.py",
+      "content_hash": "e4aae65f81ee154f78af2f3bd2c62461",
+      "last_modified": 1769138296.4688146,
+      "size": 52634,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/__init__.py": {
+      "path": "tests/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1769138295.877729,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "scripts/legacy_model_merger.py": {
+      "path": "scripts/legacy_model_merger.py",
+      "content_hash": "54e7df52d438d8cb059da2cceae0f9f9",
+      "last_modified": 1769138295.8543782,
+      "size": 35163,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/data_preprocess/gsm8k.py": {
+      "path": "examples/data_preprocess/gsm8k.py",
+      "content_hash": "0c44b1fc2a9e6762e23f1f44131cf490",
+      "last_modified": 1769138295.004317,
+      "size": 3641,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/data_preprocess/multiturn.py": {
+      "path": "examples/data_preprocess/multiturn.py",
+      "content_hash": "429268ad3bf0a1ab08e04b0fd363e06b",
+      "last_modified": 1769138295.0226166,
+      "size": 4674,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/data_preprocess/geo3k.py": {
+      "path": "examples/data_preprocess/geo3k.py",
+      "content_hash": "b355b233bef14ed8e913b21e3bc5ff4b",
+      "last_modified": 1769138294.9987013,
+      "size": 3547,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/data_preprocess/dapo_multiturn_w_tool.py": {
+      "path": "examples/data_preprocess/dapo_multiturn_w_tool.py",
+      "content_hash": "1da34b0a415f8b911d581294c2e2e517",
+      "last_modified": 1769138294.991978,
+      "size": 2857,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/test_protocol_v2_on_cpu.py": {
+      "path": "tests/test_protocol_v2_on_cpu.py",
+      "content_hash": "41d72bfae5c616b015f9fe7c2ac00cdf",
+      "last_modified": 1769138296.472727,
+      "size": 41115,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/data_preprocess/full_hh_rlhf.py": {
+      "path": "examples/data_preprocess/full_hh_rlhf.py",
+      "content_hash": "952fad48d45dcb1270da3a12c95278a0",
+      "last_modified": 1769138294.9949749,
+      "size": 5986,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/data_preprocess/gsm8k_multiturn_sft.py": {
+      "path": "examples/data_preprocess/gsm8k_multiturn_sft.py",
+      "content_hash": "0bf33f0df041fa0a7c585c8bf72296c8",
+      "last_modified": 1769138295.007359,
+      "size": 3369,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/data_preprocess/aime2024_multiturn_w_tool.py": {
+      "path": "examples/data_preprocess/aime2024_multiturn_w_tool.py",
+      "content_hash": "ac5a1da1555c29e0fdfa9b054f636f5a",
+      "last_modified": 1769138294.9888082,
+      "size": 2857,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/data_preprocess/geo3k_multiturn_w_tool.py": {
+      "path": "examples/data_preprocess/geo3k_multiturn_w_tool.py",
+      "content_hash": "af3d44dfa9138032100cbfa0d9a6f2e8",
+      "last_modified": 1769138295.0015557,
+      "size": 4711,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/data_preprocess/convert_longvt_selfqa.py": {
+      "path": "examples/data_preprocess/convert_longvt_selfqa.py",
+      "content_hash": "c4b2e7ba5ed6c38b43e1284085f0273a",
+      "last_modified": 1770174780.486238,
+      "size": 12002,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/data_preprocess/preprocess_search_r1_dataset.py": {
+      "path": "examples/data_preprocess/preprocess_search_r1_dataset.py",
+      "content_hash": "25999360869e5af197b2b8accee291e2",
+      "last_modified": 1769138295.0276003,
+      "size": 6939,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/data_preprocess/hellaswag.py": {
+      "path": "examples/data_preprocess/hellaswag.py",
+      "content_hash": "2fa68645b43285aaa3ffdc5fcfb36b12",
+      "last_modified": 1769138295.017648,
+      "size": 3921,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/data_preprocess/pokemon.py": {
+      "path": "examples/data_preprocess/pokemon.py",
+      "content_hash": "a281377b71a066c3dc1227cc55f1e0b0",
+      "last_modified": 1769138295.0249853,
+      "size": 2309,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/data_preprocess/gsm8k_multiturn_w_tool.py": {
+      "path": "examples/data_preprocess/gsm8k_multiturn_w_tool.py",
+      "content_hash": "5c2c830d4e74c4135fa4de53d74d351e",
+      "last_modified": 1769138295.0124915,
+      "size": 4961,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/data_preprocess/math_dataset.py": {
+      "path": "examples/data_preprocess/math_dataset.py",
+      "content_hash": "a8883051e75050e5d3905c67457b7319",
+      "last_modified": 1769138295.0199769,
+      "size": 3855,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/data_preprocess/video_reasoning_multiturn_holmes.py": {
+      "path": "examples/data_preprocess/video_reasoning_multiturn_holmes.py",
+      "content_hash": "a014cb3776c2de36bd5d5c18ccdce0d5",
+      "last_modified": 1770179810.4836836,
+      "size": 12066,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/data_preprocess/gsm8k_tool_agent_loop.py": {
+      "path": "examples/data_preprocess/gsm8k_tool_agent_loop.py",
+      "content_hash": "8c59bf2b3f73f284bd7d542a6abdccde",
+      "last_modified": 1769138295.0151227,
+      "size": 5005,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/data_preprocess/gsm8k_multiturn_w_interaction.py": {
+      "path": "examples/data_preprocess/gsm8k_multiturn_w_interaction.py",
+      "content_hash": "7be4cae30bdce644198022b291005a58",
+      "last_modified": 1769138295.0099545,
+      "size": 4387,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/data_preprocess/video_reasoning_multiturn.py": {
+      "path": "examples/data_preprocess/video_reasoning_multiturn.py",
+      "content_hash": "1b61410f21eb5bd33fc70e5359241941",
+      "last_modified": 1769787950.6799595,
+      "size": 12041,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/split_placement/split_monkey_patch.py": {
+      "path": "examples/split_placement/split_monkey_patch.py",
+      "content_hash": "1fe23c309dff6d42b26f1a4de2001d01",
+      "last_modified": 1769138295.7522068,
+      "size": 10824,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/split_placement/main_ppo_split.py": {
+      "path": "examples/split_placement/main_ppo_split.py",
+      "content_hash": "18ef3b0395c7e3ad26386891a16b5ef0",
+      "last_modified": 1769138295.7466445,
+      "size": 8311,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/video_reasoning/cache_video_frames.py": {
+      "path": "examples/video_reasoning/cache_video_frames.py",
+      "content_hash": "434a9cf8f031df7a0af0508a2bf6d0f7",
+      "last_modified": 1769675141.4174662,
+      "size": 5692,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/sglang_multiturn/search_r1_like/local_dense_retriever/download.py": {
+      "path": "examples/sglang_multiturn/search_r1_like/local_dense_retriever/download.py",
+      "content_hash": "79f436a65623e0596bba647064879d81",
+      "last_modified": 1769138295.7004924,
+      "size": 1581,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/sglang_multiturn/gsm8k_toolcall_shaping/gsm8k_toolcall_shaping.py": {
+      "path": "examples/sglang_multiturn/gsm8k_toolcall_shaping/gsm8k_toolcall_shaping.py",
+      "content_hash": "1f36464bff412426195e1f6f1bc72cdd",
+      "last_modified": 1769138295.658009,
+      "size": 1874,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/tutorial/agent_loop_get_started/sandbox.py": {
+      "path": "examples/tutorial/agent_loop_get_started/sandbox.py",
+      "content_hash": "1343b975a24b27e4194a309fac77daf1",
+      "last_modified": 1769138295.8222718,
+      "size": 2767,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/retool/retool.py": {
+      "path": "recipe/retool/retool.py",
+      "content_hash": "342f200cd40147d29764e760bbc59368",
+      "last_modified": 1770100543.0440238,
+      "size": 4703,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/minicpmo/rl_dataset.py": {
+      "path": "recipe/minicpmo/rl_dataset.py",
+      "content_hash": "f30a8c8433e2486c8531411e95b5b602",
+      "last_modified": 1770100542.9022024,
+      "size": 21981,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/retool/retool_sft_preprocess.py": {
+      "path": "recipe/retool/retool_sft_preprocess.py",
+      "content_hash": "1c1791cb0ecf03ebdfd200e5571bcb48",
+      "last_modified": 1770100543.0465484,
+      "size": 4037,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/char_count/reward_function.py": {
+      "path": "recipe/char_count/reward_function.py",
+      "content_hash": "94771f18089a615277ae230ed5a6ff39",
+      "last_modified": 1770100542.2672448,
+      "size": 1148,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/char_count/create_dataset.py": {
+      "path": "recipe/char_count/create_dataset.py",
+      "content_hash": "e6c7307c45dcbbb556243eac71d095f4",
+      "last_modified": 1770100542.2646112,
+      "size": 6164,
+      "language": "python",
+      "node_count": 0
+    },
+    "examples/sglang_multiturn/search_r1_like/local_dense_retriever/retrieval_server.py": {
+      "path": "examples/sglang_multiturn/search_r1_like/local_dense_retriever/retrieval_server.py",
+      "content_hash": "85f7fe7f635b8aed4ac76bb74a8385b6",
+      "last_modified": 1769138295.7039437,
+      "size": 14578,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/sppo/config.py": {
+      "path": "recipe/sppo/config.py",
+      "content_hash": "b78dd0eea224b9631c38817831cf63e7",
+      "last_modified": 1770100543.1853137,
+      "size": 763,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/sppo/sppo_ray_trainer.py": {
+      "path": "recipe/sppo/sppo_ray_trainer.py",
+      "content_hash": "f5cd19ba56e95ef917ced3a7381f7d9d",
+      "last_modified": 1770100543.20139,
+      "size": 16610,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/sppo/main_sppo.py": {
+      "path": "recipe/sppo/main_sppo.py",
+      "content_hash": "310fda3f7018bec84acfe792f9320994",
+      "last_modified": 1770100543.1953926,
+      "size": 6470,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/sppo/__init__.py": {
+      "path": "recipe/sppo/__init__.py",
+      "content_hash": "7e37caef4a2a513881c86d50e0ae9b17",
+      "last_modified": 1770100543.1826189,
+      "size": 634,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/sppo/dp_actor.py": {
+      "path": "recipe/sppo/dp_actor.py",
+      "content_hash": "69c2e658c67e905eaf613cd537894e63",
+      "last_modified": 1770100543.1923935,
+      "size": 8790,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/open_math_reasoning/compute_score.py": {
+      "path": "recipe/open_math_reasoning/compute_score.py",
+      "content_hash": "3e7c64d02ce00bfede7fd6296454a29e",
+      "last_modified": 1770100542.9092555,
+      "size": 908,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/open_math_reasoning/prepare_eval_dataset.py": {
+      "path": "recipe/open_math_reasoning/prepare_eval_dataset.py",
+      "content_hash": "d804c619a50e28a4f06a38e5f236e50e",
+      "last_modified": 1770100542.9121108,
+      "size": 3330,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/sppo/sppo_worker.py": {
+      "path": "recipe/sppo/sppo_worker.py",
+      "content_hash": "0f2bd1aae87ba11d38652d8eaadadb00",
+      "last_modified": 1770100543.2043161,
+      "size": 5829,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/open_math_reasoning/prepare_nvidia-OpenMathReasoning_sft.py": {
+      "path": "recipe/open_math_reasoning/prepare_nvidia-OpenMathReasoning_sft.py",
+      "content_hash": "b08bcaf87d335c29a2300937f5b9e619",
+      "last_modified": 1770100542.9154086,
+      "size": 2686,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/flowrl/main_flowrl.py": {
+      "path": "recipe/flowrl/main_flowrl.py",
+      "content_hash": "b89818d64877c9d670d4b96845eff235",
+      "last_modified": 1770100542.7688391,
+      "size": 6999,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/flowrl/__init__.py": {
+      "path": "recipe/flowrl/__init__.py",
+      "content_hash": "e516139b31d2abc13fed83f12dc45912",
+      "last_modified": 1770100542.7289333,
+      "size": 644,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/flowrl/flowrl_ray_trainer.py": {
+      "path": "recipe/flowrl/flowrl_ray_trainer.py",
+      "content_hash": "efc671b755e2d558f89cfd3ca54ba676",
+      "last_modified": 1770100542.7654312,
+      "size": 1063,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/flowrl/flowrl_actor.py": {
+      "path": "recipe/flowrl/flowrl_actor.py",
+      "content_hash": "713c229cc0a9df1a69760fadef4def42",
+      "last_modified": 1770100542.7582264,
+      "size": 22780,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/prime/prime_core_algos.py": {
+      "path": "recipe/prime/prime_core_algos.py",
+      "content_hash": "22e3518752b359b3662a2e6e8c753b04",
+      "last_modified": 1770100542.9388607,
+      "size": 6456,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/flowrl/flowrl_fsdp_worker.py": {
+      "path": "recipe/flowrl/flowrl_fsdp_worker.py",
+      "content_hash": "8a4e189a4f8c74ccc2d087094bfad77f",
+      "last_modified": 1770100542.7616706,
+      "size": 22984,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/prime/__init__.py": {
+      "path": "recipe/prime/__init__.py",
+      "content_hash": "9d432f1d84e168b517fece69dec698e8",
+      "last_modified": 1770100542.9280343,
+      "size": 596,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/prime/main_prime.py": {
+      "path": "recipe/prime/main_prime.py",
+      "content_hash": "200cb10d55953e1a0d3bf43313ebc5b9",
+      "last_modified": 1770100542.935888,
+      "size": 5984,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/prime/prime_dp_rm.py": {
+      "path": "recipe/prime/prime_dp_rm.py",
+      "content_hash": "7ea1c6c094c64f30e911acd8c082fd7e",
+      "last_modified": 1770100542.9419765,
+      "size": 17582,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/prime/prime_fsdp_workers.py": {
+      "path": "recipe/prime/prime_fsdp_workers.py",
+      "content_hash": "45c7b1c59253dfa60a89d6a6a75492a6",
+      "last_modified": 1770100542.9459522,
+      "size": 16433,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/specRL/fsdp_workers.py": {
+      "path": "recipe/specRL/fsdp_workers.py",
+      "content_hash": "f0b075cae472491dba8cf3f1f3842f6d",
+      "last_modified": 1770100543.0788636,
+      "size": 2711,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/prime/prime_ray_trainer.py": {
+      "path": "recipe/prime/prime_ray_trainer.py",
+      "content_hash": "5518f02d98112719a84ff7fb4d3dd67c",
+      "last_modified": 1770100542.949133,
+      "size": 26715,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/specRL/main_ppo.py": {
+      "path": "recipe/specRL/main_ppo.py",
+      "content_hash": "20ea37f39d91a72c7ec54a41f6666cf5",
+      "last_modified": 1770100543.08204,
+      "size": 16217,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/specRL/ray_trainer.py": {
+      "path": "recipe/specRL/ray_trainer.py",
+      "content_hash": "bfc011ce975210759aacb21e0ba72699",
+      "last_modified": 1770100543.0856488,
+      "size": 38212,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/infigui-g1/reward_fn.py": {
+      "path": "recipe/infigui-g1/reward_fn.py",
+      "content_hash": "7491ecaf4085b885d558917494a4cede",
+      "last_modified": 1770100542.8620155,
+      "size": 12602,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/genrm_remote/reward_function.py": {
+      "path": "recipe/genrm_remote/reward_function.py",
+      "content_hash": "671a00791f00c74871ed4ba3bb29a4b2",
+      "last_modified": 1770100542.7877746,
+      "size": 3477,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/specRL/cache_manager.py": {
+      "path": "recipe/specRL/cache_manager.py",
+      "content_hash": "81e6c677ec11a2a583a739fc9a0992d3",
+      "last_modified": 1770100543.0723984,
+      "size": 14009,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/dapo/main_dapo.py": {
+      "path": "recipe/dapo/main_dapo.py",
+      "content_hash": "69516102895f0c90d96f0cf67061309a",
+      "last_modified": 1770100542.3333683,
+      "size": 7037,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/dapo/dapo_ray_trainer.py": {
+      "path": "recipe/dapo/dapo_ray_trainer.py",
+      "content_hash": "e2dcde3ed44ece41aea87cb9eca512b8",
+      "last_modified": 1770100542.3300726,
+      "size": 21470,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/spin/main_spin.py": {
+      "path": "recipe/spin/main_spin.py",
+      "content_hash": "e5f0745760ed6e20a792b522fb8e8859",
+      "last_modified": 1770100543.122336,
+      "size": 6418,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/spin/utils.py": {
+      "path": "recipe/spin/utils.py",
+      "content_hash": "6f6849064f50ff36a14769918697c7a9",
+      "last_modified": 1770100543.1306093,
+      "size": 7448,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/spin/fsdp_workers.py": {
+      "path": "recipe/spin/fsdp_workers.py",
+      "content_hash": "0c695151c1a5f4b3f7ca38ed3f4ff35d",
+      "last_modified": 1770100543.1196384,
+      "size": 27498,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/spin/dp_actor.py": {
+      "path": "recipe/spin/dp_actor.py",
+      "content_hash": "352cb94d4033cba21c164b0a9a8e7ef3",
+      "last_modified": 1770100543.1170058,
+      "size": 14739,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/spin/core_algos.py": {
+      "path": "recipe/spin/core_algos.py",
+      "content_hash": "7b72e1e67ef86aeae055b0188b501285",
+      "last_modified": 1770100543.1142783,
+      "size": 8644,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/spin/spin_trainer.py": {
+      "path": "recipe/spin/spin_trainer.py",
+      "content_hash": "0f3441cb03353403c9c702d2e5c6fbd9",
+      "last_modified": 1770100543.128014,
+      "size": 67454,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/r1_ascend/vllm_parallel_state.py": {
+      "path": "recipe/r1_ascend/vllm_parallel_state.py",
+      "content_hash": "4ed2ff43bdecf432881bea37852038b9",
+      "last_modified": 1770100543.0350738,
+      "size": 3822,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/r1_ascend/deepscaler.py": {
+      "path": "recipe/r1_ascend/deepscaler.py",
+      "content_hash": "1066e4b3a582312e6b43a049a749f41d",
+      "last_modified": 1770100543.0055566,
+      "size": 1171,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/r1_ascend/megatron_workers.py": {
+      "path": "recipe/r1_ascend/megatron_workers.py",
+      "content_hash": "947d9cf5b69712066d54204ecabb7ae6",
+      "last_modified": 1770100543.0275898,
+      "size": 2037,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/r1_ascend/engine_core.py": {
+      "path": "recipe/r1_ascend/engine_core.py",
+      "content_hash": "ace1f2d2e558d6a04c974b0545e897d6",
+      "last_modified": 1770100543.0082037,
+      "size": 2900,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/r1_ascend/vllm_rollout_spmd.py": {
+      "path": "recipe/r1_ascend/vllm_rollout_spmd.py",
+      "content_hash": "78e8a7066f82a0a2e41b331681ceeb2d",
+      "last_modified": 1770100543.0380452,
+      "size": 15484,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/r1_ascend/json_to_parquet.py": {
+      "path": "recipe/r1_ascend/json_to_parquet.py",
+      "content_hash": "f28362ea60a83543e52655e2b7cac77c",
+      "last_modified": 1770100543.0223796,
+      "size": 4083,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/entropy/entropy_ray_trainer.py": {
+      "path": "recipe/entropy/entropy_ray_trainer.py",
+      "content_hash": "2252e29f92dff1e78dcb379ac6902fab",
+      "last_modified": 1770100542.6519523,
+      "size": 18019,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/r1_ascend/main_ppo.py": {
+      "path": "recipe/r1_ascend/main_ppo.py",
+      "content_hash": "aaa85c20ba0ec8256da6ba0fee501e64",
+      "last_modified": 1770100543.0251472,
+      "size": 6197,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/entropy/reward.py": {
+      "path": "recipe/entropy/reward.py",
+      "content_hash": "0a512528db1041266912cad5f088c6f9",
+      "last_modified": 1770100542.6573741,
+      "size": 3514,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/entropy/main_entropy.py": {
+      "path": "recipe/entropy/main_entropy.py",
+      "content_hash": "cd113079cca8d530488266269324fa6a",
+      "last_modified": 1770100542.654549,
+      "size": 9676,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/gkd/main_gkd.py": {
+      "path": "recipe/gkd/main_gkd.py",
+      "content_hash": "3dee2a0766866cba2bd23b01971de032",
+      "last_modified": 1770100542.8081987,
+      "size": 9136,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/gkd/test_teacher_server.py": {
+      "path": "recipe/gkd/test_teacher_server.py",
+      "content_hash": "26988af33448ac4e2adfeeeb8b3af130",
+      "last_modified": 1770100542.8560293,
+      "size": 1315,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/gkd/ray_trainer.py": {
+      "path": "recipe/gkd/ray_trainer.py",
+      "content_hash": "4bd542ebec768eabef0affb98530be0f",
+      "last_modified": 1770100542.8198688,
+      "size": 31566,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/gkd/megatron_kl_loss.py": {
+      "path": "recipe/gkd/megatron_kl_loss.py",
+      "content_hash": "7fa5542ed2c497b3e52e780d4c24be9d",
+      "last_modified": 1770100542.810973,
+      "size": 7217,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/gkd/teacher_utils.py": {
+      "path": "recipe/gkd/teacher_utils.py",
+      "content_hash": "fdb64a2f3eb037c4cde4a90a3226dc9e",
+      "last_modified": 1770100542.8481052,
+      "size": 6697,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/gkd/megatron_utils.py": {
+      "path": "recipe/gkd/megatron_utils.py",
+      "content_hash": "5345795589adaafafcc9dadbac2c19b5",
+      "last_modified": 1770100542.813983,
+      "size": 8861,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/gkd/megatron_workers.py": {
+      "path": "recipe/gkd/megatron_workers.py",
+      "content_hash": "ecafad2d97fa89d68e8d5c55960bab49",
+      "last_modified": 1770100542.8171732,
+      "size": 36874,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/langgraph_agent/test_react_agent_loop.py": {
+      "path": "recipe/langgraph_agent/test_react_agent_loop.py",
+      "content_hash": "0f00da5560705738cf6a5caef47f70e1",
+      "last_modified": 1770100542.8982494,
+      "size": 7527,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/langgraph_agent/chat_model.py": {
+      "path": "recipe/langgraph_agent/chat_model.py",
+      "content_hash": "9500d3d981e141c51ad81fac7cdcbf8f",
+      "last_modified": 1770100542.8740067,
+      "size": 15506,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/langgraph_agent/__init__.py": {
+      "path": "recipe/langgraph_agent/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1770100542.871117,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/langgraph_agent/react_agent_loop.py": {
+      "path": "recipe/langgraph_agent/react_agent_loop.py",
+      "content_hash": "10d3b32f2f377ba9272777f0bad7f662",
+      "last_modified": 1770100542.8956466,
+      "size": 6830,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/fapo/reward_fn_genrm.py": {
+      "path": "recipe/fapo/reward_fn_genrm.py",
+      "content_hash": "39ece437248906de1731e2a9fe01a824",
+      "last_modified": 1770100542.6877244,
+      "size": 2298,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/fapo/reward_fn_reasoning.py": {
+      "path": "recipe/fapo/reward_fn_reasoning.py",
+      "content_hash": "2e71a426a25d3fe0746c2224f5f7a719",
+      "last_modified": 1770100542.6904593,
+      "size": 5178,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/fapo/reward_fn_reasoning_remote.py": {
+      "path": "recipe/fapo/reward_fn_reasoning_remote.py",
+      "content_hash": "644ecbdf91b56f3a899e40df56eb305c",
+      "last_modified": 1770100542.6934533,
+      "size": 4457,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/fapo/prepare_fapo_data.py": {
+      "path": "recipe/fapo/prepare_fapo_data.py",
+      "content_hash": "f985908174398ffdfe4a81faa73b0fbc",
+      "last_modified": 1770100542.6850173,
+      "size": 5975,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/collabllm/collabllm_agent_loop.py": {
+      "path": "recipe/collabllm/collabllm_agent_loop.py",
+      "content_hash": "155e55486aa90295d50625ae437a6355",
+      "last_modified": 1770100542.279789,
+      "size": 6301,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/collabllm/reward_function.py": {
+      "path": "recipe/collabllm/reward_function.py",
+      "content_hash": "fffdcb1266c3ca218389a8d7b91bf516",
+      "last_modified": 1770100542.3085601,
+      "size": 9577,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/collabllm/collabllm_interation.py": {
+      "path": "recipe/collabllm/collabllm_interation.py",
+      "content_hash": "4399d59f5d03d73efe487b856f890b4e",
+      "last_modified": 1770100542.2826195,
+      "size": 15941,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/collabllm/process_dataset.py": {
+      "path": "recipe/collabllm/process_dataset.py",
+      "content_hash": "8ef7e6fec14a9c69b5e7f611848ee659",
+      "last_modified": 1770100542.3057275,
+      "size": 10231,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/spo/spo_retool.py": {
+      "path": "recipe/spo/spo_retool.py",
+      "content_hash": "81790b320791e7e046fc5be8ab1c007f",
+      "last_modified": 1770100543.1713498,
+      "size": 6125,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/deepeyes/deepeyes.py": {
+      "path": "recipe/deepeyes/deepeyes.py",
+      "content_hash": "bcb8fed711182effdd2f53bb76f7d85f",
+      "last_modified": 1770100542.4166212,
+      "size": 17617,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/collabllm/utils.py": {
+      "path": "recipe/collabllm/utils.py",
+      "content_hash": "0b44a66cfaff80ccaf530b71631234d3",
+      "last_modified": 1770100542.3166041,
+      "size": 9478,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/r1/reward_score.py": {
+      "path": "recipe/r1/reward_score.py",
+      "content_hash": "02fe74f12426750c0e6a9e327e9edab0",
+      "last_modified": 1770100542.975889,
+      "size": 1308,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/spo/spo_ray_trainer.py": {
+      "path": "recipe/spo/spo_ray_trainer.py",
+      "content_hash": "df53914bc2ddf18eaade9596a7bdedfc",
+      "last_modified": 1770100543.1685147,
+      "size": 39366,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/r1/main_eval.py": {
+      "path": "recipe/r1/main_eval.py",
+      "content_hash": "b12974e193c555dfbbe5c0b64914c3d6",
+      "last_modified": 1770100542.9731727,
+      "size": 2754,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/spo/spo_main_ppo.py": {
+      "path": "recipe/spo/spo_main_ppo.py",
+      "content_hash": "d9f9e6b42de345fbce0a0e2f235156b8",
+      "last_modified": 1770100543.165544,
+      "size": 15377,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/r1/__init__.py": {
+      "path": "recipe/r1/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1770100542.963205,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/r1/tasks/math_reward.py": {
+      "path": "recipe/r1/tasks/math_reward.py",
+      "content_hash": "d69874645cf5d52f441e7de777a5d1ef",
+      "last_modified": 1770100542.9928138,
+      "size": 1388,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/r1/data_process.py": {
+      "path": "recipe/r1/data_process.py",
+      "content_hash": "4abbf81b7f9597138c3a71388dbff0d9",
+      "last_modified": 1770100542.9703841,
+      "size": 8167,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/r1/tasks/livecodebench.py": {
+      "path": "recipe/r1/tasks/livecodebench.py",
+      "content_hash": "fc138f8aa065efd1ee4b86c14bc84c9c",
+      "last_modified": 1770100542.9897401,
+      "size": 2431,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/r1/tasks/__init__.py": {
+      "path": "recipe/r1/tasks/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1770100542.9831085,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/r1/tasks/gpqa.py": {
+      "path": "recipe/r1/tasks/gpqa.py",
+      "content_hash": "6fb6e3c92a62e27c5654834094dca723",
+      "last_modified": 1770100542.986605,
+      "size": 1064,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/spo/agent_loop/spo_agent_loop.py": {
+      "path": "recipe/spo/agent_loop/spo_agent_loop.py",
+      "content_hash": "7dfd8a738d0fb464385f7c8e9ea1c2b6",
+      "last_modified": 1770100543.1403685,
+      "size": 6227,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/spo/agent_loop/__init__.py": {
+      "path": "recipe/spo/agent_loop/__init__.py",
+      "content_hash": "87b1e075515cfae92a329961453e8c67",
+      "last_modified": 1770100543.1377025,
+      "size": 727,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/spo/estimate_offline_values/merge_offline_values.py": {
+      "path": "recipe/spo/estimate_offline_values/merge_offline_values.py",
+      "content_hash": "083d2cf0110e1e8af9aa012ce30d9e1f",
+      "last_modified": 1770100543.1597004,
+      "size": 6600,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/spo/estimate_offline_values/split_dapo_into_subsets.py": {
+      "path": "recipe/spo/estimate_offline_values/split_dapo_into_subsets.py",
+      "content_hash": "4269954111936619e5cd6e4ef56bffbc",
+      "last_modified": 1770100543.1626165,
+      "size": 2169,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/collabllm/metrics/token_amount.py": {
+      "path": "recipe/collabllm/metrics/token_amount.py",
+      "content_hash": "0fe67a35d57e3778898ded7172a65176",
+      "last_modified": 1770100542.3030643,
+      "size": 1003,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/spo/agent_loop/spo_tool_agent_loop.py": {
+      "path": "recipe/spo/agent_loop/spo_tool_agent_loop.py",
+      "content_hash": "c5351c03b1bbcbb06baf8427b9e19fb6",
+      "last_modified": 1770100543.1430817,
+      "size": 18713,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/collabllm/metrics/accuracy.py": {
+      "path": "recipe/collabllm/metrics/accuracy.py",
+      "content_hash": "48d478b3ff54311cbdf57b02aa88a69e",
+      "last_modified": 1770100542.2929573,
+      "size": 3570,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/collabllm/metrics/pass_rate.py": {
+      "path": "recipe/collabllm/metrics/pass_rate.py",
+      "content_hash": "f9a83b95f573424504c2d384068989ed",
+      "last_modified": 1770100542.300453,
+      "size": 5788,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/collabllm/metrics/interactivity.py": {
+      "path": "recipe/collabllm/metrics/interactivity.py",
+      "content_hash": "6457633893a350c088b22dc27977e1db",
+      "last_modified": 1770100542.2979956,
+      "size": 4060,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/langgraph_agent/example/math_expression.py": {
+      "path": "recipe/langgraph_agent/example/math_expression.py",
+      "content_hash": "1c3844321df7e8b3068837ce8050e2c6",
+      "last_modified": 1770100542.8878098,
+      "size": 1337,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/langgraph_agent/example/create_dataset.py": {
+      "path": "recipe/langgraph_agent/example/create_dataset.py",
+      "content_hash": "6869c9a3170c6d05a49b2061ef1a1873",
+      "last_modified": 1770100542.8847818,
+      "size": 10524,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/gkd/teacher/worker.py": {
+      "path": "recipe/gkd/teacher/worker.py",
+      "content_hash": "4b005fe6fdae6a1d7457e6fbf2e940b2",
+      "last_modified": 1770100542.8454895,
+      "size": 3982,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/gkd/teacher/proxy.py": {
+      "path": "recipe/gkd/teacher/proxy.py",
+      "content_hash": "ff29fcf07c44c7e0e9ea8ff900849882",
+      "last_modified": 1770100542.8352623,
+      "size": 2042,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/gkd/teacher/client.py": {
+      "path": "recipe/gkd/teacher/client.py",
+      "content_hash": "910b367b84bd65c7d77aafcfe0ab286e",
+      "last_modified": 1770100542.8297024,
+      "size": 7651,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/gkd/teacher/utils.py": {
+      "path": "recipe/gkd/teacher/utils.py",
+      "content_hash": "6af9aeb9ccf1b20a1dc087b8182f82bb",
+      "last_modified": 1770100542.8404167,
+      "size": 1727,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/gkd/teacher/vllm_engine.py": {
+      "path": "recipe/gkd/teacher/vllm_engine.py",
+      "content_hash": "b3b7bd9066d7fce2c4e7e1443ff4ebd0",
+      "last_modified": 1770100542.8430166,
+      "size": 9426,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/gkd/teacher/__init__.py": {
+      "path": "recipe/gkd/teacher/__init__.py",
+      "content_hash": "e841c54022c2859c573906130495cd4b",
+      "last_modified": 1770100542.8267338,
+      "size": 661,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/entropy/reward_score/__init__.py": {
+      "path": "recipe/entropy/reward_score/__init__.py",
+      "content_hash": "77389116a3269cb94b7c76076b8d388c",
+      "last_modified": 1770100542.6616712,
+      "size": 1460,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/entropy/reward_score/entropy_math/math_normalize.py": {
+      "path": "recipe/entropy/reward_score/entropy_math/math_normalize.py",
+      "content_hash": "5efa39d4f03afb4c039f159b471796d1",
+      "last_modified": 1770100542.6732323,
+      "size": 6299,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/base_config.py": {
+      "path": "verl/base_config.py",
+      "content_hash": "fc57d4ddc940cb3354442e781b1b0751",
+      "last_modified": 1769138296.7279162,
+      "size": 3171,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/specRL/vllm_plugin/patch.py": {
+      "path": "recipe/specRL/vllm_plugin/patch.py",
+      "content_hash": "aeb152fc0da314cd49075a95286a130e",
+      "last_modified": 1770100543.0930998,
+      "size": 1970,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/specRL/vllm_plugin/patch_utils.py": {
+      "path": "recipe/specRL/vllm_plugin/patch_utils.py",
+      "content_hash": "d521f92c50d59f2ac0ff308085bdabac",
+      "last_modified": 1770100543.0957944,
+      "size": 5087,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/specRL/vllm_plugin/__init__.py": {
+      "path": "recipe/specRL/vllm_plugin/__init__.py",
+      "content_hash": "edef656dbc48c9c4ac6bc77942d22034",
+      "last_modified": 1770100543.0901413,
+      "size": 634,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/specRL/vllm_plugin/v0_10_0/patch.py": {
+      "path": "recipe/specRL/vllm_plugin/v0_10_0/patch.py",
+      "content_hash": "b9edb284c7003e2dfb4b0bed21068c89",
+      "last_modified": 1770100543.1036594,
+      "size": 27867,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/specRL/vllm_plugin/v0_10_0/__init__.py": {
+      "path": "recipe/specRL/vllm_plugin/v0_10_0/__init__.py",
+      "content_hash": "edef656dbc48c9c4ac6bc77942d22034",
+      "last_modified": 1770100543.1001997,
+      "size": 634,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/checkpoint_engine/test_utils.py": {
+      "path": "tests/checkpoint_engine/test_utils.py",
+      "content_hash": "ac77c99cb5d6099eaed7ed820a17dff7",
+      "last_modified": 1769138295.893386,
+      "size": 5345,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/checkpoint_engine/test_nixl_checkpoint_engine.py": {
+      "path": "tests/checkpoint_engine/test_nixl_checkpoint_engine.py",
+      "content_hash": "11a00b534dffd24eff3c39433ca309cc",
+      "last_modified": 1769138295.8905885,
+      "size": 4671,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/checkpoint_engine/test_hccl_checkpoint_engine.py": {
+      "path": "tests/checkpoint_engine/test_hccl_checkpoint_engine.py",
+      "content_hash": "d94618db84b96caa0d3d6352725645c5",
+      "last_modified": 1769138295.8851993,
+      "size": 4149,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/checkpoint_engine/test_nccl_checkpoint_engine.py": {
+      "path": "tests/checkpoint_engine/test_nccl_checkpoint_engine.py",
+      "content_hash": "fcbb978d93a5436630acd3bb3d0fff6a",
+      "last_modified": 1769138295.8878713,
+      "size": 3977,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/checkpoint_engine/__init__.py": {
+      "path": "tests/checkpoint_engine/__init__.py",
+      "content_hash": "be074da7eb6023da8f5abe868f429f7f",
+      "last_modified": 1769138295.8816862,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_distributed/test_fsdp_ckpt.py": {
+      "path": "tests/special_distributed/test_fsdp_ckpt.py",
+      "content_hash": "d4724b7e52d944ebd3f2230afa7fa066",
+      "last_modified": 1769138296.0822053,
+      "size": 6466,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_distributed/test_torch_functional.py": {
+      "path": "tests/special_distributed/test_torch_functional.py",
+      "content_hash": "4e5559d5d8c77264f7b39f8047d71ffc",
+      "last_modified": 1769138296.0906086,
+      "size": 1197,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_distributed/test_mcore_config_converter.py": {
+      "path": "tests/special_distributed/test_mcore_config_converter.py",
+      "content_hash": "0a3e05d97b5c71ed05ec6d06f06981cb",
+      "last_modified": 1769138296.0850847,
+      "size": 4362,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_distributed/test_tensor_dict.py": {
+      "path": "tests/special_distributed/test_tensor_dict.py",
+      "content_hash": "558bdedd508c877413e8f4dda520c435",
+      "last_modified": 1769138296.0877342,
+      "size": 4764,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/trainer/__init__.py": {
+      "path": "tests/trainer/__init__.py",
+      "content_hash": "900aa05e09e6246c5c78fd71d83aa3e1",
+      "last_modified": 1769138296.4787555,
+      "size": 638,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/models/test_engine.py": {
+      "path": "tests/models/test_engine.py",
+      "content_hash": "4b160e251535aa7054df621e1f44a0b2",
+      "last_modified": 1769138295.9713569,
+      "size": 15098,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/models/test_tiled_mlp_accuracy.py": {
+      "path": "tests/models/test_tiled_mlp_accuracy.py",
+      "content_hash": "3db6b875c29b17fa0ce89d8dfdc9274f",
+      "last_modified": 1769138295.9752986,
+      "size": 6853,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/models/test_transformers_ulysses.py": {
+      "path": "tests/models/test_transformers_ulysses.py",
+      "content_hash": "217d8f40e58e57278ede9ea561e5beb5",
+      "last_modified": 1769138295.983103,
+      "size": 11046,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/models/test_transformer.py": {
+      "path": "tests/models/test_transformer.py",
+      "content_hash": "57da39fbddcf9661a6dd0dc754c7cdec",
+      "last_modified": 1769138295.9789102,
+      "size": 9482,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_sanity/check_docstrings.py": {
+      "path": "tests/special_sanity/check_docstrings.py",
+      "content_hash": "f117e8eccef4e29bd8a0f0ed5d61d00c",
+      "last_modified": 1769138296.4268143,
+      "size": 5579,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_sanity/test_config_docs.py": {
+      "path": "tests/special_sanity/test_config_docs.py",
+      "content_hash": "16ee58d9aee88ffe1e8ce3141c05d26d",
+      "last_modified": 1769138296.4381602,
+      "size": 3190,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_sanity/check_dataproto_usage.py": {
+      "path": "tests/special_sanity/check_dataproto_usage.py",
+      "content_hash": "ba3de4952e649be0bcc5a5c6503532f3",
+      "last_modified": 1769138296.4171221,
+      "size": 2372,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_sanity/check_pr_description.py": {
+      "path": "tests/special_sanity/check_pr_description.py",
+      "content_hash": "c2de01916b1f89fabbd8cf9c0afb6295",
+      "last_modified": 1769138296.432257,
+      "size": 2924,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_sanity/check_api_docs.py": {
+      "path": "tests/special_sanity/check_api_docs.py",
+      "content_hash": "fa4df819e3abb7b1892c8349d4f29856",
+      "last_modified": 1769138296.413378,
+      "size": 4771,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_sanity/check_docs_time_info.py": {
+      "path": "tests/special_sanity/check_docs_time_info.py",
+      "content_hash": "caae976fe7a43499b5bb543d4787cfc9",
+      "last_modified": 1769138296.4238412,
+      "size": 2477,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_sanity/validate_imported_docs.py": {
+      "path": "tests/special_sanity/validate_imported_docs.py",
+      "content_hash": "6e89d0add9d90ae9b62db8ab30bc5766",
+      "last_modified": 1769138296.449309,
+      "size": 4513,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_sanity/validate_structure.py": {
+      "path": "tests/special_sanity/validate_structure.py",
+      "content_hash": "fe7495800767471b9a56edde7e071451",
+      "last_modified": 1769138296.452448,
+      "size": 4245,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_sanity/check_license.py": {
+      "path": "tests/special_sanity/check_license.py",
+      "content_hash": "460ade0e1b7c099adc57f1a19556e3e2",
+      "last_modified": 1769138296.4296343,
+      "size": 3088,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_sanity/test_import.py": {
+      "path": "tests/special_sanity/test_import.py",
+      "content_hash": "8c475e02dbe625b501d23aee84e5723e",
+      "last_modified": 1769138296.4427369,
+      "size": 786,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_sanity/check_device_api_usage.py": {
+      "path": "tests/special_sanity/check_device_api_usage.py",
+      "content_hash": "795e21250a8c7feb49e7aef9877cab8a",
+      "last_modified": 1769138296.4205525,
+      "size": 4900,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_sanity/check_pr_title.py": {
+      "path": "tests/special_sanity/check_pr_title.py",
+      "content_hash": "7c57e371cdbd5239b4c27dda59f0b88b",
+      "last_modified": 1769138296.435156,
+      "size": 3134,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_sanity/type_coverage_check.py": {
+      "path": "tests/special_sanity/type_coverage_check.py",
+      "content_hash": "5a6f19c6964abae54614b9f2bcd9b8d0",
+      "last_modified": 1769138296.4461129,
+      "size": 6861,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/test_groupwise.py": {
+      "path": "tests/utils/test_groupwise.py",
+      "content_hash": "221fb73bfdba9392249b311ca2b5fe37",
+      "last_modified": 1769138296.586527,
+      "size": 3826,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/test_flops_counter.py": {
+      "path": "tests/utils/test_flops_counter.py",
+      "content_hash": "01f5e6007b776d72da9a62f0248e4a0b",
+      "last_modified": 1769138296.579813,
+      "size": 20413,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/test_model_on_cpu.py": {
+      "path": "tests/utils/test_model_on_cpu.py",
+      "content_hash": "55b24be0f08b7e7c40010e81efa214f2",
+      "last_modified": 1769138296.6008058,
+      "size": 2539,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/test_temp_env_on_cpu.py": {
+      "path": "tests/utils/test_temp_env_on_cpu.py",
+      "content_hash": "652f214f947cb61bf6913d49855e0c56",
+      "last_modified": 1769138296.6262684,
+      "size": 4698,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/test_config_on_cpu.py": {
+      "path": "tests/utils/test_config_on_cpu.py",
+      "content_hash": "538b9618d4f63bc2c41b411641233b28",
+      "last_modified": 1769138296.575912,
+      "size": 3177,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/test_timeout_decorator_cpu.py": {
+      "path": "tests/utils/test_timeout_decorator_cpu.py",
+      "content_hash": "90d01c5da87c73b9f80dcd6e261481fb",
+      "last_modified": 1769138296.629595,
+      "size": 9941,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/test_mlflow_key_sanitization.py": {
+      "path": "tests/utils/test_mlflow_key_sanitization.py",
+      "content_hash": "fda2ecdd4f413c32b4e5f472fe4a4509",
+      "last_modified": 1769138296.5976193,
+      "size": 3119,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/test_torch_functional.py": {
+      "path": "tests/utils/test_torch_functional.py",
+      "content_hash": "eb9913b210faf3616a938d73ba4d5abb",
+      "last_modified": 1769138296.6327155,
+      "size": 5101,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/test_nvtx_profile.py": {
+      "path": "tests/utils/test_nvtx_profile.py",
+      "content_hash": "895f08c4de493bbfd918acc77c61320d",
+      "last_modified": 1769138296.6046474,
+      "size": 7105,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/test_rollout_skip_on_cpu.py": {
+      "path": "tests/utils/test_rollout_skip_on_cpu.py",
+      "content_hash": "6edd5f99d35f192590215e08656ada8b",
+      "last_modified": 1769138296.6081393,
+      "size": 4985,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/_test_module.py": {
+      "path": "tests/utils/_test_module.py",
+      "content_hash": "73ac58c225cfc1f15842cc9b5f82c4d9",
+      "last_modified": 1769138296.5181332,
+      "size": 963,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/test_import_utils_on_cpu.py": {
+      "path": "tests/utils/test_import_utils_on_cpu.py",
+      "content_hash": "48771ef17025da3a59e31f483e5f61f9",
+      "last_modified": 1769138296.5898757,
+      "size": 3170,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/test_linear_cross_entropy.py": {
+      "path": "tests/utils/test_linear_cross_entropy.py",
+      "content_hash": "b28a5ff658b14a864285a6539942ef9f",
+      "last_modified": 1769138296.5935206,
+      "size": 15785,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/test_activation_offload.py": {
+      "path": "tests/utils/test_activation_offload.py",
+      "content_hash": "3d3358ca41bc2f56fd13543b82e109c3",
+      "last_modified": 1769138296.572474,
+      "size": 6829,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/test_seqlen_balancing.py": {
+      "path": "tests/utils/test_seqlen_balancing.py",
+      "content_hash": "70cd394f3f15be73703e7f7177fcf7bc",
+      "last_modified": 1769138296.6152918,
+      "size": 10308,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/test_special_mstx_profile.py": {
+      "path": "tests/utils/test_special_mstx_profile.py",
+      "content_hash": "0b13a86ee7d24d36d02eb651cc1f3ba0",
+      "last_modified": 1769138296.622497,
+      "size": 11953,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/test_fs_on_cpu.py": {
+      "path": "tests/utils/test_fs_on_cpu.py",
+      "content_hash": "d757052fcfaa5f53edf7239d86b04b99",
+      "last_modified": 1769138296.583061,
+      "size": 3279,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/test_rollout_trace_on_cpu.py": {
+      "path": "tests/utils/test_rollout_trace_on_cpu.py",
+      "content_hash": "65fe1163302535a29f9c79255a4abe3a",
+      "last_modified": 1769138296.6115696,
+      "size": 9030,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/test_special_linear_cross_entropy_tp.py": {
+      "path": "tests/utils/test_special_linear_cross_entropy_tp.py",
+      "content_hash": "f21b2688d2aa60b98d8347a439bbf4e3",
+      "last_modified": 1769138296.618689,
+      "size": 22118,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_standalone/test_memory_buffers.py": {
+      "path": "tests/special_standalone/test_memory_buffers.py",
+      "content_hash": "68c8ae019ad772b2d48d2b50c4963554",
+      "last_modified": 1769138296.4625435,
+      "size": 2314,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/test_worker_group_basics.py": {
+      "path": "tests/single_controller/test_worker_group_basics.py",
+      "content_hash": "abb2518080d1a5264587ee2b8de31fe7",
+      "last_modified": 1769138296.069995,
+      "size": 4546,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/test_colocated_workers_fused.py": {
+      "path": "tests/single_controller/test_colocated_workers_fused.py",
+      "content_hash": "f4e3baa8b3397d2e6814aaa3d5eef511",
+      "last_modified": 1769138296.0286043,
+      "size": 2940,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/test_data_transfer.py": {
+      "path": "tests/single_controller/test_data_transfer.py",
+      "content_hash": "41cb6b19223d1d1e4575443047835a4b",
+      "last_modified": 1769138296.0315652,
+      "size": 3565,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/test_ray_collectives.py": {
+      "path": "tests/single_controller/test_ray_collectives.py",
+      "content_hash": "dbd7a6c2193c0a0d886623a969895aeb",
+      "last_modified": 1769138296.055145,
+      "size": 3976,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/test_colocated_workers.py": {
+      "path": "tests/single_controller/test_colocated_workers.py",
+      "content_hash": "9272896b51127a6bc31e9423de0a1692",
+      "last_modified": 1769138296.025666,
+      "size": 2928,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/test_worker_group_torch.py": {
+      "path": "tests/single_controller/test_worker_group_torch.py",
+      "content_hash": "8b5dc2fff53a7a40d57829ea1c9c7ffe",
+      "last_modified": 1769138296.0726345,
+      "size": 3781,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/test_ray_local_envs_on_cpu.py": {
+      "path": "tests/single_controller/test_ray_local_envs_on_cpu.py",
+      "content_hash": "73f3ab22d6cb01066e0fa64454ce8403",
+      "last_modified": 1769138296.0583806,
+      "size": 2669,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/test_driverfunc_to_worker.py": {
+      "path": "tests/single_controller/test_driverfunc_to_worker.py",
+      "content_hash": "e4f29aa39c1f0ec6325e76ad9bb1cf88",
+      "last_modified": 1769138296.0406067,
+      "size": 2487,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/test_device_mesh_register.py": {
+      "path": "tests/single_controller/test_device_mesh_register.py",
+      "content_hash": "6fbd20ae1d3bd27f5099fb4fb4b4ed36",
+      "last_modified": 1769138296.0377781,
+      "size": 6633,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/test_nested_worker.py": {
+      "path": "tests/single_controller/test_nested_worker.py",
+      "content_hash": "45267e9a21cc85a19e017dd4fe251b72",
+      "last_modified": 1769138296.052467,
+      "size": 2315,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/test_decorator_on_cpu.py": {
+      "path": "tests/single_controller/test_decorator_on_cpu.py",
+      "content_hash": "e45ef9352d312f223303bea83779659c",
+      "last_modified": 1769138296.03471,
+      "size": 8795,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/test_auto_padding_on_cpu.py": {
+      "path": "tests/single_controller/test_auto_padding_on_cpu.py",
+      "content_hash": "49d1103809dc5d1d945e48f4093666bb",
+      "last_modified": 1769138296.0224903,
+      "size": 6036,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/test_ray_utils_on_cpu.py": {
+      "path": "tests/single_controller/test_ray_utils_on_cpu.py",
+      "content_hash": "05b5ff6b6f0e773bd6f948806d56b331",
+      "last_modified": 1769138296.0613785,
+      "size": 1693,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/test_split_resource_pool.py": {
+      "path": "tests/single_controller/test_split_resource_pool.py",
+      "content_hash": "db058bb1befd606ce25a63b6fe59a7b7",
+      "last_modified": 1769138296.0669746,
+      "size": 7282,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/__init__.py": {
+      "path": "tests/single_controller/__init__.py",
+      "content_hash": "be074da7eb6023da8f5abe868f429f7f",
+      "last_modified": 1769138295.9882479,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/test_fused_workers_on_cpu.py": {
+      "path": "tests/single_controller/test_fused_workers_on_cpu.py",
+      "content_hash": "ad4da8666ff7b122d2a836e93a27a9a8",
+      "last_modified": 1769138296.0436206,
+      "size": 2478,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/test_rvdz.py": {
+      "path": "tests/single_controller/test_rvdz.py",
+      "content_hash": "9a3a5c0164bf27b9206648028c647eb6",
+      "last_modified": 1769138296.0640597,
+      "size": 1576,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/test_high_level_scheduling_api.py": {
+      "path": "tests/single_controller/test_high_level_scheduling_api.py",
+      "content_hash": "eee03c376a7d37d4a5c4f69737b041aa",
+      "last_modified": 1769138296.0492182,
+      "size": 4190,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/test_get_set_dispatch_collect_cpu.py": {
+      "path": "tests/single_controller/test_get_set_dispatch_collect_cpu.py",
+      "content_hash": "fa29067b1bdc1db02d640c5b45ad3dfe",
+      "last_modified": 1769138296.0464933,
+      "size": 1864,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/interactions/test_interaction_registry.py": {
+      "path": "tests/interactions/test_interaction_registry.py",
+      "content_hash": "6c9ada0661a5f0b3b7247a19eb08ddbe",
+      "last_modified": 1769138295.961567,
+      "size": 8216,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/interactions/test_gsm8k_interaction.py": {
+      "path": "tests/interactions/test_gsm8k_interaction.py",
+      "content_hash": "2a55a2c71b6cbd7078e986cb1a076485",
+      "last_modified": 1769138295.9572532,
+      "size": 17310,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/interactions/__init__.py": {
+      "path": "tests/interactions/__init__.py",
+      "content_hash": "8208a9166e7548215d6122861578d957",
+      "last_modified": 1769138295.9528575,
+      "size": 688,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/workers/test_fsdp_attn_implementation.py": {
+      "path": "tests/workers/test_fsdp_attn_implementation.py",
+      "content_hash": "3f92b673eb1bf355f07a8b9a5d17fac3",
+      "last_modified": 1769138296.7186677,
+      "size": 22037,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/workers/test_fsdp_workers.py": {
+      "path": "tests/workers/test_fsdp_workers.py",
+      "content_hash": "322aa5c5c603383a9dc106a2482e069b",
+      "last_modified": 1769138296.721443,
+      "size": 2887,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_e2e/check_results.py": {
+      "path": "tests/special_e2e/check_results.py",
+      "content_hash": "3f3ff09aa668122f2ef1d86b0d1b94e7",
+      "last_modified": 1769138296.1068172,
+      "size": 1753,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_e2e/check_custom_rwd_fn.py": {
+      "path": "tests/special_e2e/check_custom_rwd_fn.py",
+      "content_hash": "ee5f42d78752a8842d9c8ed0dfe618f7",
+      "last_modified": 1769138296.1022618,
+      "size": 1172,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_e2e/__init__.py": {
+      "path": "tests/special_e2e/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1769138296.098783,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_e2e/sft/compare_sft_engine_results.py": {
+      "path": "tests/special_e2e/sft/compare_sft_engine_results.py",
+      "content_hash": "e9ac3311c975a56fd1b699339fb3d1fc",
+      "last_modified": 1769138296.1927736,
+      "size": 2002,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_e2e/sft/test_sp_loss_match.py": {
+      "path": "tests/special_e2e/sft/test_sp_loss_match.py",
+      "content_hash": "b9f597bcdaba26e522b95c2558c8d1ff",
+      "last_modified": 1769138296.2157815,
+      "size": 6077,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_e2e/envs/__init__.py": {
+      "path": "tests/special_e2e/envs/__init__.py",
+      "content_hash": "578b3977a0d1c80232692c7ed81a6aaa",
+      "last_modified": 1769138296.1124074,
+      "size": 678,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_e2e/envs/digit_completion/task.py": {
+      "path": "tests/special_e2e/envs/digit_completion/task.py",
+      "content_hash": "7e699f1293f2b9d44fbd968c6307b866",
+      "last_modified": 1769138296.1202848,
+      "size": 6361,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_e2e/envs/digit_completion/tokenizer.py": {
+      "path": "tests/special_e2e/envs/digit_completion/tokenizer.py",
+      "content_hash": "dbfea16e8bf65a2f3334874743370ce8",
+      "last_modified": 1769138296.123143,
+      "size": 5543,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/special_e2e/envs/digit_completion/__init__.py": {
+      "path": "tests/special_e2e/envs/digit_completion/__init__.py",
+      "content_hash": "d5fc9c4fff05dcaa1f413aed0edfa94c",
+      "last_modified": 1769138296.1171393,
+      "size": 906,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/workers/critic/test_special_dp_critic.py": {
+      "path": "tests/workers/critic/test_special_dp_critic.py",
+      "content_hash": "5cba363db8eeb69ee0f87dc5372cbb77",
+      "last_modified": 1769138296.6590936,
+      "size": 14688,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/entropy/reward_score/entropy_math/grader.py": {
+      "path": "recipe/entropy/reward_score/entropy_math/grader.py",
+      "content_hash": "bacdfb67ea0bb3670b5f325928e40829",
+      "last_modified": 1770100542.6699824,
+      "size": 14565,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/workers/config/test_engine_config_on_cpu.py": {
+      "path": "tests/workers/config/test_engine_config_on_cpu.py",
+      "content_hash": "266fc4aa75f70c7ceee799e5dc23c6ab",
+      "last_modified": 1769138296.6519866,
+      "size": 2753,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/entropy/reward_score/entropy_math/__init__.py": {
+      "path": "recipe/entropy/reward_score/entropy_math/__init__.py",
+      "content_hash": "4cb55edbe3650312377b5e2a1c3826a7",
+      "last_modified": 1770100542.6662538,
+      "size": 29006,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/workers/reward_manager/test_registry_on_cpu.py": {
+      "path": "tests/workers/reward_manager/test_registry_on_cpu.py",
+      "content_hash": "f45c4c44f2325681a14d4349bed9cfca",
+      "last_modified": 1769138296.6628878,
+      "size": 3098,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/workers/config/test_critic_config_on_cpu.py": {
+      "path": "tests/workers/config/test_critic_config_on_cpu.py",
+      "content_hash": "36eac3353f5214848b19b822aa5c42b1",
+      "last_modified": 1769138296.6491745,
+      "size": 12881,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/workers/actor/test_special_dp_actor.py": {
+      "path": "tests/workers/actor/test_special_dp_actor.py",
+      "content_hash": "4f2088218092caeb203613633ecd346d",
+      "last_modified": 1769138296.6407492,
+      "size": 11798,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/workers/config/test_actor_config_on_cpu.py": {
+      "path": "tests/workers/config/test_actor_config_on_cpu.py",
+      "content_hash": "67ef8939a2c107c28f34cdfaf8e4861b",
+      "last_modified": 1769138296.645913,
+      "size": 9649,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/workers/config/test_optim_config_on_cpu.py": {
+      "path": "tests/workers/config/test_optim_config_on_cpu.py",
+      "content_hash": "e7e4620841596b54beaa6980ba180238",
+      "last_modified": 1769138296.6548953,
+      "size": 2065,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/workers/rollout/test_sglang_async_rollout_multimodal_delta.py": {
+      "path": "tests/workers/rollout/test_sglang_async_rollout_multimodal_delta.py",
+      "content_hash": "ec63eeda682e2b915a77431504e3db40",
+      "last_modified": 1769138296.7030914,
+      "size": 7786,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/workers/rollout/test_sglang_rollout_sharding_manager.py": {
+      "path": "tests/workers/rollout/test_sglang_rollout_sharding_manager.py",
+      "content_hash": "4d0a7881414d9de307a84a9081902220",
+      "last_modified": 1769138296.7062442,
+      "size": 1890,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/workers/rollout/test_hf_rollout.py": {
+      "path": "tests/workers/rollout/test_hf_rollout.py",
+      "content_hash": "0971db0df28bb38a7933ce75d7578bfc",
+      "last_modified": 1769138296.6996682,
+      "size": 7490,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/workers/rollout/test_vllm_cli_args_on_cpu.py": {
+      "path": "tests/workers/rollout/test_vllm_cli_args_on_cpu.py",
+      "content_hash": "11d3ea6873b5075d98aa02879963ea15",
+      "last_modified": 1769138296.7153232,
+      "size": 5043,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/workers/rollout/rollout_sglang/test_http_server_engine.py": {
+      "path": "tests/workers/rollout/rollout_sglang/test_http_server_engine.py",
+      "content_hash": "dd86a81ea190c53b78eb9593af8b9acd",
+      "last_modified": 1769138296.687838,
+      "size": 40022,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/workers/rollout/rollout_vllm/run_fsdp_vllm.py": {
+      "path": "tests/workers/rollout/rollout_vllm/run_fsdp_vllm.py",
+      "content_hash": "2e48ef27de634533a1c32c8ad2d50db6",
+      "last_modified": 1769138296.6926467,
+      "size": 6309,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/workers/rollout/perf/vllm_async_rollout.py": {
+      "path": "tests/workers/rollout/perf/vllm_async_rollout.py",
+      "content_hash": "90951b29f7265e8010080a6eaebe91bf",
+      "last_modified": 1769138296.6686404,
+      "size": 5097,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/workers/rollout/rollout_vllm/test_vllm_abort.py": {
+      "path": "tests/workers/rollout/rollout_vllm/test_vllm_abort.py",
+      "content_hash": "58969d94263d63c675307f3fbde23c40",
+      "last_modified": 1769138296.6964314,
+      "size": 8343,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/base/test_decorator.py": {
+      "path": "tests/single_controller/base/test_decorator.py",
+      "content_hash": "4d0cdf9de80dcd9661f44e38109c9f34",
+      "last_modified": 1769138295.9953768,
+      "size": 2394,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/detached_worker/client.py": {
+      "path": "tests/single_controller/detached_worker/client.py",
+      "content_hash": "ed602d16673977ed0cdbc226717aecb3",
+      "last_modified": 1769138296.0120747,
+      "size": 1931,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/check_worker_alive/main.py": {
+      "path": "tests/single_controller/check_worker_alive/main.py",
+      "content_hash": "36b87a95ac5acffdf340f07fe1a5b111",
+      "last_modified": 1769138296.0019424,
+      "size": 1866,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/megatron/test_pipeline_parallel.py": {
+      "path": "tests/utils/megatron/test_pipeline_parallel.py",
+      "content_hash": "aa2caee40008a5cb98664f10c14d3c93",
+      "last_modified": 1769138296.5562084,
+      "size": 2374,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/ckpt/test_esi_save_ckpt_on_cpu.py": {
+      "path": "tests/utils/ckpt/test_esi_save_ckpt_on_cpu.py",
+      "content_hash": "e326ba0773514fcf7c652bb70202cbfe",
+      "last_modified": 1769138296.5267036,
+      "size": 3271,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/single_controller/detached_worker/server.py": {
+      "path": "tests/single_controller/detached_worker/server.py",
+      "content_hash": "85bdb1dd44057e79afd8e66cbfcdaad0",
+      "last_modified": 1769138296.019329,
+      "size": 5956,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/ckpt/test_checkpoint_cleanup_on_cpu.py": {
+      "path": "tests/utils/ckpt/test_checkpoint_cleanup_on_cpu.py",
+      "content_hash": "f1c394b6473533a40691a624f2dde373",
+      "last_modified": 1769138296.5235896,
+      "size": 5241,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/dataset/test_rl_dataset_on_cpu.py": {
+      "path": "tests/utils/dataset/test_rl_dataset_on_cpu.py",
+      "content_hash": "c009a1f6b08d6816ce044fad91427208",
+      "last_modified": 1769138296.5412624,
+      "size": 6707,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/dataset/test_rl_collate_fn_on_cpu.py": {
+      "path": "tests/utils/dataset/test_rl_collate_fn_on_cpu.py",
+      "content_hash": "e3dca4024510e53b7964939265017bf0",
+      "last_modified": 1769138296.5382452,
+      "size": 2493,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/reward_score/test_sandbox_on_cpu.py": {
+      "path": "tests/utils/reward_score/test_sandbox_on_cpu.py",
+      "content_hash": "18f8e17bb75497b1665188ddeeca640c",
+      "last_modified": 1769138296.568965,
+      "size": 10190,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/dataset/test_multiturn_sft_dataset_on_cpu.py": {
+      "path": "tests/utils/dataset/test_multiturn_sft_dataset_on_cpu.py",
+      "content_hash": "eec17d154b8478067ecb2ce1dfd670d1",
+      "last_modified": 1769138296.5352068,
+      "size": 19586,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/dataset/test_sft_dataset_on_cpu.py": {
+      "path": "tests/utils/dataset/test_sft_dataset_on_cpu.py",
+      "content_hash": "2f8eacd7438e23feb558bb9c39b8ad5d",
+      "last_modified": 1769138296.544951,
+      "size": 3031,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/debug/test_metrics.py": {
+      "path": "tests/utils/debug/test_metrics.py",
+      "content_hash": "37d791bcd16798be02877612fef799ae",
+      "last_modified": 1769138296.5509176,
+      "size": 1917,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/dataset/test_create_rl_sampler_on_cpu.py": {
+      "path": "tests/utils/dataset/test_create_rl_sampler_on_cpu.py",
+      "content_hash": "46c32c1a10eb6d72f2fda58c6ab3bd2d",
+      "last_modified": 1769138296.5316691,
+      "size": 3261,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/trainer/config/__init__.py": {
+      "path": "tests/trainer/config/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1769138296.4838552,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/trainer/config/test_algo_config_on_cpu.py": {
+      "path": "tests/trainer/config/test_algo_config_on_cpu.py",
+      "content_hash": "c5f2233665a608e0e887c5870a25a0d6",
+      "last_modified": 1769138296.4945831,
+      "size": 7947,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/utils/reward_score/reward_score/test_sandbox_fusion_on_cpu.py": {
+      "path": "tests/utils/reward_score/reward_score/test_sandbox_fusion_on_cpu.py",
+      "content_hash": "3c61ca64208af81c140c69e2053fa0c6",
+      "last_modified": 1769138296.5650828,
+      "size": 30500,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/trainer/config/test_legacy_config_on_cpu.py": {
+      "path": "tests/trainer/config/test_legacy_config_on_cpu.py",
+      "content_hash": "808c114f899e923384973c5681462c8e",
+      "last_modified": 1769138296.4976125,
+      "size": 7239,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/trainer/ppo/test_rollout_corr_integration.py": {
+      "path": "tests/trainer/ppo/test_rollout_corr_integration.py",
+      "content_hash": "32a4fce3bf88427d69c81b80c4297a3a",
+      "last_modified": 1769138296.5131388,
+      "size": 10989,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/trainer/ppo/test_core_algos_on_cpu.py": {
+      "path": "tests/trainer/ppo/test_core_algos_on_cpu.py",
+      "content_hash": "8d391972d2584cafa0ddeeb6df527ce8",
+      "last_modified": 1769138296.504531,
+      "size": 10911,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/trainer/ppo/__init__.py": {
+      "path": "tests/trainer/ppo/__init__.py",
+      "content_hash": "afd46a8a307f6565c070d774c3584b4f",
+      "last_modified": 1769138296.501652,
+      "size": 642,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/trainer/ppo/test_metric_utils_on_cpu.py": {
+      "path": "tests/trainer/ppo/test_metric_utils_on_cpu.py",
+      "content_hash": "024b028b951aff1e68ce518e76488a9d",
+      "last_modified": 1769138296.5072863,
+      "size": 17837,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/trainer/ppo/test_rollout_corr.py": {
+      "path": "tests/trainer/ppo/test_rollout_corr.py",
+      "content_hash": "33ff37b9c9723e5ce8ea9229201d2563",
+      "last_modified": 1769138296.510224,
+      "size": 15052,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/experimental/agent_loop/test_standalone_rollout.py": {
+      "path": "tests/experimental/agent_loop/test_standalone_rollout.py",
+      "content_hash": "52d44f4722b5f7d44b88022f36f97d51",
+      "last_modified": 1769138295.913787,
+      "size": 5271,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/experimental/agent_loop/test_gpt_oss_tool_parser.py": {
+      "path": "tests/experimental/agent_loop/test_gpt_oss_tool_parser.py",
+      "content_hash": "859a33c1e9ab2aa61639bde57f7ebae7",
+      "last_modified": 1769138295.9079409,
+      "size": 1517,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/experimental/vla/test_sim_envs.py": {
+      "path": "tests/experimental/vla/test_sim_envs.py",
+      "content_hash": "0d0ad89ac71a8a6e0b7d37ef72b2a504",
+      "last_modified": 1769138295.9470363,
+      "size": 4027,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/experimental/agent_loop/agent_utils.py": {
+      "path": "tests/experimental/agent_loop/agent_utils.py",
+      "content_hash": "8316a88bfca38d6d40d42fc7e792d069",
+      "last_modified": 1769138295.8992345,
+      "size": 4284,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/experimental/agent_loop/test_multi_modal.py": {
+      "path": "tests/experimental/agent_loop/test_multi_modal.py",
+      "content_hash": "45cf7eb9197c4e042a1fe7069f436a7d",
+      "last_modified": 1769138295.9111736,
+      "size": 23173,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/experimental/agent_loop/test_basic_agent_loop.py": {
+      "path": "tests/experimental/agent_loop/test_basic_agent_loop.py",
+      "content_hash": "768432033e46992494f789d82ef09f33",
+      "last_modified": 1769138295.905287,
+      "size": 17587,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/experimental/reward_loop/test_agent_loop_reward_manager.py": {
+      "path": "tests/experimental/reward_loop/test_agent_loop_reward_manager.py",
+      "content_hash": "d31d62a05dede6c34e8e608513ee3cd1",
+      "last_modified": 1769138295.9209905,
+      "size": 4294,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/experimental/reward_loop/test_math_verify.py": {
+      "path": "tests/experimental/reward_loop/test_math_verify.py",
+      "content_hash": "48b034400d73ec35e78fde4c9b2113e0",
+      "last_modified": 1769138295.9309435,
+      "size": 3666,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/experimental/reward_loop/reward_fn.py": {
+      "path": "tests/experimental/reward_loop/reward_fn.py",
+      "content_hash": "b30f04f686c283a555d45156d5c3d646",
+      "last_modified": 1769138295.9181347,
+      "size": 3177,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/experimental/reward_loop/test_reward_model_disrm.py": {
+      "path": "tests/experimental/reward_loop/test_reward_model_disrm.py",
+      "content_hash": "42987e7a0b922b1464b35731351ca5ca",
+      "last_modified": 1769138295.9379506,
+      "size": 5841,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/experimental/reward_loop/test_rate_limited_reward_manager_on_cpu.py": {
+      "path": "tests/experimental/reward_loop/test_rate_limited_reward_manager_on_cpu.py",
+      "content_hash": "c1d0ade549c95774eccefb1fc8ca382f",
+      "last_modified": 1769138295.9346793,
+      "size": 20102,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/experimental/reward_loop/test_async_token_bucket_on_cpu.py": {
+      "path": "tests/experimental/reward_loop/test_async_token_bucket_on_cpu.py",
+      "content_hash": "a853fec8784b2f29a2cefccf30a8b228",
+      "last_modified": 1769138295.9277606,
+      "size": 9885,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/experimental/reward_loop/test_agent_reward_loop_colocate.py": {
+      "path": "tests/experimental/reward_loop/test_agent_reward_loop_colocate.py",
+      "content_hash": "b5c248aecea75a15d419939d9741c413",
+      "last_modified": 1769138295.9237258,
+      "size": 6264,
+      "language": "python",
+      "node_count": 0
+    },
+    "tests/experimental/reward_loop/test_reward_model_genrm.py": {
+      "path": "tests/experimental/reward_loop/test_reward_model_genrm.py",
+      "content_hash": "e128d185a8760e471294404b246b5b9a",
+      "last_modified": 1769138295.9411736,
+      "size": 5978,
+      "language": "python",
+      "node_count": 0
+    },
+    "docs/_static/js/resizable-sidebar.js": {
+      "path": "docs/_static/js/resizable-sidebar.js",
+      "content_hash": "2d9b9a7cf0ab9fc6c6180007a5dce47d",
+      "last_modified": 1769138294.7130527,
+      "size": 8973,
+      "language": "javascript",
+      "node_count": 0
+    },
+    "docs/_static/js/runllm-widget.js": {
+      "path": "docs/_static/js/runllm-widget.js",
+      "content_hash": "7767e33e36168128284cbd5c7c762fd8",
+      "last_modified": 1769138294.71602,
+      "size": 618,
+      "language": "javascript",
+      "node_count": 0
+    },
+    "scripts/veomni/moe_split.py": {
+      "path": "scripts/veomni/moe_split.py",
+      "content_hash": "b6fe343957bea8f996092bdc40d3b067",
+      "last_modified": 1769138295.869106,
+      "size": 3826,
+      "language": "python",
+      "node_count": 0
+    },
+    "scripts/veomni/moe_merge.py": {
+      "path": "scripts/veomni/moe_merge.py",
+      "content_hash": "f20976a1e2f4034ea3b1592f7c8f9b6e",
+      "last_modified": 1769138295.8665235,
+      "size": 4723,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/checkpoint_engine/nccl_checkpoint_engine.py": {
+      "path": "verl/checkpoint_engine/nccl_checkpoint_engine.py",
+      "content_hash": "510b2abdb155b4a6e97b9bd03ab74c74",
+      "last_modified": 1769138296.7441747,
+      "size": 13043,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/checkpoint_engine/base.py": {
+      "path": "verl/checkpoint_engine/base.py",
+      "content_hash": "000605a6b29c9530fbf3526c13eebf15",
+      "last_modified": 1769138296.7384193,
+      "size": 4756,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/checkpoint_engine/__init__.py": {
+      "path": "verl/checkpoint_engine/__init__.py",
+      "content_hash": "4841220f1c0dad70a04de7b665767db4",
+      "last_modified": 1769138296.7355359,
+      "size": 1285,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/__init__.py": {
+      "path": "verl/experimental/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1769138296.7512033,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/checkpoint_engine/hccl_checkpoint_engine.py": {
+      "path": "verl/checkpoint_engine/hccl_checkpoint_engine.py",
+      "content_hash": "3bb76f0b2f8f551e1a4b99b1d45b04cf",
+      "last_modified": 1769138296.7413123,
+      "size": 13126,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/trainer/constants_ppo.py": {
+      "path": "verl/trainer/constants_ppo.py",
+      "content_hash": "089c529c659866e90cf7827c3465839f",
+      "last_modified": 1769138297.9073792,
+      "size": 2119,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/checkpoint_engine/nixl_checkpoint_engine.py": {
+      "path": "verl/checkpoint_engine/nixl_checkpoint_engine.py",
+      "content_hash": "17de2ec8a8741d1518089c0dc1f44cfc",
+      "last_modified": 1769138296.7470186,
+      "size": 19736,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/trainer/sft_trainer_ray.py": {
+      "path": "verl/trainer/sft_trainer_ray.py",
+      "content_hash": "c8850c5dd84cab4cf33dcfbf69562aaa",
+      "last_modified": 1769138297.9684575,
+      "size": 15137,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/trainer/main_generation.py": {
+      "path": "verl/trainer/main_generation.py",
+      "content_hash": "a5c8a67d8e9eccfa31c1b9f8e729367b",
+      "last_modified": 1769138297.9205728,
+      "size": 6094,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/trainer/main_generation_server.py": {
+      "path": "verl/trainer/main_generation_server.py",
+      "content_hash": "554c0c7736fb568f8daadac854b5b9d3",
+      "last_modified": 1769138297.9238307,
+      "size": 6672,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/trainer/main_eval.py": {
+      "path": "verl/trainer/main_eval.py",
+      "content_hash": "8cc1b8555c4ada10bde6099e1c20a106",
+      "last_modified": 1769138297.9152205,
+      "size": 2796,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/trainer/__init__.py": {
+      "path": "verl/trainer/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1769138297.770714,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/trainer/sft_trainer.py": {
+      "path": "verl/trainer/sft_trainer.py",
+      "content_hash": "7948c55c18952797440c1c0475595fc6",
+      "last_modified": 1769138297.9653723,
+      "size": 16459,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/trainer/main_ppo.py": {
+      "path": "verl/trainer/main_ppo.py",
+      "content_hash": "04be40e18a6c293c60b789ab9f15bd2f",
+      "last_modified": 1769138297.927434,
+      "size": 18743,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/trainer/fsdp_sft_trainer.py": {
+      "path": "verl/trainer/fsdp_sft_trainer.py",
+      "content_hash": "83b8f54f31ee68bf812799e60dfc5ebe",
+      "last_modified": 1769138297.9113774,
+      "size": 37270,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/tools/sandbox_fusion_tools.py": {
+      "path": "verl/tools/sandbox_fusion_tools.py",
+      "content_hash": "5c8fc5842f6d03ce5db2fa637a58a1c0",
+      "last_modified": 1769138297.7411087,
+      "size": 7603,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/tools/mcp_search_tool.py": {
+      "path": "verl/tools/mcp_search_tool.py",
+      "content_hash": "d1879b84b98a0286fa1b10b40d91f154",
+      "last_modified": 1769138297.7381713,
+      "size": 2413,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/tools/search_tool.py": {
+      "path": "verl/tools/search_tool.py",
+      "content_hash": "c0d891dbbe77ca30d22e142137395a4f",
+      "last_modified": 1769138297.747123,
+      "size": 10983,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/tools/fetch_frames_tool.py": {
+      "path": "verl/tools/fetch_frames_tool.py",
+      "content_hash": "37e0a20a7e21d67c26bd77016acd5ac3",
+      "last_modified": 1769589713.3967435,
+      "size": 9612,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/tools/geo3k_tool.py": {
+      "path": "verl/tools/geo3k_tool.py",
+      "content_hash": "ec1b00511d5b3f546aa9cd4618fd5c29",
+      "last_modified": 1769138297.7258408,
+      "size": 3888,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/tools/gsm8k_tool.py": {
+      "path": "verl/tools/gsm8k_tool.py",
+      "content_hash": "8dd73de6ffbd16bb05e3390606ccccdc",
+      "last_modified": 1769138297.7285705,
+      "size": 4097,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/tools/schemas.py": {
+      "path": "verl/tools/schemas.py",
+      "content_hash": "a4bc33d80fcec61aca42d1d371d8cc82",
+      "last_modified": 1769138297.744425,
+      "size": 3983,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/tools/__init__.py": {
+      "path": "verl/tools/__init__.py",
+      "content_hash": "82263e881d39d7c6a33a0ca233bc3aa6",
+      "last_modified": 1769138297.7135196,
+      "size": 634,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/tools/base_tool.py": {
+      "path": "verl/tools/base_tool.py",
+      "content_hash": "d4c247a7d8bc59cd881ccbb8d27eff15",
+      "last_modified": 1769138297.7227037,
+      "size": 3350,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/tools/image_zoom_in_tool.py": {
+      "path": "verl/tools/image_zoom_in_tool.py",
+      "content_hash": "dc40c0b895f439a4d461021b20f83d90",
+      "last_modified": 1769138297.731472,
+      "size": 15782,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/model_merger/base_model_merger.py": {
+      "path": "verl/model_merger/base_model_merger.py",
+      "content_hash": "025e7cc90a97fdf1a340a14576736161",
+      "last_modified": 1769138297.2034097,
+      "size": 15912,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/tools/mcp_base_tool.py": {
+      "path": "verl/tools/mcp_base_tool.py",
+      "content_hash": "3ac78f8b810239b72128ff1a884e93fb",
+      "last_modified": 1769138297.7348309,
+      "size": 4989,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/model_merger/__main__.py": {
+      "path": "verl/model_merger/__main__.py",
+      "content_hash": "4423452ebdd741f02f8b03fe20b6d4dc",
+      "last_modified": 1769138297.2005668,
+      "size": 2325,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/model_merger/fsdp_model_merger.py": {
+      "path": "verl/model_merger/fsdp_model_merger.py",
+      "content_hash": "2c587d37e51c32eedbce37fa0401f145",
+      "last_modified": 1769138297.2060592,
+      "size": 10860,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/model_merger/__init__.py": {
+      "path": "verl/model_merger/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1769138297.1978135,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/weight_loader_registry.py": {
+      "path": "verl/models/weight_loader_registry.py",
+      "content_hash": "30e494c1dc43923e22bf7cbda4ae1d08",
+      "last_modified": 1769138297.61775,
+      "size": 2535,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/registry.py": {
+      "path": "verl/models/registry.py",
+      "content_hash": "8e752dd3a0da86e7605ddd2f954543c6",
+      "last_modified": 1769138297.5737672,
+      "size": 2139,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/__init__.py": {
+      "path": "verl/models/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1769138297.222597,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/transformers_compat.py": {
+      "path": "verl/utils/transformers_compat.py",
+      "content_hash": "1b11e942e4d44cb01f09a99f3ae5437d",
+      "last_modified": 1769138298.6719415,
+      "size": 2224,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/video_frame_cache.py": {
+      "path": "verl/utils/video_frame_cache.py",
+      "content_hash": "c5961e9981d1d333e9744c6b5291d25e",
+      "last_modified": 1770136957.7554514,
+      "size": 18144,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/model_merger/megatron_model_merger.py": {
+      "path": "verl/model_merger/megatron_model_merger.py",
+      "content_hash": "3bdfbe1df4fe6b9c0579997d612195b0",
+      "last_modified": 1769138297.2089565,
+      "size": 23895,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/transferqueue_utils.py": {
+      "path": "verl/utils/transferqueue_utils.py",
+      "content_hash": "42cdebcbd17930c7e198a83333a9b387",
+      "last_modified": 1769138298.6685147,
+      "size": 13299,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/import_utils.py": {
+      "path": "verl/utils/import_utils.py",
+      "content_hash": "c0f21c0809ed156dd8e2832e61df03f0",
+      "last_modified": 1769138298.067258,
+      "size": 7860,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/rollout_skip.py": {
+      "path": "verl/utils/rollout_skip.py",
+      "content_hash": "aac296a29e4c5af9ea8a130c4a4b6b2e",
+      "last_modified": 1769138298.636178,
+      "size": 4904,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/model.py": {
+      "path": "verl/utils/model.py",
+      "content_hash": "16f35b3bc1bcf8266661f7f44ff24101",
+      "last_modified": 1769138298.1532338,
+      "size": 29618,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/test_timestamp_watermark.py": {
+      "path": "verl/utils/test_timestamp_watermark.py",
+      "content_hash": "f74dfd3c89096e50f99b4aab201e379a",
+      "last_modified": 1770137238.0907867,
+      "size": 3160,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/megatron_peft_utils.py": {
+      "path": "verl/utils/megatron_peft_utils.py",
+      "content_hash": "3bc2550a05df0024b162d2cc8f2a5d01",
+      "last_modified": 1769138298.1317883,
+      "size": 7126,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/ray_utils.py": {
+      "path": "verl/utils/ray_utils.py",
+      "content_hash": "9b431ba2309a1b2e7bd2eda4677ce3b6",
+      "last_modified": 1769138298.1919441,
+      "size": 4043,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/torch_functional.py": {
+      "path": "verl/utils/torch_functional.py",
+      "content_hash": "83ddf9d6084c5fd563c31c2fa5bfbde4",
+      "last_modified": 1769138298.6612325,
+      "size": 39657,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/seqlen_balancing.py": {
+      "path": "verl/utils/seqlen_balancing.py",
+      "content_hash": "3ef61f0b3f7b0c936fdf6bbf2761a1ac",
+      "last_modified": 1769138298.643428,
+      "size": 22461,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/groupwise.py": {
+      "path": "verl/utils/groupwise.py",
+      "content_hash": "490b9b40ec6592c60359c32ec2c523f3",
+      "last_modified": 1769138298.0618496,
+      "size": 7698,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/rollout_trace.py": {
+      "path": "verl/utils/rollout_trace.py",
+      "content_hash": "b9ef1209b5fd095163b46ca55b7230ee",
+      "last_modified": 1769138298.6390462,
+      "size": 10218,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/memory_utils.py": {
+      "path": "verl/utils/memory_utils.py",
+      "content_hash": "b2d5192807efb272014d569403f01237",
+      "last_modified": 1769138298.1410673,
+      "size": 10672,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/device.py": {
+      "path": "verl/utils/device.py",
+      "content_hash": "de9efcbec347e27402c34d2713abb291",
+      "last_modified": 1769138298.0383077,
+      "size": 5353,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/attention_utils.py": {
+      "path": "verl/utils/attention_utils.py",
+      "content_hash": "e3309a461113ae7915b75aba2ed9ad1f",
+      "last_modified": 1769138297.978779,
+      "size": 3986,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/logging_utils.py": {
+      "path": "verl/utils/logging_utils.py",
+      "content_hash": "cde72731e993d43159a204ceb904ef44",
+      "last_modified": 1769138298.091587,
+      "size": 1051,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/chat_template.py": {
+      "path": "verl/utils/chat_template.py",
+      "content_hash": "b8e25f6c60ffb38dc5bded23279b4016",
+      "last_modified": 1769138297.9815552,
+      "size": 1645,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/hdfs_io.py": {
+      "path": "verl/utils/hdfs_io.py",
+      "content_hash": "650e34e05192ceb4d03e9a3ab81bba0c",
+      "last_modified": 1769138298.0647714,
+      "size": 4645,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/py_functional.py": {
+      "path": "verl/utils/py_functional.py",
+      "content_hash": "3e1c57387e1083750d90cc21f799a45c",
+      "last_modified": 1769138298.1890924,
+      "size": 12649,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/npu_flash_attn_utils.py": {
+      "path": "verl/utils/npu_flash_attn_utils.py",
+      "content_hash": "8debfd6423ef556df604473282abf4ef",
+      "last_modified": 1769138298.159736,
+      "size": 6075,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/flops_counter.py": {
+      "path": "verl/utils/flops_counter.py",
+      "content_hash": "02c1fa235003d1525858753693efb2a1",
+      "last_modified": 1769138298.0526164,
+      "size": 24262,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/config.py": {
+      "path": "verl/utils/config.py",
+      "content_hash": "a91b086dd9d070539327a37a10100936",
+      "last_modified": 1769138297.9996874,
+      "size": 8882,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/memory_buffer.py": {
+      "path": "verl/utils/memory_buffer.py",
+      "content_hash": "6b9595e183fd41dd1222c19b8aa57c21",
+      "last_modified": 1769138298.138351,
+      "size": 8037,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/tokenizer.py": {
+      "path": "verl/utils/tokenizer.py",
+      "content_hash": "fdec8370d75c9d4e2f9991b3dabb6256",
+      "last_modified": 1769138298.6542168,
+      "size": 4611,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/tensordict_utils.py": {
+      "path": "verl/utils/tensordict_utils.py",
+      "content_hash": "1251e9fe34ec037e760eebe27087b6d9",
+      "last_modified": 1769138298.6511433,
+      "size": 32350,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/fs.py": {
+      "path": "verl/utils/fs.py",
+      "content_hash": "60b86fc3706f7cceca73deab2c59cb92",
+      "last_modified": 1769138298.0556908,
+      "size": 10942,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/net_utils.py": {
+      "path": "verl/utils/net_utils.py",
+      "content_hash": "467b5833b698486fe646bf858625b757",
+      "last_modified": 1769138298.1560562,
+      "size": 2631,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/veomni_utils.py": {
+      "path": "verl/utils/veomni_utils.py",
+      "content_hash": "6397def0af368ef89c76aa9026671342",
+      "last_modified": 1769138298.6789546,
+      "size": 2811,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/torch_dtypes.py": {
+      "path": "verl/utils/torch_dtypes.py",
+      "content_hash": "6dc8ef5aa4d87a2f7814b02de1f13ea1",
+      "last_modified": 1769138298.6573641,
+      "size": 2223,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/tracking.py": {
+      "path": "verl/utils/tracking.py",
+      "content_hash": "ec97a85819296f3812ad31cd1e17d794",
+      "last_modified": 1770005698.3798335,
+      "size": 18589,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/ulysses.py": {
+      "path": "verl/utils/ulysses.py",
+      "content_hash": "13fee58f324cc81eea4cd1c9d350dd65",
+      "last_modified": 1769138298.6758657,
+      "size": 12350,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/megatron_utils.py": {
+      "path": "verl/utils/megatron_utils.py",
+      "content_hash": "6fb0a9d632c2d462666879a7f48c8808",
+      "last_modified": 1769138298.1352153,
+      "size": 55785,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/__init__.py": {
+      "path": "verl/utils/__init__.py",
+      "content_hash": "a3025bfd8a7e175cbbb4b0489fdd060d",
+      "last_modified": 1769138297.9727752,
+      "size": 984,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/distributed.py": {
+      "path": "verl/utils/distributed.py",
+      "content_hash": "0a40e646350832c279e5f4e0b2fe301e",
+      "last_modified": 1769138298.0407233,
+      "size": 5997,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/single_controller/__init__.py": {
+      "path": "verl/single_controller/__init__.py",
+      "content_hash": "1bb66cff939cabce86d05e90ff27dc65",
+      "last_modified": 1769138297.650351,
+      "size": 940,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/interactions/base.py": {
+      "path": "verl/interactions/base.py",
+      "content_hash": "f7ddbc59c58e7420105c056851b486f0",
+      "last_modified": 1769138297.1814513,
+      "size": 3003,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/interactions/gsm8k_interaction.py": {
+      "path": "verl/interactions/gsm8k_interaction.py",
+      "content_hash": "ff8f048c662653661290640d011fc05e",
+      "last_modified": 1769138297.1840057,
+      "size": 3110,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/interactions/weather_interaction.py": {
+      "path": "verl/interactions/weather_interaction.py",
+      "content_hash": "0f10f23a36c034cbac7f722210b315a4",
+      "last_modified": 1769138297.1940901,
+      "size": 2986,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/fsdp_utils.py": {
+      "path": "verl/utils/fsdp_utils.py",
+      "content_hash": "3e191515a09bb109fc287fe5e114beb8",
+      "last_modified": 1769138298.0588064,
+      "size": 27901,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/interactions/__init__.py": {
+      "path": "verl/interactions/__init__.py",
+      "content_hash": "8208a9166e7548215d6122861578d957",
+      "last_modified": 1769138297.178492,
+      "size": 688,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/fsdp_workers.py": {
+      "path": "verl/workers/fsdp_workers.py",
+      "content_hash": "c8bcf485930d4a05fed539ea0823abbc",
+      "last_modified": 1769138298.8376293,
+      "size": 97950,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/activation_offload.py": {
+      "path": "verl/utils/activation_offload.py",
+      "content_hash": "5470183b0b6a398b3305a5b79352c266",
+      "last_modified": 1769138297.9760175,
+      "size": 22610,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/__init__.py": {
+      "path": "verl/workers/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1769138298.7058144,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/engine_workers.py": {
+      "path": "verl/workers/engine_workers.py",
+      "content_hash": "16e391fc2da8636abc60966fa8bb6e3d",
+      "last_modified": 1769138298.8338807,
+      "size": 29021,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/sharding_manager/base.py": {
+      "path": "verl/workers/sharding_manager/base.py",
+      "content_hash": "9fc055e647a6663337c22368c764fa4a",
+      "last_modified": 1769138298.9959216,
+      "size": 1031,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/sharding_manager/fsdp_ulysses.py": {
+      "path": "verl/workers/sharding_manager/fsdp_ulysses.py",
+      "content_hash": "49afc60d96d12f238b4603cef444d73c",
+      "last_modified": 1769138298.9986625,
+      "size": 2793,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/sharding_manager/__init__.py": {
+      "path": "verl/workers/sharding_manager/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1769138298.9925704,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/reward_model/base.py": {
+      "path": "verl/workers/reward_model/base.py",
+      "content_hash": "084004ca8a0d8f06e47b839b5faab12e",
+      "last_modified": 1769138298.8726149,
+      "size": 2093,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/reward_model/__init__.py": {
+      "path": "verl/workers/reward_model/__init__.py",
+      "content_hash": "7f0714bed0a012ccae0b231603126be2",
+      "last_modified": 1769138298.8691845,
+      "size": 672,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/critic/base.py": {
+      "path": "verl/workers/critic/base.py",
+      "content_hash": "f4774e83a3163988c576f9249baf4565",
+      "last_modified": 1769138298.768019,
+      "size": 1094,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/critic/megatron_critic.py": {
+      "path": "verl/workers/critic/megatron_critic.py",
+      "content_hash": "a1905179c3ca5f0edb95958da5462161",
+      "last_modified": 1769138298.7755961,
+      "size": 14392,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/megatron_workers.py": {
+      "path": "verl/workers/megatron_workers.py",
+      "content_hash": "2e76748cf459455be610c205337a72f8",
+      "last_modified": 1769138298.8410878,
+      "size": 72044,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/reward_manager/registry.py": {
+      "path": "verl/workers/reward_manager/registry.py",
+      "content_hash": "bb45738f43af483ec5c2cd86d6ecf42c",
+      "last_modified": 1769138298.8652804,
+      "size": 1901,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/critic/__init__.py": {
+      "path": "verl/workers/critic/__init__.py",
+      "content_hash": "ee2667a051f8c62170cfed7c31874ff3",
+      "last_modified": 1769138298.7641122,
+      "size": 732,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/critic/dp_critic.py": {
+      "path": "verl/workers/critic/dp_critic.py",
+      "content_hash": "040e73c0e7c904f54a64e8ce34a5850b",
+      "last_modified": 1769138298.7718275,
+      "size": 12318,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/reward_manager/prime.py": {
+      "path": "verl/workers/reward_manager/prime.py",
+      "content_hash": "98ca42105da3a07c7d8f378e689e73c9",
+      "last_modified": 1769138298.8623405,
+      "size": 7734,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/reward_manager/dapo.py": {
+      "path": "verl/workers/reward_manager/dapo.py",
+      "content_hash": "aa1861d438df6a7672eb5ab623b5939a",
+      "last_modified": 1769138298.8546205,
+      "size": 6037,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/reward_manager/naive.py": {
+      "path": "verl/workers/reward_manager/naive.py",
+      "content_hash": "b6cdfb89606261072c06332cc52e8307",
+      "last_modified": 1769138298.858673,
+      "size": 5315,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/reward_manager/batch.py": {
+      "path": "verl/workers/reward_manager/batch.py",
+      "content_hash": "b042b5a78d14305a85ec16d352fd0e1d",
+      "last_modified": 1769138298.852039,
+      "size": 5359,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/reward_manager/abstract.py": {
+      "path": "verl/workers/reward_manager/abstract.py",
+      "content_hash": "ef55d61fe1d4dd8e7a8850862c74f4f0",
+      "last_modified": 1769138298.849392,
+      "size": 2468,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/utils/__init__.py": {
+      "path": "verl/workers/utils/__init__.py",
+      "content_hash": "be074da7eb6023da8f5abe868f429f7f",
+      "last_modified": 1769138299.0027611,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/utils/padding.py": {
+      "path": "verl/workers/utils/padding.py",
+      "content_hash": "e4f54f9ff02a190cf636239dd9d96e4b",
+      "last_modified": 1769785020.9662027,
+      "size": 4456,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/utils/losses.py": {
+      "path": "verl/workers/utils/losses.py",
+      "content_hash": "ea435c1f12506bb74c159409b8b65e76",
+      "last_modified": 1769138299.006412,
+      "size": 8277,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/reward_manager/__init__.py": {
+      "path": "verl/workers/reward_manager/__init__.py",
+      "content_hash": "c23896132633bf5e3c57ec05650f98e6",
+      "last_modified": 1769138298.8463793,
+      "size": 1384,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/engine/utils.py": {
+      "path": "verl/workers/engine/utils.py",
+      "content_hash": "4abada7ba51696abbd79c23eaaa16be3",
+      "last_modified": 1769138298.8190315,
+      "size": 5655,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/engine/__init__.py": {
+      "path": "verl/workers/engine/__init__.py",
+      "content_hash": "b165f876cdb05f5512b9f634d63d30ba",
+      "last_modified": 1769138298.781917,
+      "size": 1487,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/config/model.py": {
+      "path": "verl/workers/config/model.py",
+      "content_hash": "8b2d2418dbdebf991a5f5cc36c273917",
+      "last_modified": 1769138298.748307,
+      "size": 7291,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/config/critic.py": {
+      "path": "verl/workers/config/critic.py",
+      "content_hash": "173f82a82f6b91f700df75db4e522b03",
+      "last_modified": 1769138298.7388198,
+      "size": 10906,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/config/actor.py": {
+      "path": "verl/workers/config/actor.py",
+      "content_hash": "f2bec28009c4113705ef1ebf573b145f",
+      "last_modified": 1769138298.7356772,
+      "size": 14097,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/config/rollout.py": {
+      "path": "verl/workers/config/rollout.py",
+      "content_hash": "39526381e2caebc686029ebe493c68e2",
+      "last_modified": 1770139484.1597426,
+      "size": 9588,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/config/optimizer.py": {
+      "path": "verl/workers/config/optimizer.py",
+      "content_hash": "1c0cd5278da025f0ee53c3e4fb6d8022",
+      "last_modified": 1769138298.7510595,
+      "size": 7502,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/engine/base.py": {
+      "path": "verl/workers/engine/base.py",
+      "content_hash": "a254e1216f1c2a644ad6ea9ee5416ae2",
+      "last_modified": 1769138298.7858405,
+      "size": 12304,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/config/reward_model.py": {
+      "path": "verl/workers/config/reward_model.py",
+      "content_hash": "3a6b1fed3e0cc7995ea0478c46a3a9b6",
+      "last_modified": 1769138298.754182,
+      "size": 2300,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/config/megatron_peft.py": {
+      "path": "verl/workers/config/megatron_peft.py",
+      "content_hash": "b16d5dd47fab5251d6dcff20344312a3",
+      "last_modified": 1769138298.7454097,
+      "size": 5004,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/actor/base.py": {
+      "path": "verl/workers/actor/base.py",
+      "content_hash": "70acc752b0e6e015fd4e50e1a30c55f7",
+      "last_modified": 1769138298.71402,
+      "size": 2038,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/config/engine.py": {
+      "path": "verl/workers/config/engine.py",
+      "content_hash": "8c14b911930679d9056340af85696781",
+      "last_modified": 1769138298.7420564,
+      "size": 12933,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/config/__init__.py": {
+      "path": "verl/workers/config/__init__.py",
+      "content_hash": "ed6b656d8d2e6771d3e659eae3329248",
+      "last_modified": 1769138298.7321754,
+      "size": 1106,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/actor/__init__.py": {
+      "path": "verl/workers/actor/__init__.py",
+      "content_hash": "4236a92425b4e525f4966e8cd9d2f92b",
+      "last_modified": 1769138298.710692,
+      "size": 727,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/actor/dp_actor.py": {
+      "path": "verl/workers/actor/dp_actor.py",
+      "content_hash": "df6fb8912ee0b8078890305826e4afa7",
+      "last_modified": 1769138298.723781,
+      "size": 32412,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/rollout/hf_rollout.py": {
+      "path": "verl/workers/rollout/hf_rollout.py",
+      "content_hash": "8336fb6f34de8d89738144f384cc0448",
+      "last_modified": 1769138298.9230099,
+      "size": 7527,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/rollout/base.py": {
+      "path": "verl/workers/rollout/base.py",
+      "content_hash": "ba819f6d649ba60572efa68f5d13f338",
+      "last_modified": 1769138298.9196434,
+      "size": 3161,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/rollout/tokenizer.py": {
+      "path": "verl/workers/rollout/tokenizer.py",
+      "content_hash": "8cc2fc27962e50f7b8029a52ad00772d",
+      "last_modified": 1769138298.9575603,
+      "size": 5640,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/actor/megatron_actor.py": {
+      "path": "verl/workers/actor/megatron_actor.py",
+      "content_hash": "bc13d79b3865ae3cb93680a333afe168",
+      "last_modified": 1769138298.7272217,
+      "size": 40683,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/rollout/utils.py": {
+      "path": "verl/workers/rollout/utils.py",
+      "content_hash": "e8167e805b542d55795457dcaf9f209c",
+      "last_modified": 1769138298.9723172,
+      "size": 2775,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/rollout/replica.py": {
+      "path": "verl/workers/rollout/replica.py",
+      "content_hash": "d67fc3023919961ff7b8b0f164a21083",
+      "last_modified": 1769138298.9330635,
+      "size": 12659,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/rollout/schemas.py": {
+      "path": "verl/workers/rollout/schemas.py",
+      "content_hash": "134dd42cb61842c4033ba19be18e1281",
+      "last_modified": 1769138298.9360592,
+      "size": 31032,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/rollout/vllm_rollout/utils.py": {
+      "path": "verl/workers/rollout/vllm_rollout/utils.py",
+      "content_hash": "229c5624967b4b0665b61e7e2f92a8ad",
+      "last_modified": 1769138298.9810169,
+      "size": 2996,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/rollout/__init__.py": {
+      "path": "verl/workers/rollout/__init__.py",
+      "content_hash": "5fd3a18a4ca0d258556d4ab9ce4837d9",
+      "last_modified": 1769138298.8838935,
+      "size": 793,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/rollout/vllm_rollout/__init__.py": {
+      "path": "verl/workers/rollout/vllm_rollout/__init__.py",
+      "content_hash": "440f1de2104f18e1bd44a037d16c7d54",
+      "last_modified": 1769138298.9775822,
+      "size": 1446,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/rollout/trtllm_rollout/trtllm_rollout.py": {
+      "path": "verl/workers/rollout/trtllm_rollout/trtllm_rollout.py",
+      "content_hash": "31dfebe398dc47d9bfbd3e9d36081179",
+      "last_modified": 1769138298.969444,
+      "size": 17326,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/rollout/vllm_rollout/vllm_async_server.py": {
+      "path": "verl/workers/rollout/vllm_rollout/vllm_async_server.py",
+      "content_hash": "168fc06cf57a837f2bb6c4dc5ba8252a",
+      "last_modified": 1769138298.984817,
+      "size": 36489,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/rollout/trtllm_rollout/trtllm_async_server.py": {
+      "path": "verl/workers/rollout/trtllm_rollout/trtllm_async_server.py",
+      "content_hash": "59e59f6824ac760374b0b79fbb17a882",
+      "last_modified": 1769138298.9661024,
+      "size": 14251,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/rollout/sglang_rollout/sglang_rollout.py": {
+      "path": "verl/workers/rollout/sglang_rollout/sglang_rollout.py",
+      "content_hash": "7f09a5539f86fcba8ac22b989aaefe26",
+      "last_modified": 1769138298.9515007,
+      "size": 8497,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/rollout/sglang_rollout/utils.py": {
+      "path": "verl/workers/rollout/sglang_rollout/utils.py",
+      "content_hash": "08cacba55d580a3f46ce622aae7800dc",
+      "last_modified": 1769138298.9548337,
+      "size": 3908,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/rollout/sglang_rollout/async_sglang_server.py": {
+      "path": "verl/workers/rollout/sglang_rollout/async_sglang_server.py",
+      "content_hash": "319fe1dd2ad33ece746d33cd3a0fef81",
+      "last_modified": 1769138298.9452047,
+      "size": 23303,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/rollout/sglang_rollout/__init__.py": {
+      "path": "verl/workers/rollout/sglang_rollout/__init__.py",
+      "content_hash": "b374365299acdce24ad6939c2688ada6",
+      "last_modified": 1769138298.941608,
+      "size": 567,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/rollout/naive/naive_rollout.py": {
+      "path": "verl/workers/rollout/naive/naive_rollout.py",
+      "content_hash": "0cb8cdc853a615f3a48d6e280be33b06",
+      "last_modified": 1769138298.9297595,
+      "size": 4837,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/rollout/naive/__init__.py": {
+      "path": "verl/workers/rollout/naive/__init__.py",
+      "content_hash": "6e67bd504a938146b0390bb3d446bdfd",
+      "last_modified": 1769138298.926837,
+      "size": 669,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/engine/megatron/utils.py": {
+      "path": "verl/workers/engine/megatron/utils.py",
+      "content_hash": "29614fb94dd2771484b7b63109fb1989",
+      "last_modified": 1769138298.8078804,
+      "size": 1221,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/rollout/sglang_rollout/http_server_engine.py": {
+      "path": "verl/workers/rollout/sglang_rollout/http_server_engine.py",
+      "content_hash": "3393098c5523109966d59a5169ab6040",
+      "last_modified": 1769138298.9484138,
+      "size": 39642,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/engine/megatron/__init__.py": {
+      "path": "verl/workers/engine/megatron/__init__.py",
+      "content_hash": "40b346794687b0119de66b63c988491f",
+      "last_modified": 1769138298.802189,
+      "size": 1041,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/engine/megatron/transformer_impl.py": {
+      "path": "verl/workers/engine/megatron/transformer_impl.py",
+      "content_hash": "51a443a0d2b669b49642871a3aaa03be",
+      "last_modified": 1769138298.8054695,
+      "size": 30236,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/engine/mindspeed/__init__.py": {
+      "path": "verl/workers/engine/mindspeed/__init__.py",
+      "content_hash": "5afae63e17f691d960dc4ebeb14c8fbf",
+      "last_modified": 1769138298.8123267,
+      "size": 698,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/rollout/vllm_rollout/vllm_rollout.py": {
+      "path": "verl/workers/rollout/vllm_rollout/vllm_rollout.py",
+      "content_hash": "3f4e056b271452926cd97e1c196880cb",
+      "last_modified": 1769138298.9880803,
+      "size": 13235,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/engine/fsdp/utils.py": {
+      "path": "verl/workers/engine/fsdp/utils.py",
+      "content_hash": "4b79d2331adc2d2cfe111def1752a76f",
+      "last_modified": 1769138298.798011,
+      "size": 2379,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/engine/fsdp/transformer_impl.py": {
+      "path": "verl/workers/engine/fsdp/transformer_impl.py",
+      "content_hash": "c5b1254883d39995e7d4f4dbb9d496e0",
+      "last_modified": 1769138298.795292,
+      "size": 45387,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/engine/fsdp/__init__.py": {
+      "path": "verl/workers/engine/fsdp/__init__.py",
+      "content_hash": "ae2080147fe713b9f08d98fa5142a56b",
+      "last_modified": 1769138298.791535,
+      "size": 713,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/engine/mindspeed/transformer_impl.py": {
+      "path": "verl/workers/engine/mindspeed/transformer_impl.py",
+      "content_hash": "f0440c233e9645e75734c1d54f684dc5",
+      "last_modified": 1769138298.8160233,
+      "size": 1724,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/engine/veomni/utils.py": {
+      "path": "verl/workers/engine/veomni/utils.py",
+      "content_hash": "31349a97a49141c624e04547bc5815ce",
+      "last_modified": 1769138298.8296688,
+      "size": 924,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/engine/veomni/__init__.py": {
+      "path": "verl/workers/engine/veomni/__init__.py",
+      "content_hash": "0470e71cbab0ebd9b4321defc5093519",
+      "last_modified": 1769138298.8237274,
+      "size": 722,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/engine/veomni/transformer_impl.py": {
+      "path": "verl/workers/engine/veomni/transformer_impl.py",
+      "content_hash": "6c2976d8a3a371e37444995fc43e357a",
+      "last_modified": 1769138298.8272254,
+      "size": 18433,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/reward_model/megatron/__init__.py": {
+      "path": "verl/workers/reward_model/megatron/__init__.py",
+      "content_hash": "efcb75d6d041a42816ad9a7a996bb259",
+      "last_modified": 1769138298.876722,
+      "size": 682,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/interactions/utils/interaction_registry.py": {
+      "path": "verl/interactions/utils/interaction_registry.py",
+      "content_hash": "664b0d85afb4e3865183ccaaa7ad1832",
+      "last_modified": 1769138297.1914606,
+      "size": 3119,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/workers/reward_model/megatron/reward_model.py": {
+      "path": "verl/workers/reward_model/megatron/reward_model.py",
+      "content_hash": "3226f2460fe36a2ab4869e2e5d5fac8f",
+      "last_modified": 1769138298.879831,
+      "size": 16290,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/interactions/utils/__init__.py": {
+      "path": "verl/interactions/utils/__init__.py",
+      "content_hash": "82263e881d39d7c6a33a0ca233bc3aa6",
+      "last_modified": 1769138297.1884532,
+      "size": 634,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/single_controller/base/worker.py": {
+      "path": "verl/single_controller/base/worker.py",
+      "content_hash": "4d5ad318a3588705629ffc2d6e66151c",
+      "last_modified": 1769138297.6645598,
+      "size": 13397,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/single_controller/ray/__init__.py": {
+      "path": "verl/single_controller/ray/__init__.py",
+      "content_hash": "4bccfb5cba79d3015ca70056928a580a",
+      "last_modified": 1769138297.6745403,
+      "size": 976,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/single_controller/base/decorator.py": {
+      "path": "verl/single_controller/base/decorator.py",
+      "content_hash": "946ceeb24506cd7ccb26829de1557981",
+      "last_modified": 1769138297.6604333,
+      "size": 17296,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/single_controller/base/worker_group.py": {
+      "path": "verl/single_controller/base/worker_group.py",
+      "content_hash": "66fff5c6f545127d046c95c4a8d9dedb",
+      "last_modified": 1769138297.6677673,
+      "size": 9818,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/megatron/pipeline_parallel.py": {
+      "path": "verl/utils/megatron/pipeline_parallel.py",
+      "content_hash": "b1806b21b83f3d0cb5b627492d20c9d2",
+      "last_modified": 1769138298.1143916,
+      "size": 2732,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/single_controller/base/__init__.py": {
+      "path": "verl/single_controller/base/__init__.py",
+      "content_hash": "cf6b75cceba2156d03d7e9cd99044656",
+      "last_modified": 1769138297.656125,
+      "size": 773,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/megatron/memory.py": {
+      "path": "verl/utils/megatron/memory.py",
+      "content_hash": "07eaead899ddc8c2d510daf60443c1fd",
+      "last_modified": 1769138298.1068292,
+      "size": 1456,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/megatron/tensor_parallel.py": {
+      "path": "verl/utils/megatron/tensor_parallel.py",
+      "content_hash": "e2381dccae3207af2743b73b399552b4",
+      "last_modified": 1769138298.1277213,
+      "size": 7148,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/megatron/router_replay_patch.py": {
+      "path": "verl/utils/megatron/router_replay_patch.py",
+      "content_hash": "d8249177d53f08a9e9cb9b500e123a0f",
+      "last_modified": 1769138298.117835,
+      "size": 14934,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/single_controller/ray/base.py": {
+      "path": "verl/single_controller/ray/base.py",
+      "content_hash": "d37583b1582375d501b5f65964eea52a",
+      "last_modified": 1769138297.678002,
+      "size": 42692,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/megatron/optimizer.py": {
+      "path": "verl/utils/megatron/optimizer.py",
+      "content_hash": "bab56f29210fb07e3932c54ec12a02f9",
+      "last_modified": 1769138298.1105952,
+      "size": 4070,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/megatron/dist_checkpointing.py": {
+      "path": "verl/utils/megatron/dist_checkpointing.py",
+      "content_hash": "d4df0d8be11d38d9d43017fa714eaa1d",
+      "last_modified": 1769138298.102741,
+      "size": 2377,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/megatron/__init__.py": {
+      "path": "verl/utils/megatron/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1769138298.0987198,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/megatron/sequence_parallel.py": {
+      "path": "verl/utils/megatron/sequence_parallel.py",
+      "content_hash": "0db576cf94bc6ca841fda1087265f7a1",
+      "last_modified": 1769138298.124253,
+      "size": 1820,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/metric/utils.py": {
+      "path": "verl/utils/metric/utils.py",
+      "content_hash": "56b61453231f21fce7dd7b8ecc155502",
+      "last_modified": 1769138298.149978,
+      "size": 5283,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/megatron/router_replay_utils.py": {
+      "path": "verl/utils/megatron/router_replay_utils.py",
+      "content_hash": "ad3bec04de36ace40c6df372a5562076",
+      "last_modified": 1769138298.1211684,
+      "size": 21185,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/metric/__init__.py": {
+      "path": "verl/utils/metric/__init__.py",
+      "content_hash": "f4c60a16d4538fa29e4a42eac7e3d50d",
+      "last_modified": 1769138298.1462772,
+      "size": 719,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/experimental/__init__.py": {
+      "path": "verl/utils/experimental/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1769138298.0454972,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/profiler/empty_annotations.py": {
+      "path": "verl/utils/profiler/empty_annotations.py",
+      "content_hash": "9226123f76fdb29d7ad19c0a8426b7e3",
+      "last_modified": 1769138298.1721597,
+      "size": 1116,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/experimental/torch_functional.py": {
+      "path": "verl/utils/experimental/torch_functional.py",
+      "content_hash": "8f0a58b268039cfe56d1b36fa75adec1",
+      "last_modified": 1769138298.0488641,
+      "size": 7983,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/profiler/torch_profile.py": {
+      "path": "verl/utils/profiler/torch_profile.py",
+      "content_hash": "67ccd51d98279c7fd3b2f0de459057cd",
+      "last_modified": 1769138298.1858678,
+      "size": 5849,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/profiler/nvtx_profile.py": {
+      "path": "verl/utils/profiler/nvtx_profile.py",
+      "content_hash": "d6dda2850370d0338e20ce4e77494d20",
+      "last_modified": 1769138298.1778052,
+      "size": 6323,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/profiler/config.py": {
+      "path": "verl/utils/profiler/config.py",
+      "content_hash": "2883c3cfa8b3801a29a602fc5430b8f1",
+      "last_modified": 1769138298.1691067,
+      "size": 6372,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/profiler/profile.py": {
+      "path": "verl/utils/profiler/profile.py",
+      "content_hash": "df583ae7e830e56094f3cf35bc2ce574",
+      "last_modified": 1769138298.1834512,
+      "size": 10322,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/profiler/__init__.py": {
+      "path": "verl/utils/profiler/__init__.py",
+      "content_hash": "9fa033eeb0567be60197c35aa33cde03",
+      "last_modified": 1769138298.1655004,
+      "size": 1520,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/profiler/mstx_profile.py": {
+      "path": "verl/utils/profiler/mstx_profile.py",
+      "content_hash": "7b92bc00c75231a5c03b41a3aedaef07",
+      "last_modified": 1769138298.1752584,
+      "size": 9250,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/rendezvous/__init__.py": {
+      "path": "verl/utils/rendezvous/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1769138298.1958172,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/rendezvous/ray_backend.py": {
+      "path": "verl/utils/rendezvous/ray_backend.py",
+      "content_hash": "d35ac918cb894fc6485fc32bd031d992",
+      "last_modified": 1769138298.1986616,
+      "size": 2591,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/reward_score/gsm8k.py": {
+      "path": "verl/utils/reward_score/gsm8k.py",
+      "content_hash": "30a7c80c965d9d09656c48feb7d34b3b",
+      "last_modified": 1769138298.209118,
+      "size": 2751,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/reward_score/math_batch.py": {
+      "path": "verl/utils/reward_score/math_batch.py",
+      "content_hash": "0c782d71c1f8cee0611593ba0b52a5c0",
+      "last_modified": 1769138298.2121162,
+      "size": 1070,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/reward_score/math_reward.py": {
+      "path": "verl/utils/reward_score/math_reward.py",
+      "content_hash": "6703cd3c9e7e9667bac888444363429d",
+      "last_modified": 1769138298.5131347,
+      "size": 6668,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/reward_score/geo3k.py": {
+      "path": "verl/utils/reward_score/geo3k.py",
+      "content_hash": "2ae9b06a4cf594bf90df21e6106c9579",
+      "last_modified": 1769138298.20666,
+      "size": 1411,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/profiler/performance.py": {
+      "path": "verl/utils/profiler/performance.py",
+      "content_hash": "dbe7bbeef4621023f7f69f46c406d5f8",
+      "last_modified": 1769138298.1803403,
+      "size": 9980,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/reward_score/math_verify.py": {
+      "path": "verl/utils/reward_score/math_verify.py",
+      "content_hash": "cabcda8ff417c862a442855aa409f03f",
+      "last_modified": 1769138298.5936713,
+      "size": 1514,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/reward_score/video_reasoning.py": {
+      "path": "verl/utils/reward_score/video_reasoning.py",
+      "content_hash": "f06d086da1db2567e0f2f359a23460bb",
+      "last_modified": 1769680473.9966373,
+      "size": 2613,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/reward_score/test_bbox_comparison.py": {
+      "path": "verl/utils/reward_score/test_bbox_comparison.py",
+      "content_hash": "89a8a78b1edc0fc4d56bf747b085caa7",
+      "last_modified": 1770143624.2931776,
+      "size": 48621,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/reward_score/search_r1_like_qa_em.py": {
+      "path": "verl/utils/reward_score/search_r1_like_qa_em.py",
+      "content_hash": "b7811d93c7160de2d2dfa667fd79f04a",
+      "last_modified": 1769138298.6333785,
+      "size": 5338,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/reward_score/video_reasoning_async.py": {
+      "path": "verl/utils/reward_score/video_reasoning_async.py",
+      "content_hash": "cb2f4fbcb98a5b665b4092f81ad25834",
+      "last_modified": 1770273038.7985988,
+      "size": 46513,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/reward_score/math_dapo.py": {
+      "path": "verl/utils/reward_score/math_dapo.py",
+      "content_hash": "37b70a5aedd6ac7903ef3017ae59424e",
+      "last_modified": 1769138298.2223122,
+      "size": 7751,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/reward_score/__init__.py": {
+      "path": "verl/utils/reward_score/__init__.py",
+      "content_hash": "68a7cdbb1c1131d5c808f955cc0e4976",
+      "last_modified": 1769693408.5805993,
+      "size": 5114,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/vllm/patch.py": {
+      "path": "verl/utils/vllm/patch.py",
+      "content_hash": "b95b9428ad9eeda16027e006ac686b87",
+      "last_modified": 1769138298.6880367,
+      "size": 5044,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/vllm/__init__.py": {
+      "path": "verl/utils/vllm/__init__.py",
+      "content_hash": "7ef44bcce762c565a2f1fc61fd91551c",
+      "last_modified": 1769138298.6838882,
+      "size": 1008,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/sglang/sglang_fp8_utils.py": {
+      "path": "verl/utils/sglang/sglang_fp8_utils.py",
+      "content_hash": "acb9f471b39a1ef4c0a2f46f318e00d2",
+      "last_modified": 1769138298.6477165,
+      "size": 6303,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/vllm/utils.py": {
+      "path": "verl/utils/vllm/utils.py",
+      "content_hash": "af7def0ca0c53694b2505246cc18e842",
+      "last_modified": 1769138298.691862,
+      "size": 5723,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/kernel/kernels.py": {
+      "path": "verl/utils/kernel/kernels.py",
+      "content_hash": "cdfafaa6a587c833cc893c75606c10a3",
+      "last_modified": 1769138298.0752695,
+      "size": 65119,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/vllm/vllm_fp8_utils.py": {
+      "path": "verl/utils/vllm/vllm_fp8_utils.py",
+      "content_hash": "9b191421a2ffef1b4eb4ae3a91b752e7",
+      "last_modified": 1769138298.6955526,
+      "size": 20220,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/kernel/__init__.py": {
+      "path": "verl/utils/kernel/__init__.py",
+      "content_hash": "fbe9b5e3483acc619591f77a3c494b12",
+      "last_modified": 1769138298.0710514,
+      "size": 1285,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/kernel/linear_cross_entropy.py": {
+      "path": "verl/utils/kernel/linear_cross_entropy.py",
+      "content_hash": "46374e6fc8703669c8fda0bb2ad794ff",
+      "last_modified": 1769138298.0788915,
+      "size": 4798,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/dataset/vision_utils.py": {
+      "path": "verl/utils/dataset/vision_utils.py",
+      "content_hash": "667b971e64236670bedcbce5915d85c7",
+      "last_modified": 1769138298.0227349,
+      "size": 4308,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/dataset/rm_dataset.py": {
+      "path": "verl/utils/dataset/rm_dataset.py",
+      "content_hash": "3f6bde3783d2f70c27ef58396bfa3373",
+      "last_modified": 1769138298.0175595,
+      "size": 6212,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/dataset/multiturn_sft_dataset.py": {
+      "path": "verl/utils/dataset/multiturn_sft_dataset.py",
+      "content_hash": "a98ac1a9453e6646edade14aa661f3b2",
+      "last_modified": 1769138298.012039,
+      "size": 18971,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/dataset/dataset_utils.py": {
+      "path": "verl/utils/dataset/dataset_utils.py",
+      "content_hash": "57890dc1535f38bfe260be5faa7d08d4",
+      "last_modified": 1769138298.0090802,
+      "size": 2600,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/dataset/__init__.py": {
+      "path": "verl/utils/dataset/__init__.py",
+      "content_hash": "e616ae8fc48c0bd57cacf80bcfb8a57c",
+      "last_modified": 1769138298.0065567,
+      "size": 761,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/dataset/sft_dataset.py": {
+      "path": "verl/utils/dataset/sft_dataset.py",
+      "content_hash": "94728b8fdf4a30ab9124a06a95c28e2a",
+      "last_modified": 1769138298.0200932,
+      "size": 8334,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/dataset/rl_dataset.py": {
+      "path": "verl/utils/dataset/rl_dataset.py",
+      "content_hash": "4bb45b4a631e753bf2b21eb7e632439d",
+      "last_modified": 1769138298.0149386,
+      "size": 20672,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/debug/metrics.py": {
+      "path": "verl/utils/debug/metrics.py",
+      "content_hash": "842d1adf7fa9b6c8b64a9c0692218f7e",
+      "last_modified": 1769138298.030446,
+      "size": 4858,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/debug/trajectory_tracker.py": {
+      "path": "verl/utils/debug/trajectory_tracker.py",
+      "content_hash": "dba4ed8bb43e2b7d1ff74699764b4095",
+      "last_modified": 1769138298.0357695,
+      "size": 3146,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/logger/__init__.py": {
+      "path": "verl/utils/logger/__init__.py",
+      "content_hash": "a0e2931075844c7666fea4ff2855d2ae",
+      "last_modified": 1769138298.084401,
+      "size": 925,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/logger/aggregate_logger.py": {
+      "path": "verl/utils/logger/aggregate_logger.py",
+      "content_hash": "5d57961039d3d057f7ed5f6f7cdd78d2",
+      "last_modified": 1769138298.087993,
+      "size": 4808,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/debug/__init__.py": {
+      "path": "verl/utils/debug/__init__.py",
+      "content_hash": "876b80407ff77d8aa36cb0a53b9d71b2",
+      "last_modified": 1769138298.0271585,
+      "size": 745,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/debug/performance.py": {
+      "path": "verl/utils/debug/performance.py",
+      "content_hash": "fb0c50ac64c68dde24c8d22617f18a8f",
+      "last_modified": 1769138298.0330868,
+      "size": 820,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/checkpoint/fsdp_checkpoint_manager.py": {
+      "path": "verl/utils/checkpoint/fsdp_checkpoint_manager.py",
+      "content_hash": "a1ef2bef8914705334b37ac6e68c67ca",
+      "last_modified": 1769138297.9941552,
+      "size": 16793,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/checkpoint/checkpoint_handler.py": {
+      "path": "verl/utils/checkpoint/checkpoint_handler.py",
+      "content_hash": "775253813350750fe1b0cf2f76697ef3",
+      "last_modified": 1769138297.9884782,
+      "size": 8569,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/checkpoint/checkpoint_manager.py": {
+      "path": "verl/utils/checkpoint/checkpoint_manager.py",
+      "content_hash": "70a7f963f8515e5ba3503c8180d2cbfa",
+      "last_modified": 1769138297.9912236,
+      "size": 10410,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/checkpoint/megatron_checkpoint_manager.py": {
+      "path": "verl/utils/checkpoint/megatron_checkpoint_manager.py",
+      "content_hash": "96901026e2e997b92fe33a11416f2bd5",
+      "last_modified": 1769138297.9971063,
+      "size": 30484,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/reward_score/prime_math/grader.py": {
+      "path": "verl/utils/reward_score/prime_math/grader.py",
+      "content_hash": "2a2bb7f24c3a484bda4342ee61ffdc0c",
+      "last_modified": 1769138298.620223,
+      "size": 14568,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/reward_score/prime_math/math_normalize.py": {
+      "path": "verl/utils/reward_score/prime_math/math_normalize.py",
+      "content_hash": "5efa39d4f03afb4c039f159b471796d1",
+      "last_modified": 1769138298.6228726,
+      "size": 6299,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/checkpoint/__init__.py": {
+      "path": "verl/utils/checkpoint/__init__.py",
+      "content_hash": "79d24e9123a7a9516b33d1d342960d74",
+      "last_modified": 1769138297.9856215,
+      "size": 724,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/reward_score/prime_math/__init__.py": {
+      "path": "verl/utils/reward_score/prime_math/__init__.py",
+      "content_hash": "3400ca36b9b13942cb08dd337f5ee481",
+      "last_modified": 1769138298.6169116,
+      "size": 12523,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/reward_score/sandbox_fusion/utils.py": {
+      "path": "verl/utils/reward_score/sandbox_fusion/utils.py",
+      "content_hash": "e96032e798e7731bb22b792b37b1b4d9",
+      "last_modified": 1769138298.6303473,
+      "size": 24546,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/reward_score/prime_code/utils.py": {
+      "path": "verl/utils/reward_score/prime_code/utils.py",
+      "content_hash": "ce1a0a0f9d263635e726f23bff2a40ef",
+      "last_modified": 1769138298.612119,
+      "size": 2213,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/reward_score/sandbox_fusion/__init__.py": {
+      "path": "verl/utils/reward_score/sandbox_fusion/__init__.py",
+      "content_hash": "55d9bbd9800aec79605126b8fc3bb566",
+      "last_modified": 1769138298.6271572,
+      "size": 5255,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/reward_score/prime_code/__init__.py": {
+      "path": "verl/utils/reward_score/prime_code/__init__.py",
+      "content_hash": "e0858b1c9e10680f68247c8f1d1a6251",
+      "last_modified": 1769138298.604191,
+      "size": 3128,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/utils/reward_score/prime_code/testing_util.py": {
+      "path": "verl/utils/reward_score/prime_code/testing_util.py",
+      "content_hash": "fe110b86a7c9bb2f32c40be9f2ebfd12",
+      "last_modified": 1769138298.6091921,
+      "size": 26704,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/transformers/glm4v.py": {
+      "path": "verl/models/transformers/glm4v.py",
+      "content_hash": "de0fc581fe865b44e9c07f38bcee8169",
+      "last_modified": 1769138297.5889199,
+      "size": 21847,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/transformers/npu_patch.py": {
+      "path": "verl/models/transformers/npu_patch.py",
+      "content_hash": "fc29af102e4e5dfa557daa6c06aa4324",
+      "last_modified": 1769138297.6014595,
+      "size": 12122,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/transformers/qwen2_vl.py": {
+      "path": "verl/models/transformers/qwen2_vl.py",
+      "content_hash": "f559f4597c420514f49232a84e85b508",
+      "last_modified": 1770003990.566933,
+      "size": 23340,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/transformers/apertus.py": {
+      "path": "verl/models/transformers/apertus.py",
+      "content_hash": "20442315254062301f36c33aae771404",
+      "last_modified": 1769138297.5820963,
+      "size": 4748,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/transformers/dense_common.py": {
+      "path": "verl/models/transformers/dense_common.py",
+      "content_hash": "7ebb4b078a40c058b7b2425cda8c05be",
+      "last_modified": 1769138297.5852718,
+      "size": 6745,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/transformers/kimi_vl.py": {
+      "path": "verl/models/transformers/kimi_vl.py",
+      "content_hash": "1249ebe05bb2b91e29faeb4df9821093",
+      "last_modified": 1769138297.5921876,
+      "size": 8571,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/transformers/monkey_patch.py": {
+      "path": "verl/models/transformers/monkey_patch.py",
+      "content_hash": "ea8f6d24f8e25ee5a871f3c7f541ec89",
+      "last_modified": 1769138297.5985548,
+      "size": 23108,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/transformers/llama.py": {
+      "path": "verl/models/transformers/llama.py",
+      "content_hash": "a43f4c2a64acf4e2e27b6ddb7e32a053",
+      "last_modified": 1769138297.5952492,
+      "size": 10498,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/transformers/tiled_mlp.py": {
+      "path": "verl/models/transformers/tiled_mlp.py",
+      "content_hash": "f9ccdbc1c5e82b8174b7f8eeaed69dce",
+      "last_modified": 1769138297.6147587,
+      "size": 8634,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/transformers/__init__.py": {
+      "path": "verl/models/transformers/__init__.py",
+      "content_hash": "9d178cbec3ad9ae7c935cc25d0e4eb65",
+      "last_modified": 1769138297.5785527,
+      "size": 823,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/transformers/qwen2.py": {
+      "path": "verl/models/transformers/qwen2.py",
+      "content_hash": "ac951a2c5992837f091abd2947d663c0",
+      "last_modified": 1769138297.60441,
+      "size": 10429,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/transformers/qwen3_vl.py": {
+      "path": "verl/models/transformers/qwen3_vl.py",
+      "content_hash": "e4aaf9da579b3b1a6bd5e2db3dac5863",
+      "last_modified": 1769138297.6115901,
+      "size": 16004,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/qwen2/__init__.py": {
+      "path": "verl/models/qwen2/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1769138297.5269608,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/patch_v012.py": {
+      "path": "verl/models/mcore/patch_v012.py",
+      "content_hash": "17638fa762454c7aa059a5459f447d33",
+      "last_modified": 1769138297.4730222,
+      "size": 10200,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/model_forward.py": {
+      "path": "verl/models/mcore/model_forward.py",
+      "content_hash": "de3d90689dbf458c0f700be74e6f7725",
+      "last_modified": 1769138297.4571505,
+      "size": 11877,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/model_initializer.py": {
+      "path": "verl/models/mcore/model_initializer.py",
+      "content_hash": "a5781a11a579309cf61946e9f31b391c",
+      "last_modified": 1769138297.4669175,
+      "size": 11896,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/registry.py": {
+      "path": "verl/models/mcore/registry.py",
+      "content_hash": "313eb850a437035efcd74e2e415371ab",
+      "last_modified": 1769138297.5102482,
+      "size": 11868,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/model_forward_fused.py": {
+      "path": "verl/models/mcore/model_forward_fused.py",
+      "content_hash": "02e25380f940a24f4f5cbc8296cbe850",
+      "last_modified": 1769138297.4639354,
+      "size": 9033,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/loader.py": {
+      "path": "verl/models/mcore/loader.py",
+      "content_hash": "9f0ea0aa685de87fc3fadce7db47df3b",
+      "last_modified": 1769138297.450095,
+      "size": 22451,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/saver.py": {
+      "path": "verl/models/mcore/saver.py",
+      "content_hash": "3c3d7f3f589fa6b1990a50b30aa8e0c7",
+      "last_modified": 1769138297.513629,
+      "size": 21166,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/util.py": {
+      "path": "verl/models/mcore/util.py",
+      "content_hash": "b360242c0d969111cdb62beef3109463",
+      "last_modified": 1769138297.517466,
+      "size": 21180,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/config_converter.py": {
+      "path": "verl/models/mcore/config_converter.py",
+      "content_hash": "6abccf0d144130e2a8761f39c4357c1d",
+      "last_modified": 1769138297.4457479,
+      "size": 15914,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/weight_converter.py": {
+      "path": "verl/models/mcore/weight_converter.py",
+      "content_hash": "329f2ff307cfabda2c346ebe351469f8",
+      "last_modified": 1769138297.5211077,
+      "size": 25740,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/__init__.py": {
+      "path": "verl/models/mcore/__init__.py",
+      "content_hash": "7e20d0b0457b082693e9bcc15e50c18a",
+      "last_modified": 1769138297.437661,
+      "size": 1063,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/mbridge.py": {
+      "path": "verl/models/mcore/mbridge.py",
+      "content_hash": "5ed06fcd838211b6a5952cb3d48a194b",
+      "last_modified": 1769138297.4541137,
+      "size": 1028,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/mtp_patch.py": {
+      "path": "verl/models/mcore/mtp_patch.py",
+      "content_hash": "9f143ea27d59e21886832229fa41c289",
+      "last_modified": 1769138297.4701629,
+      "size": 11356,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/model_forward_1f1b_overlap.py": {
+      "path": "verl/models/mcore/model_forward_1f1b_overlap.py",
+      "content_hash": "fbfea0dd77ce7749652c4205312d992a",
+      "last_modified": 1769138297.4604394,
+      "size": 11723,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/llama/__init__.py": {
+      "path": "verl/models/llama/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1769138297.3744998,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/bridge.py": {
+      "path": "verl/models/mcore/bridge.py",
+      "content_hash": "96509c49fca5ee197ae28812e97aa963",
+      "last_modified": 1769138297.4420283,
+      "size": 6429,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/llama/megatron/__init__.py": {
+      "path": "verl/models/llama/megatron/__init__.py",
+      "content_hash": "f61e499fd0623fdabf9a8d0df5321fd0",
+      "last_modified": 1769138297.3885493,
+      "size": 1165,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/llama/megatron/layers/parallel_linear.py": {
+      "path": "verl/models/llama/megatron/layers/parallel_linear.py",
+      "content_hash": "12afb2dc0fc887e655bb1398fccc7292",
+      "last_modified": 1769138297.4194283,
+      "size": 3319,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/llama/megatron/modeling_llama_megatron.py": {
+      "path": "verl/models/llama/megatron/modeling_llama_megatron.py",
+      "content_hash": "20fa63b42ab00aecdf9cf8c0c4255a2d",
+      "last_modified": 1769138297.4307702,
+      "size": 28527,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/llama/megatron/layers/parallel_mlp.py": {
+      "path": "verl/models/llama/megatron/layers/parallel_mlp.py",
+      "content_hash": "d41e8fdde552465a4fcd4b4b0e1bea45",
+      "last_modified": 1769138297.4229565,
+      "size": 3156,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/llama/megatron/layers/parallel_rmsnorm.py": {
+      "path": "verl/models/llama/megatron/layers/parallel_rmsnorm.py",
+      "content_hash": "4ec54b5f3ec931ff87d2620284df71f5",
+      "last_modified": 1769138297.4267476,
+      "size": 1793,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/llama/megatron/layers/parallel_decoder.py": {
+      "path": "verl/models/llama/megatron/layers/parallel_decoder.py",
+      "content_hash": "909ee6ed7d1ed46fd18ab37886bc1ba8",
+      "last_modified": 1769138297.41557,
+      "size": 6177,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/llama/megatron/checkpoint_utils/llama_loader.py": {
+      "path": "verl/models/llama/megatron/checkpoint_utils/llama_loader.py",
+      "content_hash": "6f037718ae75ffd3cf4aea7845089eef",
+      "last_modified": 1769138297.3970675,
+      "size": 13900,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/llama/megatron/checkpoint_utils/llama_loader_depracated.py": {
+      "path": "verl/models/llama/megatron/checkpoint_utils/llama_loader_depracated.py",
+      "content_hash": "374e1fcefb9aa715cf9ce70ef1934fbb",
+      "last_modified": 1769138297.399981,
+      "size": 19445,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/llama/megatron/checkpoint_utils/llama_saver.py": {
+      "path": "verl/models/llama/megatron/checkpoint_utils/llama_saver.py",
+      "content_hash": "f7c59a32d93d3f787de650bf8d09ade1",
+      "last_modified": 1769138297.4031696,
+      "size": 17997,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/llama/megatron/checkpoint_utils/__init__.py": {
+      "path": "verl/models/llama/megatron/checkpoint_utils/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1769138297.3937035,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/llama/megatron/layers/parallel_attention.py": {
+      "path": "verl/models/llama/megatron/layers/parallel_attention.py",
+      "content_hash": "5236acc76388ab2107d01f7038a140e6",
+      "last_modified": 1769138297.4120893,
+      "size": 21339,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/llama/megatron/layers/__init__.py": {
+      "path": "verl/models/llama/megatron/layers/__init__.py",
+      "content_hash": "5687ecf4bbb2566dbafb6abfb0ca3a9e",
+      "last_modified": 1769138297.4082603,
+      "size": 1203,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/qwen2_5_vl/vision_transformer_block.py": {
+      "path": "verl/models/mcore/qwen2_5_vl/vision_transformer_block.py",
+      "content_hash": "9cb51139df8baf547490d90a2baa5af3",
+      "last_modified": 1769138297.5024843,
+      "size": 12821,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/qwen2_5_vl/model.py": {
+      "path": "verl/models/mcore/qwen2_5_vl/model.py",
+      "content_hash": "5d932f023f1469b71acbf7496a2c2689",
+      "last_modified": 1769138297.4883518,
+      "size": 18229,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/qwen2_5_vl/rope_utils.py": {
+      "path": "verl/models/mcore/qwen2_5_vl/rope_utils.py",
+      "content_hash": "3f3729a969b7b589a776286f9f101af6",
+      "last_modified": 1769138297.4914467,
+      "size": 12677,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/qwen2_5_vl/attention.py": {
+      "path": "verl/models/mcore/qwen2_5_vl/attention.py",
+      "content_hash": "05a638bd298a5438701f928c8d102255",
+      "last_modified": 1769138297.4836695,
+      "size": 9856,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/qwen2_5_vl/vision_config.py": {
+      "path": "verl/models/mcore/qwen2_5_vl/vision_config.py",
+      "content_hash": "54cad3e73615cb0aa4db29aaa1ef329e",
+      "last_modified": 1769138297.4951537,
+      "size": 3524,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/qwen2_5_vl/vision_model.py": {
+      "path": "verl/models/mcore/qwen2_5_vl/vision_model.py",
+      "content_hash": "c0cdacd1bda26d966eda5fd652e7f834",
+      "last_modified": 1769138297.4988718,
+      "size": 13189,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/mcore/qwen2_5_vl/__init__.py": {
+      "path": "verl/models/mcore/qwen2_5_vl/__init__.py",
+      "content_hash": "0cbbfb64b604c0af45423928a6cfbab9",
+      "last_modified": 1769138297.4795115,
+      "size": 908,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/qwen2/megatron/modeling_qwen2_megatron.py": {
+      "path": "verl/models/qwen2/megatron/modeling_qwen2_megatron.py",
+      "content_hash": "4171b17a5a1097e6f21e5aeb30d5b19d",
+      "last_modified": 1769138297.5707088,
+      "size": 31004,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/qwen2/megatron/__init__.py": {
+      "path": "verl/models/qwen2/megatron/__init__.py",
+      "content_hash": "068c3684ae62e209c3f0dd017a37c963",
+      "last_modified": 1769138297.53319,
+      "size": 1165,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/qwen2/megatron/layers/parallel_linear.py": {
+      "path": "verl/models/qwen2/megatron/layers/parallel_linear.py",
+      "content_hash": "6bb2f65d896ffe57a5ec825cc45c6cda",
+      "last_modified": 1769138297.562314,
+      "size": 2543,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/qwen2/megatron/layers/parallel_mlp.py": {
+      "path": "verl/models/qwen2/megatron/layers/parallel_mlp.py",
+      "content_hash": "029dd11b52ca459f19281f4df2a6fcb4",
+      "last_modified": 1769138297.5650575,
+      "size": 3156,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/qwen2/megatron/layers/parallel_rmsnorm.py": {
+      "path": "verl/models/qwen2/megatron/layers/parallel_rmsnorm.py",
+      "content_hash": "05164e596c82a497808473cd850bb6ff",
+      "last_modified": 1769138297.567695,
+      "size": 1784,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/qwen2/megatron/layers/parallel_attention.py": {
+      "path": "verl/models/qwen2/megatron/layers/parallel_attention.py",
+      "content_hash": "5a4533cc7620027b7fa3e4cc0f7d2726",
+      "last_modified": 1769138297.557085,
+      "size": 18093,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/qwen2/megatron/layers/parallel_decoder.py": {
+      "path": "verl/models/qwen2/megatron/layers/parallel_decoder.py",
+      "content_hash": "91482501bb0a6471343cd5a46024301a",
+      "last_modified": 1769138297.5596259,
+      "size": 6177,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/qwen2/megatron/layers/__init__.py": {
+      "path": "verl/models/qwen2/megatron/layers/__init__.py",
+      "content_hash": "f9ae50ce38ff20b3e037db5a959ba25c",
+      "last_modified": 1769138297.5537605,
+      "size": 1006,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/qwen2/megatron/checkpoint_utils/qwen2_loader.py": {
+      "path": "verl/models/qwen2/megatron/checkpoint_utils/qwen2_loader.py",
+      "content_hash": "80729c040a8c26f38caddee7df19fee4",
+      "last_modified": 1769138297.5420787,
+      "size": 14996,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/qwen2/megatron/checkpoint_utils/__init__.py": {
+      "path": "verl/models/qwen2/megatron/checkpoint_utils/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1769138297.5386083,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/qwen2/megatron/checkpoint_utils/qwen2_loader_depracated.py": {
+      "path": "verl/models/qwen2/megatron/checkpoint_utils/qwen2_loader_depracated.py",
+      "content_hash": "88afc566b337edc73705029649401da6",
+      "last_modified": 1769138297.5450861,
+      "size": 20262,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/tools/utils/tool_registry.py": {
+      "path": "verl/tools/utils/tool_registry.py",
+      "content_hash": "85718d0c6136d350344aba4249cba799",
+      "last_modified": 1769138297.7657373,
+      "size": 5354,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/models/qwen2/megatron/checkpoint_utils/qwen2_saver.py": {
+      "path": "verl/models/qwen2/megatron/checkpoint_utils/qwen2_saver.py",
+      "content_hash": "44c33654cc8fe02ee0d41ce711764932",
+      "last_modified": 1769138297.548584,
+      "size": 18153,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/tools/utils/search_r1_like_utils.py": {
+      "path": "verl/tools/utils/search_r1_like_utils.py",
+      "content_hash": "7c62550968e6a29a3669bf103429997b",
+      "last_modified": 1769138297.7626843,
+      "size": 9995,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/tools/utils/__init__.py": {
+      "path": "verl/tools/utils/__init__.py",
+      "content_hash": "82263e881d39d7c6a33a0ca233bc3aa6",
+      "last_modified": 1769138297.7517111,
+      "size": 634,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/tools/utils/mcp_clients/utils.py": {
+      "path": "verl/tools/utils/mcp_clients/utils.py",
+      "content_hash": "ae7b07b302123be3cadc22df4cc344b7",
+      "last_modified": 1769138297.7597096,
+      "size": 1887,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/trainer/config/config.py": {
+      "path": "verl/trainer/config/config.py",
+      "content_hash": "803931c3d9e8bf1d8154d15ee4ed80a3",
+      "last_modified": 1769138297.8049614,
+      "size": 5337,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/trainer/config/algorithm.py": {
+      "path": "verl/trainer/config/algorithm.py",
+      "content_hash": "83b1cd71bc96deba2f6bdbe63b77c3c3",
+      "last_modified": 1769138297.7973711,
+      "size": 26002,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/tools/utils/mcp_clients/McpClientManager.py": {
+      "path": "verl/tools/utils/mcp_clients/McpClientManager.py",
+      "content_hash": "4542551726ccf28cc7533f137e4487b1",
+      "last_modified": 1769138297.756464,
+      "size": 3616,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/trainer/config/__init__.py": {
+      "path": "verl/trainer/config/__init__.py",
+      "content_hash": "a99370ae10f293d87a81311300d821ba",
+      "last_modified": 1769138297.7765548,
+      "size": 754,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/trainer/ppo/rollout_corr_helper.py": {
+      "path": "verl/trainer/ppo/rollout_corr_helper.py",
+      "content_hash": "a735439c0cdafc479ef3a6aa5d1db3c3",
+      "last_modified": 1769138297.9562669,
+      "size": 51735,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/trainer/ppo/prefix_grouper_utils.py": {
+      "path": "verl/trainer/ppo/prefix_grouper_utils.py",
+      "content_hash": "7f93621b13441cb849617455903423bc",
+      "last_modified": 1769138297.945105,
+      "size": 7216,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/trainer/ppo/ray_trainer.py": {
+      "path": "verl/trainer/ppo/ray_trainer.py",
+      "content_hash": "400935adb539f6c74f536ea36f8e3412",
+      "last_modified": 1769138297.9492106,
+      "size": 86555,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/trainer/ppo/metric_utils.py": {
+      "path": "verl/trainer/ppo/metric_utils.py",
+      "content_hash": "27d808b78675a824adebde2772e5d915",
+      "last_modified": 1769138297.9420993,
+      "size": 28602,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/trainer/ppo/core_algos.py": {
+      "path": "verl/trainer/ppo/core_algos.py",
+      "content_hash": "e546ba637588f2242106f936724cc96c",
+      "last_modified": 1769138297.9383085,
+      "size": 89039,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/trainer/ppo/utils.py": {
+      "path": "verl/trainer/ppo/utils.py",
+      "content_hash": "6d5b954f53450d7d57b07300c87b400d",
+      "last_modified": 1769138297.9596775,
+      "size": 2931,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/trainer/ppo/reward.py": {
+      "path": "verl/trainer/ppo/reward.py",
+      "content_hash": "b85bcf8f29c711c60dceb4d9bd45451d",
+      "last_modified": 1769138297.9524424,
+      "size": 8730,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/trainer/ppo/__init__.py": {
+      "path": "verl/trainer/ppo/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1769138297.9337418,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/vla/dp_rob.py": {
+      "path": "verl/experimental/vla/dp_rob.py",
+      "content_hash": "3f1d84912e7a101b74126051d7563845",
+      "last_modified": 1769138297.0870616,
+      "size": 13663,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/vla/fsdp_workers.py": {
+      "path": "verl/experimental/vla/fsdp_workers.py",
+      "content_hash": "fdfb02b12455b3bc2af0f513665247c3",
+      "last_modified": 1769138297.1209812,
+      "size": 11595,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/vla/naive_rollout_rob.py": {
+      "path": "verl/experimental/vla/naive_rollout_rob.py",
+      "content_hash": "50df77506613f9c26e74be9e6bee4b1c",
+      "last_modified": 1769138297.1473684,
+      "size": 9726,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/vla/rob_ray_trainer.py": {
+      "path": "verl/experimental/vla/rob_ray_trainer.py",
+      "content_hash": "748600a2073fa5d526279428419be5f6",
+      "last_modified": 1769138297.156163,
+      "size": 33327,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/vla/prepare_libero_dataset.py": {
+      "path": "verl/experimental/vla/prepare_libero_dataset.py",
+      "content_hash": "34af11ca00df246bc6b55472e8c9e47d",
+      "last_modified": 1769138297.1503334,
+      "size": 6071,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/vla/main_ppo.py": {
+      "path": "verl/experimental/vla/main_ppo.py",
+      "content_hash": "e7cf9285285f034f1cde84b34fd8e4f6",
+      "last_modified": 1769138297.1235604,
+      "size": 6207,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/one_step_off_policy/fsdp_workers.py": {
+      "path": "verl/experimental/one_step_off_policy/fsdp_workers.py",
+      "content_hash": "fb4c7baadcbb240d3a38211db0429bb6",
+      "last_modified": 1769138296.9401348,
+      "size": 6757,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/vla/env_loop.py": {
+      "path": "verl/experimental/vla/env_loop.py",
+      "content_hash": "eac01f3476d214ec65b53c2b69647e9a",
+      "last_modified": 1769138297.090224,
+      "size": 9215,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/one_step_off_policy/ray_trainer.py": {
+      "path": "verl/experimental/one_step_off_policy/ray_trainer.py",
+      "content_hash": "c67fb60f1e88eb3004fa9821cc6dcd05",
+      "last_modified": 1769138296.9497488,
+      "size": 36370,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/one_step_off_policy/utils.py": {
+      "path": "verl/experimental/one_step_off_policy/utils.py",
+      "content_hash": "03649e5abd98921bb82d3bba558e0859",
+      "last_modified": 1769138297.0000885,
+      "size": 1427,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/one_step_off_policy/distributed_utils.py": {
+      "path": "verl/experimental/one_step_off_policy/distributed_utils.py",
+      "content_hash": "1aaa9d9d137facccc26657b50e1c618f",
+      "last_modified": 1769138296.9366348,
+      "size": 5505,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/one_step_off_policy/main_ppo.py": {
+      "path": "verl/experimental/one_step_off_policy/main_ppo.py",
+      "content_hash": "d5d7c50dfdbac99ea092f0cce0e34e9a",
+      "last_modified": 1769138296.9432514,
+      "size": 8895,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/agent_loop/tool_parser.py": {
+      "path": "verl/experimental/agent_loop/tool_parser.py",
+      "content_hash": "28779e03eac1632fa82b2031d6115cd9",
+      "last_modified": 1769586153.2080936,
+      "size": 8674,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/agent_loop/agent_loop.py": {
+      "path": "verl/experimental/agent_loop/agent_loop.py",
+      "content_hash": "bc70eb6bb4e0d3bd7a262e7e59f783ba",
+      "last_modified": 1770204349.7201734,
+      "size": 53304,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/agent_loop/utils.py": {
+      "path": "verl/experimental/agent_loop/utils.py",
+      "content_hash": "8d798f774d331f9cf5e8f770ba001dcf",
+      "last_modified": 1769138296.7727199,
+      "size": 4333,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/one_step_off_policy/megatron_workers.py": {
+      "path": "verl/experimental/one_step_off_policy/megatron_workers.py",
+      "content_hash": "376249e6ce2a232a0763df1d360178b2",
+      "last_modified": 1769138296.946362,
+      "size": 6982,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/agent_loop/video_reasoning_agent_loop.py": {
+      "path": "verl/experimental/agent_loop/video_reasoning_agent_loop.py",
+      "content_hash": "7df9ae0167ece2b60aa56def14003bdd",
+      "last_modified": 1770204318.5958543,
+      "size": 29748,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/agent_loop/single_turn_agent_loop.py": {
+      "path": "verl/experimental/agent_loop/single_turn_agent_loop.py",
+      "content_hash": "e2e7c33d0487072e1b3fb5f3aa011ec9",
+      "last_modified": 1770003978.3485181,
+      "size": 3451,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/agent_loop/__init__.py": {
+      "path": "verl/experimental/agent_loop/__init__.py",
+      "content_hash": "ff9c7b6422acd0674f6f76f0a3b496b7",
+      "last_modified": 1769397078.5218368,
+      "size": 1047,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/dynamic_dataset/dynamicgen_dataset.py": {
+      "path": "verl/experimental/dynamic_dataset/dynamicgen_dataset.py",
+      "content_hash": "9457ebdccdb437d65b79914b85df24df",
+      "last_modified": 1769138296.7874408,
+      "size": 4082,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/agent_loop/prometheus_utils.py": {
+      "path": "verl/experimental/agent_loop/prometheus_utils.py",
+      "content_hash": "c51516f5f9cedc23f3b2935ab1c8b3ec",
+      "last_modified": 1769138296.7613559,
+      "size": 4095,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/dynamic_dataset/__init__.py": {
+      "path": "verl/experimental/dynamic_dataset/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1769138296.7845573,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/dataset/sampler.py": {
+      "path": "verl/experimental/dataset/sampler.py",
+      "content_hash": "d1ac32422f87eabe83b8a8b5f066e2d5",
+      "last_modified": 1769138296.7799664,
+      "size": 1188,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/dataset/__init__.py": {
+      "path": "verl/experimental/dataset/__init__.py",
+      "content_hash": "411c221c7a08ff370b44605fd57e958b",
+      "last_modified": 1769138296.776918,
+      "size": 600,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/agent_loop/tool_agent_loop.py": {
+      "path": "verl/experimental/agent_loop/tool_agent_loop.py",
+      "content_hash": "e73e1f20faf85d648413dd87dc3635d9",
+      "last_modified": 1770003969.6645117,
+      "size": 22145,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/reward_loop/reward_model.py": {
+      "path": "verl/experimental/reward_loop/reward_model.py",
+      "content_hash": "b714a9940a3947489b9145b97176ce99",
+      "last_modified": 1769138297.0374703,
+      "size": 4669,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/reward_loop/__init__.py": {
+      "path": "verl/experimental/reward_loop/__init__.py",
+      "content_hash": "74fb54a60570a325ca5b2a1ae69d4a5c",
+      "last_modified": 1769138297.0048733,
+      "size": 782,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/reward_loop/reward_loop.py": {
+      "path": "verl/experimental/reward_loop/reward_loop.py",
+      "content_hash": "a2ffff1ecfed3c2e4e889a80a4d5f969",
+      "last_modified": 1769138297.008358,
+      "size": 13473,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/fsdp2_utils.py": {
+      "path": "verl/experimental/fully_async_policy/fsdp2_utils.py",
+      "content_hash": "e7047499bc17127739f4deb488933c8e",
+      "last_modified": 1769138296.8298485,
+      "size": 5899,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/message_queue.py": {
+      "path": "verl/experimental/fully_async_policy/message_queue.py",
+      "content_hash": "3ac8a631030485b6e34d92a389a0251c",
+      "last_modified": 1769138296.8523014,
+      "size": 10115,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/ray_trainer.py": {
+      "path": "verl/experimental/fully_async_policy/ray_trainer.py",
+      "content_hash": "a195702d0b564c44fafafd11a4235976",
+      "last_modified": 1769138296.8587554,
+      "size": 25672,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/fsdp_workers.py": {
+      "path": "verl/experimental/fully_async_policy/fsdp_workers.py",
+      "content_hash": "853e2c3bfe10d0b8a3ab61c02405144b",
+      "last_modified": 1769138296.8327951,
+      "size": 11147,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/fully_async_rollouter.py": {
+      "path": "verl/experimental/fully_async_policy/fully_async_rollouter.py",
+      "content_hash": "0443c4cefb516817524b2bed4436f85f",
+      "last_modified": 1769138296.8394005,
+      "size": 34804,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/megatron_worker.py": {
+      "path": "verl/experimental/fully_async_policy/megatron_worker.py",
+      "content_hash": "756f011b2bbbef5530f2b2002753d78e",
+      "last_modified": 1769138296.849238,
+      "size": 11887,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/base_detach_sync.py": {
+      "path": "verl/experimental/fully_async_policy/base_detach_sync.py",
+      "content_hash": "53185954ee8f04cbe3726b15f1c22d42",
+      "last_modified": 1769138296.8117135,
+      "size": 9487,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/fully_async_trainer.py": {
+      "path": "verl/experimental/fully_async_policy/fully_async_trainer.py",
+      "content_hash": "8a2d17e1d115647bca5fd027bbf57740",
+      "last_modified": 1769138296.8432436,
+      "size": 28505,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/param_sync.py": {
+      "path": "verl/experimental/fully_async_policy/param_sync.py",
+      "content_hash": "f43dc7a3bd92858c0fc960edf1acee67",
+      "last_modified": 1769138296.8547564,
+      "size": 6286,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/fully_async_main.py": {
+      "path": "verl/experimental/fully_async_policy/fully_async_main.py",
+      "content_hash": "a31d2cbc215227d57ef0b7edb09e627e",
+      "last_modified": 1769138296.8360913,
+      "size": 12809,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/megatron_utils.py": {
+      "path": "verl/experimental/fully_async_policy/megatron_utils.py",
+      "content_hash": "4fe9c5a303ece257a66d6a35841c0e25",
+      "last_modified": 1769138296.846248,
+      "size": 3994,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/detach_utils.py": {
+      "path": "verl/experimental/fully_async_policy/detach_utils.py",
+      "content_hash": "5be4590765811d4d481937d2ca035ebe",
+      "last_modified": 1769138296.8269172,
+      "size": 13622,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/transfer_queue/agent_loop.py": {
+      "path": "verl/experimental/transfer_queue/agent_loop.py",
+      "content_hash": "119709a4091e81eb10b04a6ea629b848",
+      "last_modified": 1769138297.0527673,
+      "size": 4472,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/checkpoint_engine.py": {
+      "path": "verl/experimental/fully_async_policy/checkpoint_engine.py",
+      "content_hash": "8c1fef21013a725e2d2b299f39204c8a",
+      "last_modified": 1769138296.8150008,
+      "size": 21046,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/transfer_queue/main_ppo.py": {
+      "path": "verl/experimental/transfer_queue/main_ppo.py",
+      "content_hash": "e94c252e293d67a380a31dc3f9f92e17",
+      "last_modified": 1769138297.06535,
+      "size": 8681,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/vllm_rollout/vllm_async_server.py": {
+      "path": "verl/experimental/fully_async_policy/vllm_rollout/vllm_async_server.py",
+      "content_hash": "f71022ad9f873f288f5b5fc7064e1cc7",
+      "last_modified": 1769138296.9139612,
+      "size": 5713,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/sglang_rollout/sglang_async_server.py": {
+      "path": "verl/experimental/fully_async_policy/sglang_rollout/sglang_async_server.py",
+      "content_hash": "eafa104c7571daca719be3cde78a020b",
+      "last_modified": 1769138296.8652177,
+      "size": 6514,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/vllm_rollout/__init__.py": {
+      "path": "verl/experimental/fully_async_policy/vllm_rollout/__init__.py",
+      "content_hash": "831dc1e4637f693d77c85a6456e41956",
+      "last_modified": 1769138296.9111905,
+      "size": 598,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/unittest/simple_streaming_demo.py": {
+      "path": "verl/experimental/fully_async_policy/unittest/simple_streaming_demo.py",
+      "content_hash": "490b5f53db15f30316c352a3c2c317d5",
+      "last_modified": 1769138296.9071162,
+      "size": 6310,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/sglang_rollout/__init__.py": {
+      "path": "verl/experimental/fully_async_policy/sglang_rollout/__init__.py",
+      "content_hash": "831dc1e4637f693d77c85a6456e41956",
+      "last_modified": 1769138296.8624072,
+      "size": 598,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/agent_loop/partial_tool_agent_loop.py": {
+      "path": "verl/experimental/fully_async_policy/agent_loop/partial_tool_agent_loop.py",
+      "content_hash": "b93adcb607da8c4878c5a82bd504c96a",
+      "last_modified": 1769138296.808813,
+      "size": 12310,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/agent_loop/agent_loop.py": {
+      "path": "verl/experimental/fully_async_policy/agent_loop/agent_loop.py",
+      "content_hash": "9cc5ddf6a549e35315dd4312b0ab80fa",
+      "last_modified": 1769138296.8033147,
+      "size": 15586,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/agent_loop/partial_single_turn_agent_loop.py": {
+      "path": "verl/experimental/fully_async_policy/agent_loop/partial_single_turn_agent_loop.py",
+      "content_hash": "c2b0d9603646bdad4c39199fd6db7506",
+      "last_modified": 1769138296.805984,
+      "size": 5357,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/reward_loop/router/naive_router.py": {
+      "path": "verl/experimental/reward_loop/router/naive_router.py",
+      "content_hash": "602fb429a58a08cbcb8c249c0dfd7be0",
+      "last_modified": 1769138297.0474212,
+      "size": 6466,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/fully_async_policy/agent_loop/__init__.py": {
+      "path": "verl/experimental/fully_async_policy/agent_loop/__init__.py",
+      "content_hash": "190d41f1d486e8ba1ef6518db4d55501",
+      "last_modified": 1769138296.799205,
+      "size": 884,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/reward_loop/reward_manager/registry.py": {
+      "path": "verl/experimental/reward_loop/reward_manager/registry.py",
+      "content_hash": "acc1b8d3d6c069b19bcde4367317623d",
+      "last_modified": 1769138297.030924,
+      "size": 1921,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/reward_loop/router/inner_sglang_router.py": {
+      "path": "verl/experimental/reward_loop/router/inner_sglang_router.py",
+      "content_hash": "ac2b0be275d8335ba5e350a8efe31081",
+      "last_modified": 1769138297.0434701,
+      "size": 2473,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/reward_loop/reward_manager/base.py": {
+      "path": "verl/experimental/reward_loop/reward_manager/base.py",
+      "content_hash": "829cb54f792fe1f6c2e6bcc7a9e5730e",
+      "last_modified": 1769138297.0179667,
+      "size": 1718,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/transfer_queue/ray_trainer.py": {
+      "path": "verl/experimental/transfer_queue/ray_trainer.py",
+      "content_hash": "9ad592052d83c885c784d53893e06c11",
+      "last_modified": 1769138297.0700638,
+      "size": 81518,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/reward_loop/reward_manager/limited.py": {
+      "path": "verl/experimental/reward_loop/reward_manager/limited.py",
+      "content_hash": "22db0e110020d747180aa92d37f227cf",
+      "last_modified": 1769138297.0244346,
+      "size": 24031,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/reward_loop/reward_manager/naive.py": {
+      "path": "verl/experimental/reward_loop/reward_manager/naive.py",
+      "content_hash": "a787c21e8d93b94e1739a7703fa22e86",
+      "last_modified": 1769138297.027809,
+      "size": 4016,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/reward_loop/reward_manager/remote.py": {
+      "path": "verl/experimental/reward_loop/reward_manager/remote.py",
+      "content_hash": "343448c09361d3b563b92441f8984988",
+      "last_modified": 1769138297.0340934,
+      "size": 5276,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/reward_loop/reward_manager/dapo.py": {
+      "path": "verl/experimental/reward_loop/reward_manager/dapo.py",
+      "content_hash": "4f342d9a4fc857d8a7280c0ea1012a9c",
+      "last_modified": 1769138297.02133,
+      "size": 4888,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/one_step_off_policy/agent_loop/__init__.py": {
+      "path": "verl/experimental/one_step_off_policy/agent_loop/__init__.py",
+      "content_hash": "bfa62f6acf1b68e24eca410ef1d2d5d0",
+      "last_modified": 1769138296.922613,
+      "size": 690,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/one_step_off_policy/agent_loop/agent_loop.py": {
+      "path": "verl/experimental/one_step_off_policy/agent_loop/agent_loop.py",
+      "content_hash": "c42d7ecabaa06b7899525aa3f592faa8",
+      "last_modified": 1769138296.9255223,
+      "size": 2325,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/vla/envs/__init__.py": {
+      "path": "verl/experimental/vla/envs/__init__.py",
+      "content_hash": "5c240ba77670995e9c2cbe55e8d195b0",
+      "last_modified": 1769138297.0953712,
+      "size": 638,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/reward_loop/reward_manager/__init__.py": {
+      "path": "verl/experimental/reward_loop/reward_manager/__init__.py",
+      "content_hash": "69449dc776ecae7214750479b7d53756",
+      "last_modified": 1769138297.014249,
+      "size": 1001,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/vla/envs/libero_env/utils.py": {
+      "path": "verl/experimental/vla/envs/libero_env/utils.py",
+      "content_hash": "dba71cec0ea385d2ed716feebab596eb",
+      "last_modified": 1769138297.115178,
+      "size": 4587,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/vla/envs/action_utils.py": {
+      "path": "verl/experimental/vla/envs/action_utils.py",
+      "content_hash": "16fa596361278cf544ffaf8b14374b74",
+      "last_modified": 1769138297.0980942,
+      "size": 9707,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/vla/envs/libero_env/__init__.py": {
+      "path": "verl/experimental/vla/envs/libero_env/__init__.py",
+      "content_hash": "5c240ba77670995e9c2cbe55e8d195b0",
+      "last_modified": 1769138297.109541,
+      "size": 638,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/vla/envs/libero_env/libero_env.py": {
+      "path": "verl/experimental/vla/envs/libero_env/libero_env.py",
+      "content_hash": "5ca95a8a51a5dcdd5f1bf6fce296d2c3",
+      "last_modified": 1769138297.1126592,
+      "size": 15194,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/vla/envs/libero_env/venv.py": {
+      "path": "verl/experimental/vla/envs/libero_env/venv.py",
+      "content_hash": "bdab400578b14a3928629ae664004a51",
+      "last_modified": 1769138297.11813,
+      "size": 5888,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/vla/envs/isaac_env/__init__.py": {
+      "path": "verl/experimental/vla/envs/isaac_env/__init__.py",
+      "content_hash": "d6009e9f7a55e4e4d6184963c06af90e",
+      "last_modified": 1769138297.1021528,
+      "size": 658,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/vla/models/openvla_oft/constants.py": {
+      "path": "verl/experimental/vla/models/openvla_oft/constants.py",
+      "content_hash": "ef4bf232232fcd18ed1eea03b9dc2074",
+      "last_modified": 1769138297.1354342,
+      "size": 3409,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/vla/models/openvla_oft/configuration_prismatic.py": {
+      "path": "verl/experimental/vla/models/openvla_oft/configuration_prismatic.py",
+      "content_hash": "8a77ada936c3dca5319c20d740f03175",
+      "last_modified": 1769138297.1327868,
+      "size": 6631,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/vla/models/openvla_oft/train_utils.py": {
+      "path": "verl/experimental/vla/models/openvla_oft/train_utils.py",
+      "content_hash": "d739056decd3102d5bd28ecafacb2f59",
+      "last_modified": 1769138297.144543,
+      "size": 2553,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/vla/models/openvla_oft/modeling_prismatic.py": {
+      "path": "verl/experimental/vla/models/openvla_oft/modeling_prismatic.py",
+      "content_hash": "3fc077903ee547683f78a92f52a8cda0",
+      "last_modified": 1769138297.1390364,
+      "size": 88415,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/vla/envs/isaac_env/isaac_env.py": {
+      "path": "verl/experimental/vla/envs/isaac_env/isaac_env.py",
+      "content_hash": "fcfc1014de55f551e9d2de0d42c4dea5",
+      "last_modified": 1769138297.1054995,
+      "size": 11841,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/vla/models/openvla_oft/__init__.py": {
+      "path": "verl/experimental/vla/models/openvla_oft/__init__.py",
+      "content_hash": "c40fcd2378bf751f8cfc5d976de49848",
+      "last_modified": 1769138297.1297126,
+      "size": 601,
+      "language": "python",
+      "node_count": 0
+    },
+    "verl/experimental/vla/models/openvla_oft/processing_prismatic.py": {
+      "path": "verl/experimental/vla/models/openvla_oft/processing_prismatic.py",
+      "content_hash": "28dab8b533f76cc94a009dbe3e91afc6",
+      "last_modified": 1769138297.1420872,
+      "size": 13420,
+      "language": "python",
+      "node_count": 0
+    },
+    "recipe/collabllm/metrics/bleu_score.py": {
+      "path": "recipe/collabllm/metrics/bleu_score.py",
+      "content_hash": "4c21b5dbd546f3e9bc63a017e47f7600",
+      "last_modified": 1770100542.2956066,
+      "size": 4857,
+      "language": "python",
+      "node_count": 0
+    }
+  },
+  "metadata": {}
+}
