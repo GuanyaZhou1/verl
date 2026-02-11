@@ -4,7 +4,7 @@ Data preprocessing script for video reasoning multi-turn RL training.
 Converts the generated results.json format to veRL's parquet format.
 
 This script:
-1. Filters for multiple-choice questions (source="train", is_openended=False)
+1. Processes all samples (both multiple-choice and open-ended)
 2. Uses the eval script's prompt format (<think>, <segment>, <answer>)
 3. Converts to parquet format for veRL training
 
@@ -68,6 +68,7 @@ When ready to provide the final answer, enclose it within '<answer>' tags:
 """
 
 OUTPUT_TEMPLATE = "Please provide only the single option (e.g., A, B, C, D, etc.) within the <answer> </answer> tags."
+OUTPUT_TEMPLATE_OPENENDED = "Please provide your answer within the <answer> </answer> tags."
 
 
 def parse_args():
@@ -121,7 +122,8 @@ def format_options(options: Dict[str, str]) -> str:
 def create_prompt_messages(
     question: str,
     options: Dict[str, str],
-    duration: float = None
+    duration: float = None,
+    is_openended: bool = False
 ) -> List[Dict[str, Any]]:
     """
     Create the initial prompt as a messages list for veRL.
@@ -133,6 +135,7 @@ def create_prompt_messages(
         question: The question to answer
         options: Dictionary of answer options (e.g., {"A": "...", "B": "..."})
         duration: Duration of the video in seconds (optional)
+        is_openended: Whether this is an open-ended question
 
     Returns:
         List of message dictionaries in chat format
@@ -150,11 +153,13 @@ def create_prompt_messages(
     user_content_parts.append(MULTITURN_SYSTEM_PROMPT)
 
     # Add question and options (format aligned with eval script)
-    options_text = format_options(options) if options else ""
-    user_content_parts.append(f"\nQuestion:\n{question}\n\nOptions:\n{options_text}\n")
-
-    # Add output template
-    user_content_parts.append(OUTPUT_TEMPLATE)
+    if is_openended or not options:
+        user_content_parts.append(f"\nQuestion:\n{question}\n")
+        user_content_parts.append(OUTPUT_TEMPLATE_OPENENDED)
+    else:
+        options_text = format_options(options)
+        user_content_parts.append(f"\nQuestion:\n{question}\n\nOptions:\n{options_text}\n")
+        user_content_parts.append(OUTPUT_TEMPLATE)
 
     user_content = "".join(user_content_parts)
 
@@ -177,6 +182,7 @@ def process_sample(sample: Dict[str, Any], video_base_path: str) -> Dict[str, An
     question = sample["question"]
     correct_answer = sample["correct_answer"]
     options = sample.get("options", {})
+    is_openended = sample.get("is_openended", False)
 
     # Construct video path
     video_path = str(Path(video_base_path) / f"{video_id}.mp4")
@@ -186,7 +192,7 @@ def process_sample(sample: Dict[str, Any], video_base_path: str) -> Dict[str, An
 
     # Create the prompt as messages list (veRL expected format)
     # Contains <video> placeholder that will be replaced during data loading
-    prompt_messages = create_prompt_messages(question, options, duration=duration)
+    prompt_messages = create_prompt_messages(question, options, duration=duration, is_openended=is_openended)
 
     # Videos field - list of video info dicts
     # veRL's _build_messages will replace <video> placeholder with this
@@ -262,13 +268,10 @@ def main():
 
     print(f"Loaded {len(data)} samples")
 
-    # Filter for multiple-choice questions only
-    original_count = len(data)
-    data = [
-        sample for sample in data
-        if sample.get("source") == "train" and not sample.get("is_openended", False)
-    ]
-    print(f"Filtered to {len(data)} multiple-choice questions (from {original_count} total)")
+    # Count by type
+    mc_count = sum(1 for s in data if not s.get("is_openended", False))
+    oe_count = sum(1 for s in data if s.get("is_openended", False))
+    print(f"  Multiple-choice: {mc_count}, Open-ended: {oe_count}")
 
     # Limit samples if specified
     if args.max_samples > 0:
@@ -330,7 +333,7 @@ def main():
     print(f"\nStatistics (total):")
     print(f"  - Unique videos: {df['video_id'].nunique()}")
     print(f"  - Question types: {df['question_type'].value_counts().to_dict()}")
-    print(f"  - Multiple-choice questions: {(~df['is_openended']).sum()}")
+    print(f"  - Multiple-choice: {(~df['is_openended']).sum()}, Open-ended: {df['is_openended'].sum()}")
 
     # Show sample prompt
     print(f"\n{'='*80}")

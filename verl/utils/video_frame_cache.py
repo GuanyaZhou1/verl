@@ -20,9 +20,7 @@ def add_timestamp_watermark(
     image: Image.Image,
     timestamp: float,
     position: str = "top_left",
-    font_size: int = 24,
-    font_color: tuple = (255, 255, 255),
-    bg_color: tuple = (0, 0, 0, 128),
+    font_size: int = 0,
 ) -> Image.Image:
     """
     Add a timestamp watermark to an image.
@@ -31,90 +29,57 @@ def add_timestamp_watermark(
         image: PIL Image to add watermark to
         timestamp: Timestamp in seconds
         position: Watermark position, one of "top_left", "top_right", "bottom_left", "bottom_right"
-        font_size: Font size for the timestamp text
-        font_color: RGB tuple for text color (default white)
-        bg_color: RGBA tuple for background color (default semi-transparent black)
+        font_size: Font size for the timestamp text. If 0, auto-scales based on image height.
 
     Returns:
-        New PIL Image with watermark added
+        PIL Image with watermark added (modifies in-place)
     """
-    # Create a copy to avoid modifying the original
-    img = image.copy()
+    draw = ImageDraw.Draw(image)
+    img_width, img_height = image.size
 
-    # Convert to RGBA if needed for alpha blending
-    if img.mode != 'RGBA':
-        img = img.convert('RGBA')
+    # Format timestamp with 1 decimal (e.g., "12.5s")
+    text = f"{timestamp:.1f}s"
 
-    # Create overlay for the watermark
-    overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
+    # Auto-scale font size based on image height if not specified
+    if font_size <= 0:
+        font_size = max(28, int(img_height * 0.06))
 
-    # Format timestamp as integer seconds (e.g., "12s")
-    timestamp_text = f"{int(timestamp)}s"
-
-    # Try to use a default font, fall back to default if not available
+    # Try to load a TrueType font
     try:
         font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
     except (IOError, OSError):
         try:
-            font = ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeSansBold.ttf", font_size)
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
         except (IOError, OSError):
-            try:
-                font = ImageFont.truetype("arial.ttf", font_size)
-            except (IOError, OSError):
-                # Use default font if no TrueType font is available
-                font = ImageFont.load_default()
+            font = ImageFont.load_default()
 
-    # Get text bounding box
-    bbox = draw.textbbox((0, 0), timestamp_text, font=font)
-    text_width = bbox[2] - bbox[0]
-    text_height = bbox[3] - bbox[1]
-
-    # Add padding around text
-    padding = 5
-    box_width = text_width + 2 * padding
-    box_height = text_height + 2 * padding
+    # Get text dimensions
+    bbox = draw.textbbox((0, 0), text, font=font)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
     # Calculate position
-    img_width, img_height = img.size
-    margin = 10
+    margin = 12
+    pad = 6
 
-    if position == "top_left":
-        box_x = margin
-        box_y = margin
-    elif position == "top_right":
-        box_x = img_width - box_width - margin
-        box_y = margin
+    if position == "top_right":
+        x = img_width - tw - margin - pad
+        y = margin
     elif position == "bottom_left":
-        box_x = margin
-        box_y = img_height - box_height - margin
+        x = margin
+        y = img_height - th - margin - pad
     elif position == "bottom_right":
-        box_x = img_width - box_width - margin
-        box_y = img_height - box_height - margin
+        x = img_width - tw - margin - pad
+        y = img_height - th - margin - pad
     else:
-        # Default to top_left
-        box_x = margin
-        box_y = margin
+        # Default: top_left
+        x = margin
+        y = margin
 
-    # Draw background rectangle
-    draw.rectangle(
-        [box_x, box_y, box_x + box_width, box_y + box_height],
-        fill=bg_color
-    )
+    # Draw dark background rectangle and yellow text
+    draw.rectangle([x - pad, y - pad, x + tw + pad, y + th + pad], fill=(0, 0, 0, 220))
+    draw.text((x, y), text, fill=(255, 255, 0), font=font)
 
-    # Draw text
-    text_x = box_x + padding
-    text_y = box_y + padding
-    draw.text((text_x, text_y), timestamp_text, font=font, fill=font_color + (255,))
-
-    # Composite the overlay onto the original image
-    img = Image.alpha_composite(img, overlay)
-
-    # Convert back to RGB if the original was RGB
-    if image.mode == 'RGB':
-        img = img.convert('RGB')
-
-    return img
+    return image
 
 
 class VideoFrameCache:

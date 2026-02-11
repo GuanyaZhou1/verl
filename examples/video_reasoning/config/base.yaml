@@ -49,9 +49,8 @@ actor_rollout_ref:
       watermark_config:
         enable: False
         position: "top_left"
-        font_size: 24
-        font_color: [255, 255, 255]
-        bg_color: [0, 0, 0, 128]
+        font_size: 0
+        ratio: 1.0
 
 # Video reasoning 自定义奖励函数配置
 custom_reward_function:

@@ -25,7 +25,7 @@
 #   base.yaml 中 defaults: [ppo_trainer] 会从 searchpath 加载 ppo_trainer.yaml
 # =============================================================================
 
-set -e  # 遇错退出
+set -eo pipefail  # 遇错退出，管道中任一命令失败即退出
 
 # =============================================================================
 # 环境配置
@@ -33,14 +33,19 @@ set -e  # 遇错退出
 ulimit -n 65535
 export VLLM_USE_V1=1
 export LD_LIBRARY_PATH=/usr/local/cuda-13.1/compat:$LD_LIBRARY_PATH
-export RAY_ADDRESS=local
-#export CUDA_VISIBLE_DEVICES=4,5,6,7
+# export RAY_ADDRESS=local
+# export CUDA_VISIBLE_DEVICES=0,1,2,3
+
+# # Ray 在此机器上无法自动检测 GPU，需手动指定
+# ray stop 2>/dev/null || true
+# ray start --head --num-gpus=8
 
 # =============================================================================
 # 路径配置
 # =============================================================================
-MODEL_PATH="/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-self_holmes_multiturn_1k5-self_longvideoreason_multiturn_2k5-sft-lr5e-5-bs32"
-DATA_DIR="./long_video_data"
+#MODEL_PATH="/data_gpu/songlin/rl/verl/checkpoints/video-reasoning-dapo/video_reasoning_dapo_20260205-063449/merged_model"
+MODEL_PATH="/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-self_holmes_caption_233-self_longvideoreason_caption_930-openo3video_stgr_singleturn_7k-self_holmes_multiturn_1k5-self_longvideoreason_multiturn_5k3-sft-lr5e-5-b24"
+DATA_DIR="./long_video_data/longvt_selfqa"
 CACHE_DIR="./.cache"
 CONFIG_PATH="$(pwd)/examples/video_reasoning/config"
 LOG_DIR="./logs"
@@ -49,12 +54,12 @@ LOG_DIR="./logs"
 # 训练参数
 # =============================================================================
 TRAIN_BATCH_SIZE=16
-GEN_BATCH_SIZE=32                        # DAPO: 生成批次 > 训练批次，给过滤留余量
+GEN_BATCH_SIZE=32                        # DAPO: 生成批次 2x 训练批次，给过滤留足余量，默认似乎需要是4x
 MAX_PROMPT_LENGTH=36000
 MAX_RESPONSE_LENGTH=16384
 
 LEARNING_RATE=1e-6
-TOTAL_EPOCHS=3
+TOTAL_EPOCHS=1
 
 N_ROLLOUTS=8                             # 每个 prompt 生成的 response 数
 AGENT_NUM_WORKERS=8                      # AgentLoopWorker 数量
@@ -72,7 +77,7 @@ MAX_NUM_GEN_BATCHES=5                    # 最多重采样轮数，0=无限制
 CLIP_RATIO_LOW=0.2                       # Clip-Higher: 非对称 clip ratio
 CLIP_RATIO_HIGH=0.28                     # > low，鼓励正向更新
 
-NORM_ADV_BY_STD=True                     # False = Dr.GRPO 模式
+NORM_ADV_BY_STD=False                     # False = Dr.GRPO 模式
 
 USE_KL_IN_REWARD=False
 USE_KL_LOSS=True
@@ -104,9 +109,10 @@ SEGMENT_VIDEO_MAX_PIXELS=50176           # ~224x224
 # =============================================================================
 # 启用后，rollout 时帧上会显示时间戳（如 "12s"），帮助模型理解时序
 # logp 计算时使用原始帧（无水印），避免模型只学会从水印获取时序
-USE_TIMESTAMP_WATERMARK=False            # 是否启用时间戳水印
+USE_TIMESTAMP_WATERMARK=True            # 是否启用时间戳水印
 WATERMARK_POSITION="top_left"            # 水印位置: top_left, top_right, bottom_left, bottom_right
-WATERMARK_FONT_SIZE=24                   # 字体大小
+WATERMARK_FONT_SIZE=0                    # 字体大小 (0=根据图片高度自适应)
+WATERMARK_RATIO=0.5                     # 水印采样比例: 1.0=全部使用, 0.0=全部不使用, 0.5=50%采样
 
 # =============================================================================
 # 奖励函数参数
@@ -141,7 +147,7 @@ RESUME_MODE=disable                      # disable / resume_path / auto
 # =============================================================================
 TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
 PROJECT_NAME="video-reasoning-dapo"
-EXPERIMENT_NAME="video_reasoning_dapo_${TIMESTAMP}"
+EXPERIMENT_NAME="video_reasoning_dapo_longvt_selfqa_watermark_0_5_genbs32_ep1_lr1e_6_${TIMESTAMP}"
 
 # =============================================================================
 # 预检查
@@ -204,10 +210,7 @@ python examples/video_reasoning/cache_video_frames.py \
     --fps "$CACHE_FPS" \
     --max_frames "$CACHE_MAX_FRAMES"
 
-if [ $? -ne 0 ]; then
-    echo "ERROR: Failed to cache video frames"
-    exit 1
-fi
+# set -eo pipefail 已确保上述命令失败时脚本自动退出
 echo "===== Step 1 Complete ====="
 echo ""
 
@@ -234,14 +237,16 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.model.path=$MODEL_PATH \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
+    actor_rollout_ref.model.use_fused_kernels=True \
     actor_rollout_ref.actor.optim.lr=$LEARNING_RATE \
-    actor_rollout_ref.actor.ppo_mini_batch_size=$TRAIN_BATCH_SIZE \
+    actor_rollout_ref.actor.ppo_mini_batch_size=8 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.actor.clip_ratio_low=$CLIP_RATIO_LOW \
     actor_rollout_ref.actor.clip_ratio_high=$CLIP_RATIO_HIGH \
     actor_rollout_ref.actor.use_kl_loss=$USE_KL_LOSS \
     actor_rollout_ref.actor.kl_loss_coef=$KL_LOSS_COEF \
     actor_rollout_ref.actor.kl_loss_type=$KL_LOSS_TYPE \
+    actor_rollout_ref.actor.loss_agg_mode=token-mean \
     actor_rollout_ref.actor.entropy_coeff=0 \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
@@ -274,10 +279,11 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.rollout.multi_turn.watermark_config.enable=$USE_TIMESTAMP_WATERMARK \
     actor_rollout_ref.rollout.multi_turn.watermark_config.position=$WATERMARK_POSITION \
     actor_rollout_ref.rollout.multi_turn.watermark_config.font_size=$WATERMARK_FONT_SIZE \
+    actor_rollout_ref.rollout.multi_turn.watermark_config.ratio=$WATERMARK_RATIO \
     actor_rollout_ref.rollout.agent.default_agent_loop=video_reasoning \
     actor_rollout_ref.rollout.agent.num_workers=$AGENT_NUM_WORKERS \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1 \
-    actor_rollout_ref.ref.fsdp_config.param_offload=False \
+    actor_rollout_ref.ref.fsdp_config.param_offload=True \
     algorithm.adv_estimator=grpo \
     algorithm.norm_adv_by_std_in_grpo=$NORM_ADV_BY_STD \
     algorithm.use_kl_in_reward=$USE_KL_IN_REWARD \
@@ -286,7 +292,9 @@ python3 -m recipe.dapo.main_dapo \
     algorithm.filter_groups.max_num_gen_batches=$MAX_NUM_GEN_BATCHES \
     reward_model.enable=False \
     reward_model.reward_manager=dapo \
-    reward_model.overlong_buffer.enable=False \
+    reward_model.overlong_buffer.enable=True \
+    reward_model.overlong_buffer.len=256 \
+    reward_model.overlong_buffer.penalty_factor=1.0 \
     custom_reward_function.path=pkg://verl.utils.reward_score.video_reasoning_async \
     custom_reward_function.name=compute_score \
     custom_reward_function.reward_kwargs.vlm_endpoint="$VLM_ENDPOINT" \

@@ -259,14 +259,10 @@ def main():
 
     print(f"Loaded {len(data)} samples")
 
-    # Filter for samples with options (multiple-choice questions)
-    # This dataset may not have 'source' or 'is_openended' fields
-    original_count = len(data)
-    data = [
-        sample for sample in data
-        if sample.get("options")  # Keep samples that have options (multiple-choice)
-    ]
-    print(f"Filtered to {len(data)} multiple-choice questions (from {original_count} total)")
+    # Count by type
+    mc_count = sum(1 for s in data if s.get("options"))
+    oe_count = len(data) - mc_count
+    print(f"  Multiple-choice (with options): {mc_count}, Open-ended: {oe_count}")
 
     # Limit samples if specified
     if args.max_samples > 0:

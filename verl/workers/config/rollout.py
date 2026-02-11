@@ -68,15 +68,19 @@ class VideoResolutionConfig(BaseConfig):
 class WatermarkConfig(BaseConfig):
     """Timestamp watermark configuration for video frames during rollout.
 
-    When enabled, adds timestamp watermarks (e.g., "12s") to frames during rollout
+    When enabled, adds timestamp watermarks (e.g., "12.5s") to frames during rollout
     to help the model understand temporal sequence. Original frames (no watermark)
     are used for logp calculation during training.
+
+    The `ratio` field controls what fraction of rollout samples use watermarked frames:
+    - ratio=1.0: all samples use watermark (default when enabled)
+    - ratio=0.0: no samples use watermark (equivalent to enable=False)
+    - ratio=0.5: 50% of samples randomly use watermark
     """
     enable: bool = False
     position: str = "top_left"  # top_left, top_right, bottom_left, bottom_right
-    font_size: int = 24
-    font_color: list = field(default_factory=lambda: [255, 255, 255])
-    bg_color: list = field(default_factory=lambda: [0, 0, 0, 128])
+    font_size: int = 0  # 0 = auto-scale based on image height
+    ratio: float = 1.0  # fraction of rollout samples that use watermark (0.0 ~ 1.0)
 
 
 @dataclass

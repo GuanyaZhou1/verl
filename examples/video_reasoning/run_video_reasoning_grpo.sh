@@ -46,7 +46,8 @@ SEGMENT_VIDEO_MAX_PIXELS=50176        # ~224x224, 高分辨率看细节
 # logp 计算时使用原始帧（无水印），避免模型只学会从水印获取时序
 USE_TIMESTAMP_WATERMARK=False         # 是否启用时间戳水印
 WATERMARK_POSITION="top_left"         # 水印位置: top_left, top_right, bottom_left, bottom_right
-WATERMARK_FONT_SIZE=24                # 字体大小
+WATERMARK_FONT_SIZE=0                 # 字体大小 (0=根据图片高度自适应)
+WATERMARK_RATIO=1.0                   # 水印采样比例: 1.0=全部使用, 0.0=全部不使用, 0.5=50%采样
 
 # ===== 训练参数（8卡配置）=====
 TRAIN_BATCH_SIZE=16
@@ -181,6 +182,7 @@ nohup python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.multi_turn.watermark_config.enable=$USE_TIMESTAMP_WATERMARK \
     actor_rollout_ref.rollout.multi_turn.watermark_config.position=$WATERMARK_POSITION \
     actor_rollout_ref.rollout.multi_turn.watermark_config.font_size=$WATERMARK_FONT_SIZE \
+    actor_rollout_ref.rollout.multi_turn.watermark_config.ratio=$WATERMARK_RATIO \
     actor_rollout_ref.rollout.multi_turn.format=hermes \
     actor_rollout_ref.rollout.agent.default_agent_loop=video_reasoning \
     actor_rollout_ref.rollout.agent.num_workers=$AGENT_NUM_WORKERS \
