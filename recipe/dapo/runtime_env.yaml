@@ -1,0 +1,9 @@
+working_dir: ./
+excludes: ["/.git/", ".cache/", "long_video_data/", "*.mp4", "*.avi"]
+env_vars:
+  TORCH_NCCL_AVOID_RECORD_STREAMS: "1"
+  VLLM_USE_V1: "1"
+  NCCL_SOCKET_IFNAME: "bond0"
+  NCCL_IB_DISABLE: "0"
+  NCCL_CUMEM_ENABLE: "0"
+  NCCL_DEBUG: "WARN"
