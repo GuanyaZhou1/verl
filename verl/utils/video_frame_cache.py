@@ -42,7 +42,7 @@ def add_timestamp_watermark(
 
     # Auto-scale font size based on image height if not specified
     if font_size <= 0:
-        font_size = max(28, int(img_height * 0.06))
+        font_size = max(12, int(img_height * 0.06))
 
     # Try to load a TrueType font
     try:

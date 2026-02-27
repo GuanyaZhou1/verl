@@ -32,9 +32,21 @@ set -eo pipefail  # 遇错退出，管道中任一命令失败即退出
 # =============================================================================
 ulimit -n 65535
 export VLLM_USE_V1=1
+export TIKTOKEN_CACHE_DIR=${TIKTOKEN_CACHE_DIR:-/data_gpu/gyzhou/tmp/tiktoken_cache}
 export LD_LIBRARY_PATH=/usr/local/cuda-13.1/compat:$LD_LIBRARY_PATH
+export TMPDIR=/tmp  # multiprocessing 临时文件放本地磁盘，避免 NFS 上 EBUSY 错误
 # export RAY_ADDRESS=local
 # export CUDA_VISIBLE_DEVICES=0,1,2,3
+
+# NCCL 环境变量（多节点 IB 通信，单节点下也兼容）
+# 不指定 NCCL_IB_HCA，让 NCCL 自动探测各节点可用的 IB 设备
+# （不同节点 IB 设备名不同：.1/.6/.7 用 mlx5_2/5/6/7，.10 用 mlx5_0/1/2/3）
+export NCCL_SOCKET_IFNAME=${NCCL_SOCKET_IFNAME:-bond0}
+export NCCL_SOCKET_FAMILY=${NCCL_SOCKET_FAMILY:-AF_INET}   # 强制 IPv4，避免 IPv6 链路本地地址无法跨节点路由
+export NCCL_IB_DISABLE=${NCCL_IB_DISABLE:-1}   # 临时禁用 IB，走以太网 TCP
+export NCCL_IB_HCA=${NCCL_IB_HCA:-^mlx5_bond}              # 排除 bond IB 设备（sm_lid=0，未接入 fabric）
+export TORCH_NCCL_AVOID_RECORD_STREAMS=${TORCH_NCCL_AVOID_RECORD_STREAMS:-1}
+export NCCL_CUMEM_ENABLE=${NCCL_CUMEM_ENABLE:-0}
 
 # # Ray 在此机器上无法自动检测 GPU，需手动指定
 # ray stop 2>/dev/null || true
@@ -44,9 +56,11 @@ export LD_LIBRARY_PATH=/usr/local/cuda-13.1/compat:$LD_LIBRARY_PATH
 # 路径配置
 # =============================================================================
 #MODEL_PATH="/data_gpu/songlin/rl/verl/checkpoints/video-reasoning-dapo/video_reasoning_dapo_20260205-063449/merged_model"
-MODEL_PATH="/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-self_holmes_caption_233-self_longvideoreason_caption_930-openo3video_stgr_singleturn_7k-self_holmes_multiturn_1k5-self_longvideoreason_multiturn_5k3-sft-lr5e-5-b24"
-DATA_DIR="./long_video_data/longvt_selfqa"
-CACHE_DIR="./.cache"
+#MODEL_PATH="/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-self_holmes_caption_233-self_longvideoreason_caption_930-openo3video_stgr_singleturn_7k-self_holmes_multiturn_1k5-self_longvideoreason_multiturn_5k3-sft-lr5e-5-b24"
+# MODEL_PATH="${MODEL_PATH:-/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-stgr-turn_llm_freeze25_freeze_mlp-lr1e-5-epo5}"
+MODEL_PATH="/data_gpu/zhengshurong/data/project/Qwen3-VL/qwen-vl-finetune/checkpoints/video/Qwen3-VL-8B-Instruct-stgr-tune_llm_freeze32_mlp-lr1e-5-epo3_new"
+DATA_DIR="${DATA_DIR:-./long_video_data}"
+CACHE_DIR="${CACHE_DIR:-./.cache}"
 CONFIG_PATH="$(pwd)/examples/video_reasoning/config"
 LOG_DIR="./logs"
 
@@ -54,34 +68,34 @@ LOG_DIR="./logs"
 # 训练参数
 # =============================================================================
 TRAIN_BATCH_SIZE=16
-GEN_BATCH_SIZE=32                        # DAPO: 生成批次 2x 训练批次，给过滤留足余量，默认似乎需要是4x
+GEN_BATCH_SIZE=16                        # DAPO: 生成批次 2x 训练批次，给过滤留足余量，默认似乎需要是4x
 MAX_PROMPT_LENGTH=36000
 MAX_RESPONSE_LENGTH=16384
 
 LEARNING_RATE=1e-6
-TOTAL_EPOCHS=1
+TOTAL_EPOCHS=3
 
 N_ROLLOUTS=8                             # 每个 prompt 生成的 response 数
 AGENT_NUM_WORKERS=8                      # AgentLoopWorker 数量
 
-N_GPUS=8
-NNODES=1
+N_GPUS=${N_GPUS:-8}
+NNODES=${NNODES:-1}
 
 # =============================================================================
 # DAPO 算法参数
 # =============================================================================
-ENABLE_FILTER_GROUPS=True                # 过滤组内全对/全错的样本
-FILTER_GROUPS_METRIC=acc                 # acc / score / seq_reward / seq_final_reward
+ENABLE_FILTER_GROUPS=False                # 过滤组内全对/全错的样本
+FILTER_GROUPS_METRIC=score               # 用总分(含 bbox IOU)做组过滤
 MAX_NUM_GEN_BATCHES=5                    # 最多重采样轮数，0=无限制
 
 CLIP_RATIO_LOW=0.2                       # Clip-Higher: 非对称 clip ratio
 CLIP_RATIO_HIGH=0.28                     # > low，鼓励正向更新
 
-NORM_ADV_BY_STD=False                     # False = Dr.GRPO 模式
+NORM_ADV_BY_STD=False                      # 归一化 advantage，
 
 USE_KL_IN_REWARD=False
-USE_KL_LOSS=True
-KL_LOSS_COEF=0.001
+USE_KL_LOSS=False
+KL_LOSS_COEF=0.01
 KL_LOSS_TYPE=low_var_kl
 
 # =============================================================================
@@ -112,7 +126,7 @@ SEGMENT_VIDEO_MAX_PIXELS=50176           # ~224x224
 USE_TIMESTAMP_WATERMARK=True            # 是否启用时间戳水印
 WATERMARK_POSITION="top_left"            # 水印位置: top_left, top_right, bottom_left, bottom_right
 WATERMARK_FONT_SIZE=0                    # 字体大小 (0=根据图片高度自适应)
-WATERMARK_RATIO=0.5                     # 水印采样比例: 1.0=全部使用, 0.0=全部不使用, 0.5=50%采样
+WATERMARK_RATIO=1.0                     # 水印采样比例: 1.0=全部使用, 0.0=全部不使用, 0.5=50%采样
 
 # =============================================================================
 # 奖励函数参数
@@ -124,7 +138,7 @@ VLM_API_KEY="123456"
 USE_VLM_SCORING=true
 USE_BBOX_VERIFICATION=true
 ANSWER_WEIGHT=1.0
-BBOX_WEIGHT=0.3
+BBOX_WEIGHT=0.6
 BBOX_COORD_RANGE=1.0                     # bbox 坐标范围 [0, 1]
 
 SAVE_BBOX_VISUALIZATION=true
@@ -147,7 +161,7 @@ RESUME_MODE=disable                      # disable / resume_path / auto
 # =============================================================================
 TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
 PROJECT_NAME="video-reasoning-dapo"
-EXPERIMENT_NAME="video_reasoning_dapo_longvt_selfqa_watermark_0_5_genbs32_ep1_lr1e_6_${TIMESTAMP}"
+EXPERIMENT_NAME="Qwen3_8B_video_reasoning_dapo_long_video_data_watermark_1_genbs32_ep1_lr1e_6_bbox0_6_normadvbystdfalse_${TIMESTAMP}"
 
 # =============================================================================
 # 预检查
@@ -203,16 +217,21 @@ echo ""
 # =============================================================================
 # Step 1: 缓存视频帧
 # =============================================================================
-echo "===== Step 1: Caching video frames ====="
-python examples/video_reasoning/cache_video_frames.py \
-    --input_parquet "$DATA_DIR/train.parquet" \
-    --cache_dir "$CACHE_DIR" \
-    --fps "$CACHE_FPS" \
-    --max_frames "$CACHE_MAX_FRAMES"
+if [ "${SKIP_VIDEO_CACHE:-false}" != "true" ]; then
+    echo "===== Step 1: Caching video frames ====="
+    python examples/video_reasoning/cache_video_frames.py \
+        --input_parquet "$DATA_DIR/train.parquet" \
+        --cache_dir "$CACHE_DIR" \
+        --fps "$CACHE_FPS" \
+        --max_frames "$CACHE_MAX_FRAMES"
 
-# set -eo pipefail 已确保上述命令失败时脚本自动退出
-echo "===== Step 1 Complete ====="
-echo ""
+    # set -eo pipefail 已确保上述命令失败时脚本自动退出
+    echo "===== Step 1 Complete ====="
+    echo ""
+else
+    echo "===== Step 1: Skipping cache (handled by launcher) ====="
+    echo ""
+fi
 
 # =============================================================================
 # Step 2: 启动训练
@@ -250,13 +269,18 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.actor.entropy_coeff=0 \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
+    actor_rollout_ref.actor.fsdp_config.forward_prefetch=True \
     actor_rollout_ref.actor.ulysses_sequence_parallel_size=4 \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.mode=async \
     actor_rollout_ref.rollout.n=$N_ROLLOUTS \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=1 \
+    actor_rollout_ref.rollout.max_model_len=128000 \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=4 \
+    actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=True \
+    actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=104768 \
+    actor_rollout_ref.rollout.calculate_log_probs=true \
     actor_rollout_ref.rollout.over_sample_rate=0.1 \
     actor_rollout_ref.rollout.update_weights_bucket_megabytes=512 \
     actor_rollout_ref.rollout.multi_turn.enable=True \
@@ -282,9 +306,13 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.rollout.multi_turn.watermark_config.ratio=$WATERMARK_RATIO \
     actor_rollout_ref.rollout.agent.default_agent_loop=video_reasoning \
     actor_rollout_ref.rollout.agent.num_workers=$AGENT_NUM_WORKERS \
-    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1 \
-    actor_rollout_ref.ref.fsdp_config.param_offload=True \
+    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=2 \
+    actor_rollout_ref.ref.log_prob_use_dynamic_bsz=True \
+    actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=104768 \
+    actor_rollout_ref.ref.ulysses_sequence_parallel_size=4 \
+    actor_rollout_ref.ref.fsdp_config.param_offload=False \
     algorithm.adv_estimator=grpo \
+    algorithm.rollout_correction.bypass_mode=true \
     algorithm.norm_adv_by_std_in_grpo=$NORM_ADV_BY_STD \
     algorithm.use_kl_in_reward=$USE_KL_IN_REWARD \
     algorithm.filter_groups.enable=$ENABLE_FILTER_GROUPS \
@@ -343,22 +371,22 @@ if [ -f "$CKPT_BASE/latest_checkpointed_iteration.txt" ]; then
     echo ""
     echo "===== Step 3: Merging checkpoint global_step_${LATEST_STEP} ====="
     echo "Source: $CKPT_BASE/global_step_${LATEST_STEP}/actor"
-    echo "Target: $CKPT_BASE/merged_model"
+    echo "Target: $CKPT_BASE"
 
     python -m verl.model_merger merge \
         --backend fsdp \
         --local_dir "$CKPT_BASE/global_step_${LATEST_STEP}/actor" \
-        --target_dir "$CKPT_BASE/merged_model" \
+        --target_dir "$CKPT_BASE" \
         --trust-remote-code
 
     if [ $? -eq 0 ]; then
         echo ""
         echo "===== Step 3 Complete: Model Merged Successfully ====="
-        echo "Merged model saved to: $CKPT_BASE/merged_model"
+        echo "Merged model saved to: $CKPT_BASE"
         echo ""
         echo "You can load the model with:"
         echo "  from transformers import AutoModelForVision2Seq, AutoProcessor"
-        echo "  model = AutoModelForVision2Seq.from_pretrained('$CKPT_BASE/merged_model', trust_remote_code=True)"
+        echo "  model = AutoModelForVision2Seq.from_pretrained('$CKPT_BASE', trust_remote_code=True)"
     else
         echo "ERROR: Failed to merge model"
         exit 1

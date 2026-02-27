@@ -28,7 +28,7 @@ from PIL import Image, ImageDraw
 # ============== 默认配置常量 ==============
 # 修改这里的值会影响所有使用默认参数的调用
 
-DEFAULT_IOU_THRESHOLD = 0.2          # IOU 阈值，低于此值 spatial_score=0
+DEFAULT_IOU_THRESHOLD = 0.0          # IOU 阈值，设为 0 不截断梯度
 DEFAULT_TEMPORAL_WEIGHT = 0.5        # 时序奖励权重 (物体是否存在)
 DEFAULT_SPATIAL_WEIGHT = 0.5         # 空间奖励权重 (IOU 分数)
 DEFAULT_BBOX_COORD_RANGE = 1000.0    # bbox 坐标范围 (1.0 = [0,1], 1000.0 = [0,1000])
@@ -596,9 +596,6 @@ async def verify_single_bbox_with_vlm(
             vlm_api_key=vlm_api_key,
         )
 
-        # 2. 计算时序分数（物体是否存在）
-        temporal_score = 1.0 if gt_bbox is not None else 0.0
-
         # 智能检测 bbox 坐标范围
         # - 如果所有值都 <= 1，则是 [0,1] 归一化范围
         # - 否则是 [0,1000] 范围，需要先除以 1000 归一化
@@ -608,17 +605,17 @@ async def verify_single_bbox_with_vlm(
             effective_coord_range = 1000.0
             logger.debug(f"Auto-detected bbox in [0,1000] range: {bbox}")
 
-        # 3. 计算空间分数（IOU）
+        # 直接用 IOU 作为 bbox 分数（移除 temporal/spatial 拆分）
+        # - IOU 已隐含时序准确性（时序错→物体不在帧中→GT 找不到→IOU=0）
+        # - GT 返回 None 时 IOU=0（直接给 0 分，不再给免费 0.5）
         iou = 0.0
-        spatial_score = 0.0
         if gt_bbox is not None:
-            # 归一化预测 bbox 到 [0, 1]
             pred_normalized = [c / effective_coord_range for c in bbox]
             iou = compute_iou(pred_normalized, gt_bbox)
-            spatial_score = iou if iou >= iou_threshold else 0.0
 
-        # 4. 计算总分
-        total_score = temporal_weight * temporal_score + spatial_weight * spatial_score
+        total_score = iou
+        temporal_score = 1.0 if gt_bbox is not None else 0.0  # 仅用于日志
+        spatial_score = iou  # 仅用于日志
 
         # 5. 保存可视化图片
         saved_vis_path = None
@@ -728,7 +725,7 @@ async def verify_single_bbox_with_vlm(
 
     except Exception as e:
         logger.warning(f"BBox verify exception: {str(e)}")
-        return 0.5, 0.5, 0.0, None, f"Error: {str(e)}", vlm_prompt, "", None
+        return 0.0, 0.0, 0.0, None, f"Error: {str(e)}", vlm_prompt, "", None
 
 
 async def verify_bboxes_with_vlm(
@@ -776,7 +773,7 @@ async def verify_bboxes_with_vlm(
     logger = get_reward_logger()
 
     if not bboxes:
-        return 0.5, 0.5, 0.0, []  # 没有 bbox 返回中性分数
+        return 0.0, 0.0, 0.0, []  # 没有 bbox = 0 分（不再给免费 0.5）
 
     details = []
     total_scores = []
@@ -825,7 +822,7 @@ async def verify_bboxes_with_vlm(
         for (idx, frame_path), result in zip(valid_bbox_indices, results):
             bbox_info = bboxes[idx]
             if isinstance(result, Exception):
-                total_score, temporal_score, spatial_score = 0.5, 0.5, 0.0
+                total_score, temporal_score, spatial_score = 0.0, 0.0, 0.0
                 gt_bbox, explanation, vlm_prompt, vlm_response, vis_path = None, str(result), "", "", None
             else:
                 total_score, temporal_score, spatial_score, gt_bbox, explanation, vlm_prompt, vlm_response, vis_path = result
@@ -846,8 +843,8 @@ async def verify_bboxes_with_vlm(
                 "vis_path": vis_path,  # 可视化图片的绝对路径 (如果保存了)
             })
 
-    avg_total = sum(total_scores) / len(total_scores) if total_scores else 0.5
-    avg_temporal = sum(temporal_scores) / len(temporal_scores) if temporal_scores else 0.5
+    avg_total = sum(total_scores) / len(total_scores) if total_scores else 0.0
+    avg_temporal = sum(temporal_scores) / len(temporal_scores) if temporal_scores else 0.0
     avg_spatial = sum(spatial_scores) / len(spatial_scores) if spatial_scores else 0.0
 
     logger.debug(f"BBox verification: {len(tasks)} tasks, avg_total={avg_total:.4f}, avg_temporal={avg_temporal:.4f}, avg_spatial={avg_spatial:.4f}")
@@ -1101,9 +1098,9 @@ async def compute_score(
     current_count = _reward_stats[stats_key]["total_calls"] + 1  # 预测下一个计数
     should_save_sample = save_samples and (current_count % save_every_n == 0)
 
-    # 5. BBox 验证分数 (VLM, 异步) - 基于 IOU 的双维度奖励
-    bbox_score = 0.5
-    bbox_temporal_score = 0.5
+    # 5. BBox 验证分数 (VLM, 异步) - 直接用 IOU 作为 bbox_score
+    bbox_score = 0.0
+    bbox_temporal_score = 0.0
     bbox_spatial_score = 0.0
     bbox_details = []
     bbox_verified = False

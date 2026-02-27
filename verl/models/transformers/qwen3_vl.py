@@ -22,10 +22,214 @@ import torch
 from transformers.models.qwen3_vl.modeling_qwen3_vl import (
     Qwen3VLCausalLMOutputWithPast,
     Qwen3VLForConditionalGeneration,
+    apply_rotary_pos_emb,
+    repeat_kv,
 )
+
+from verl.models.transformers.qwen2_vl import _custom_flash_attention_forward, _flash_use_top_left_mask
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
+
+
+def qwen3_vl_vision_forward_profiled(self, hidden_states: torch.Tensor, grid_thw: torch.Tensor, **kwargs):
+    """Profiled version of Qwen3VLVisionModel.forward to diagnose per-component timing."""
+    import torch.nn.functional as F
+    import time
+
+    if not hasattr(qwen3_vl_vision_forward_profiled, "_call_count"):
+        qwen3_vl_vision_forward_profiled._call_count = 0
+    qwen3_vl_vision_forward_profiled._call_count += 1
+    _do_profile = qwen3_vl_vision_forward_profiled._call_count <= 3
+
+    if _do_profile:
+        torch.cuda.synchronize()
+        t0 = time.perf_counter()
+
+    # Replace Conv3d with equivalent F.linear (bypass PyTorch 2.9 cuDNN disable for Conv3d)
+    # When stride == kernel_size, Conv3d is mathematically identical to F.linear
+    pe = self.patch_embed
+    weight_2d = pe.proj.weight.view(pe.embed_dim, -1)  # (1152, 1536) same memory
+    bias = pe.proj.bias
+
+    hidden_states = hidden_states.view(-1, pe.in_channels * pe.temporal_patch_size * pe.patch_size * pe.patch_size)
+    hidden_states = F.linear(hidden_states, weight_2d, bias)
+
+    if _do_profile:
+        torch.cuda.synchronize()
+        t1 = time.perf_counter()
+        print(
+            f"[PatchEmbed F.linear] call={qwen3_vl_vision_forward_profiled._call_count} | "
+            f"time={t1-t0:.3f}s | patches={hidden_states.shape[0]} | "
+            f"weight_dtype={weight_2d.dtype} | input_dtype={hidden_states.dtype}",
+            flush=True,
+        )
+
+    pos_embeds = self.fast_pos_embed_interpolate(grid_thw)
+    hidden_states = hidden_states + pos_embeds
+    rotary_pos_emb = self.rot_pos_emb(grid_thw)
+
+    seq_len, _ = hidden_states.size()
+    hidden_states = hidden_states.reshape(seq_len, -1)
+    rotary_pos_emb = rotary_pos_emb.reshape(seq_len, -1)
+    emb = torch.cat((rotary_pos_emb, rotary_pos_emb), dim=-1)
+    position_embeddings = (emb.cos(), emb.sin())
+
+    cu_seqlens = torch.repeat_interleave(grid_thw[:, 1] * grid_thw[:, 2], grid_thw[:, 0]).cumsum(
+        dim=0,
+        dtype=grid_thw.dtype if torch.jit.is_tracing() else torch.int32,
+    )
+    cu_seqlens = F.pad(cu_seqlens, (1, 0), value=0)
+
+    if _do_profile:
+        torch.cuda.synchronize()
+        t2 = time.perf_counter()
+        n_windows = len(cu_seqlens) - 1
+        window_sizes = (cu_seqlens[1:] - cu_seqlens[:-1]).tolist()
+        max_win = max(window_sizes)
+        min_win = min(window_sizes)
+        print(
+            f"[VisionEncoder] call={qwen3_vl_vision_forward_profiled._call_count} | "
+            f"patch_embed={t1-t0:.3f}s | pos_embed={t2-t1:.3f}s | "
+            f"patches={seq_len} | n_windows={n_windows} | "
+            f"window_size: min={min_win} max={max_win} | "
+            f"hidden_dtype={hidden_states.dtype} | "
+            f"attn_impl={getattr(self.blocks[0].attn.config, '_attn_implementation', 'UNKNOWN')}",
+            flush=True,
+        )
+
+    deepstack_feature_lists = []
+    block_times = []
+    for layer_num, blk in enumerate(self.blocks):
+        if _do_profile:
+            torch.cuda.synchronize()
+            tb0 = time.perf_counter()
+
+        hidden_states = blk(
+            hidden_states,
+            cu_seqlens=cu_seqlens,
+            position_embeddings=position_embeddings,
+            **kwargs,
+        )
+        if layer_num in self.deepstack_visual_indexes:
+            deepstack_feature = self.deepstack_merger_list[self.deepstack_visual_indexes.index(layer_num)](
+                hidden_states
+            )
+            deepstack_feature_lists.append(deepstack_feature)
+
+        if _do_profile:
+            torch.cuda.synchronize()
+            block_times.append(time.perf_counter() - tb0)
+
+    if _do_profile:
+        torch.cuda.synchronize()
+        t3 = time.perf_counter()
+
+    hidden_states = self.merger(hidden_states)
+
+    if _do_profile:
+        torch.cuda.synchronize()
+        t4 = time.perf_counter()
+        total_blocks = sum(block_times)
+        print(
+            f"[VisionEncoder] call={qwen3_vl_vision_forward_profiled._call_count} | "
+            f"blocks_total={total_blocks:.3f}s | merger={t4-t3:.3f}s | "
+            f"grand_total={t4-t0:.3f}s | "
+            f"block_times: first={block_times[0]:.3f}s mid={block_times[13]:.3f}s last={block_times[-1]:.3f}s | "
+            f"slowest_block={max(block_times):.3f}s (idx={block_times.index(max(block_times))})",
+            flush=True,
+        )
+
+    return hidden_states, deepstack_feature_lists
+
+
+def qwen3_vl_attn_forward(
+    self,
+    hidden_states: torch.Tensor,
+    position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.LongTensor] = None,
+    **kwargs,
+) -> tuple[torch.Tensor, None]:
+    """
+    Patched attention forward for Qwen3VL that uses flash_attn_varlen_func + Ulysses SP
+    via _custom_flash_attention_forward, avoiding the O(total_nnz^2) 4D attention mask
+    created by transformers' create_causal_mask when use_remove_padding=True.
+    """
+    if not hasattr(qwen3_vl_attn_forward, "_logged"):
+        qwen3_vl_attn_forward._logged = True
+        pid = position_ids
+        if pid is not None and pid.ndim == 3:
+            pid = pid[0]
+        if pid is not None and pid.ndim == 2:
+            flat = pid.view(-1)
+            resets = (flat == 0).nonzero().view(-1)
+            boundaries = torch.cat([resets, torch.tensor([flat.numel()], device=flat.device)])
+            sample_lens = torch.diff(boundaries).tolist()
+            print(
+                f"[qwen3_vl_attn_forward] ACTIVE | layer_idx={self.layer_idx} | "
+                f"total_tokens={flat.numel()} | num_samples={len(sample_lens)} | "
+                f"per_sample_lens={sample_lens} | "
+                f"attention_mask={'None' if attention_mask is None else tuple(attention_mask.shape)} | "
+                f"hidden_dtype={hidden_states.dtype} | "
+                f"using varlen flash_attn (per-sample causal attention)",
+                flush=True,
+            )
+        else:
+            print(
+                f"[qwen3_vl_attn_forward] ACTIVE | layer_idx={self.layer_idx} | "
+                f"hidden_states={tuple(hidden_states.shape)} | "
+                f"position_ids={'None' if position_ids is None else tuple(position_ids.shape)} | "
+                f"attention_mask={'None' if attention_mask is None else tuple(attention_mask.shape)} | "
+                f"hidden_dtype={hidden_states.dtype}",
+                flush=True,
+            )
+
+    bsz, q_len, _ = hidden_states.size()
+
+    # QKV projection with QK-Norm (Qwen3VL specific)
+    query_states = self.q_norm(self.q_proj(hidden_states).view(bsz, q_len, -1, self.head_dim)).transpose(1, 2)
+    key_states = self.k_norm(self.k_proj(hidden_states).view(bsz, q_len, -1, self.head_dim)).transpose(1, 2)
+    value_states = self.v_proj(hidden_states).view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
+
+    # Apply rotary position embeddings
+    cos, sin = position_embeddings
+    query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+    # GQA expansion
+    key_states = repeat_kv(key_states, self.num_key_value_groups)
+    value_states = repeat_kv(value_states, self.num_key_value_groups)
+
+    dropout_rate = 0.0 if not self.training else self.attention_dropout
+
+    # Record q_len before transpose
+    q_len = query_states.shape[2]
+
+    # FA2 uses non-transposed inputs: (bsz, q_len, num_heads, head_dim)
+    query_states = query_states.transpose(1, 2)
+    key_states = key_states.transpose(1, 2)
+    value_states = value_states.transpose(1, 2)
+
+    # position_ids is already 2D (text_position_ids from model forward)
+    if position_ids is not None and position_ids.ndim == 3:
+        position_ids = position_ids[0]
+
+    attn_output = _custom_flash_attention_forward(
+        query_states,
+        key_states,
+        value_states,
+        attention_mask,
+        query_length=q_len,
+        is_causal=getattr(self, "is_causal", True),
+        dropout=dropout_rate,
+        sliding_window=None,
+        use_top_left_mask=_flash_use_top_left_mask,
+        position_ids=position_ids,
+    )
+
+    attn_output = attn_output.reshape(bsz, q_len, -1).contiguous()
+    attn_output = self.o_proj(attn_output)
+    return attn_output, None
 
 
 def get_rope_index(
@@ -143,11 +347,34 @@ def _get_input_embeds(
     image_grid_thw: Optional[torch.LongTensor] = None,
     video_grid_thw: Optional[torch.LongTensor] = None,
 ):
+    if not hasattr(_get_input_embeds, "_call_count"):
+        _get_input_embeds._call_count = 0
+    _get_input_embeds._call_count += 1
+    _do_profile = _get_input_embeds._call_count <= 5
+
+    if _do_profile:
+        torch.cuda.synchronize()
+        import time
+        _t_start = time.perf_counter()
+
     inputs_embeds = model.get_input_embeddings()(input_ids)
     image_mask, video_mask = None, None
     if pixel_values is not None:
-        pixel_values = pixel_values.type(model.visual.dtype)
+        if _do_profile:
+            torch.cuda.synchronize()
+            _t_vis_start = time.perf_counter()
+        # Use inputs_embeds.dtype (bf16 under FSDP MixedPrecision) instead of model.visual.dtype
+        # (which returns fp32 because FSDP stores params in fp32 before unsharding)
+        pixel_values = pixel_values.to(dtype=inputs_embeds.dtype)
         image_embeds, deepstack_image_embeds = model.visual(pixel_values, grid_thw=image_grid_thw)
+        if _do_profile:
+            torch.cuda.synchronize()
+            print(
+                f"[_get_input_embeds] call={_get_input_embeds._call_count} | "
+                f"image_visual_tower={time.perf_counter()-_t_vis_start:.3f}s | "
+                f"pixel_values={tuple(pixel_values.shape)} | dtype={pixel_values.dtype}",
+                flush=True,
+            )
         n_image_tokens = (input_ids == model.config.image_token_id).sum().item()
         n_image_features = image_embeds.shape[0]
         if n_image_tokens != n_image_features:
@@ -164,8 +391,21 @@ def _get_input_embeds(
         inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
 
     if pixel_values_videos is not None:
-        pixel_values_videos = pixel_values_videos.type(model.visual.dtype)
+        if _do_profile:
+            torch.cuda.synchronize()
+            import time
+            _t_vid_start = time.perf_counter()
+        # Use inputs_embeds.dtype (bf16 under FSDP MixedPrecision) instead of model.visual.dtype
+        pixel_values_videos = pixel_values_videos.to(dtype=inputs_embeds.dtype)
         video_embeds, deepstack_video_embeds = model.visual(pixel_values_videos, grid_thw=video_grid_thw)
+        if _do_profile:
+            torch.cuda.synchronize()
+            print(
+                f"[_get_input_embeds] call={_get_input_embeds._call_count} | "
+                f"video_visual_tower={time.perf_counter()-_t_vid_start:.3f}s | "
+                f"pixel_values_videos={tuple(pixel_values_videos.shape)} | dtype={pixel_values_videos.dtype}",
+                flush=True,
+            )
         n_video_tokens = (input_ids == model.config.video_token_id).sum().item()
         n_video_features = video_embeds.shape[0]
         if n_video_tokens != n_video_features:
@@ -206,6 +446,10 @@ def _get_input_embeds(
         deepstack_visual_embeds = deepstack_video_embeds
 
     if pixel_values is None and pixel_values_videos is None:
+        if _do_profile:
+            torch.cuda.synchronize()
+            import time
+            _t_dummy_start = time.perf_counter()
         config = model.config.vision_config
         patch_dim = config.in_channels * config.temporal_patch_size * config.patch_size**2
         pixel_values = torch.zeros((16, patch_dim), dtype=inputs_embeds.dtype, device=inputs_embeds.device)
@@ -214,9 +458,27 @@ def _get_input_embeds(
         inputs_embeds += 0.0 * image_embeds.mean()
         for emb in dummy_deepstack_image_embeds or []:
             inputs_embeds += 0.0 * emb.mean()
+        if _do_profile:
+            torch.cuda.synchronize()
+            print(
+                f"[_get_input_embeds] call={_get_input_embeds._call_count} | "
+                f"dummy_visual_tower={time.perf_counter()-_t_dummy_start:.3f}s",
+                flush=True,
+            )
 
     if attention_mask is not None:
         attention_mask = attention_mask.to(inputs_embeds.device)
+
+    if _do_profile:
+        torch.cuda.synchronize()
+        import time
+        _t_end = time.perf_counter()
+        print(
+            f"[_get_input_embeds] call={_get_input_embeds._call_count} | "
+            f"total={_t_end-_t_start:.3f}s | "
+            f"input_ids={tuple(input_ids.shape)} | embeds_dtype={inputs_embeds.dtype}",
+            flush=True,
+        )
 
     return {
         "inputs_embeds": inputs_embeds,
@@ -242,14 +504,50 @@ def qwen3_vl_base_forward(
     video_grid_thw: Optional[torch.LongTensor] = None,
     **kwargs,
 ):
+    if not hasattr(qwen3_vl_base_forward, "_call_count"):
+        qwen3_vl_base_forward._call_count = 0
+    qwen3_vl_base_forward._call_count += 1
+    _do_profile = qwen3_vl_base_forward._call_count <= 5
+
+    if _do_profile:
+        torch.cuda.synchronize()
+        import time
+        _t0 = time.perf_counter()
+
     input_kwargs = _get_input_embeds(
         self, input_ids, attention_mask, pixel_values, pixel_values_videos, image_grid_thw, video_grid_thw
     )  # avoid lora module having multiple keyword arguments
+
+    if _do_profile:
+        torch.cuda.synchronize()
+        _t1 = time.perf_counter()
+
     kwargs.update(input_kwargs)
-    return self.language_model(
+    result = self.language_model(
         input_ids=None,
         **kwargs,
     )
+
+    if _do_profile:
+        torch.cuda.synchronize()
+        _t2 = time.perf_counter()
+        _n_vis = 0
+        if pixel_values is not None:
+            _n_vis += pixel_values.shape[0]
+        if pixel_values_videos is not None:
+            _n_vis += pixel_values_videos.shape[0]
+        _seq_len = input_kwargs["inputs_embeds"].shape[1] if input_kwargs.get("inputs_embeds") is not None else 0
+        _has_ds = input_kwargs.get("deepstack_visual_embeds") is not None
+        _ds_layers = len(input_kwargs["deepstack_visual_embeds"]) if _has_ds else 0
+        print(
+            f"[qwen3_vl_base_forward] call={qwen3_vl_base_forward._call_count} | "
+            f"vision_embed={_t1-_t0:.3f}s | text_model={_t2-_t1:.3f}s | total={_t2-_t0:.3f}s | "
+            f"seq_len={_seq_len} | vis_patches={_n_vis} | deepstack_layers={_ds_layers} | "
+            f"input_ids={'None' if input_ids is None else tuple(input_ids.shape)}",
+            flush=True,
+        )
+
+    return result
 
 
 def forward_with_normal_backend(
@@ -278,8 +576,24 @@ def forward_with_torch_backend(
 ) -> "Qwen3VLCausalLMOutputForPPO":
     from verl.utils.experimental.torch_functional import FusedLinearForPPO
 
+    if not hasattr(forward_with_torch_backend, "_call_count"):
+        forward_with_torch_backend._call_count = 0
+    forward_with_torch_backend._call_count += 1
+    _do_profile = forward_with_torch_backend._call_count <= 5
+
+    if _do_profile:
+        torch.cuda.synchronize()
+        import time
+        _t0 = time.perf_counter()
+        _mem0 = torch.cuda.memory_allocated() / 1e9
+
     outputs = self.model(input_ids, **kwargs)
     hidden_states = outputs[0]
+
+    if _do_profile:
+        torch.cuda.synchronize()
+        _t1 = time.perf_counter()
+        _mem1 = torch.cuda.memory_allocated() / 1e9
 
     # Loss calculations
     if labels is not None:
@@ -296,6 +610,19 @@ def forward_with_torch_backend(
         input_ids=rolled_labels,
         temperature=temperature,
     )
+
+    if _do_profile:
+        torch.cuda.synchronize()
+        _t2 = time.perf_counter()
+        _mem2 = torch.cuda.memory_allocated() / 1e9
+        print(
+            f"[forward_with_torch_backend] call={forward_with_torch_backend._call_count} | "
+            f"model_fwd={_t1-_t0:.3f}s | fused_linear={_t2-_t1:.3f}s | total={_t2-_t0:.3f}s | "
+            f"hidden={tuple(hidden_states.shape)} | dtype={hidden_states.dtype} | "
+            f"mem_gb: before={_mem0:.2f} after_model={_mem1:.2f} after_fused={_mem2:.2f}",
+            flush=True,
+        )
+
     return Qwen3VLCausalLMOutputForPPO(
         log_probs=log_probs,
         entropy=entropy,

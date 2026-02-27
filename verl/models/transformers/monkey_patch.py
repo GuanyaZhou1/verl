@@ -420,6 +420,7 @@ def apply_monkey_patch(
             forward_with_normal_backend,
             patch_qwen3_vl_moe_sparse_moe_block_forward,
             qwen3_vl_base_forward,
+            qwen3_vl_vision_forward_profiled,
         )
 
         Qwen3VLModel.forward = qwen3_vl_base_forward
@@ -428,11 +429,28 @@ def apply_monkey_patch(
         Qwen3VLMoeForConditionalGeneration.forward = forward_with_normal_backend
         print(f"Monkey patch {model.__class__.__name__} model forward")
 
+        # Patch vision encoder forward for profiling
+        from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLVisionModel
+
+        Qwen3VLVisionModel.forward = qwen3_vl_vision_forward_profiled
+        print(f"Monkey patch {model.__class__.__name__} vision encoder (profiled)")
+
         # Step 1.5: patch Qwen3VLMoeTextSparseMoeBlock to fix transformers 4.57.3 bug
         if model.config.model_type == "qwen3_vl_moe" and is_transformers_version_in_range(max_version="4.57.3"):
             patch_qwen3_vl_moe_sparse_moe_block_forward()
 
-        # Step 2: patch input for multimodal sequence parallelism
+        # Step 2: patch attention to support remove_padding + ulysses parallelism
+        if use_remove_padding or ulysses_sp_size > 1:
+            from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLTextAttention
+            from transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe import Qwen3VLMoeTextAttention
+
+            from verl.models.transformers.qwen3_vl import qwen3_vl_attn_forward
+
+            Qwen3VLTextAttention.forward = qwen3_vl_attn_forward
+            Qwen3VLMoeTextAttention.forward = qwen3_vl_attn_forward
+            print(f"Monkey patch {model.__class__.__name__} attention layer")
+
+        # Step 3: patch input for multimodal sequence parallelism
         if ulysses_sp_size > 1:
             patch_vlm_for_ulysses_input_slicing(Qwen3VLTextModel)
             patch_vlm_for_ulysses_input_slicing(Qwen3VLMoeTextModel)

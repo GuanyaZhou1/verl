@@ -1,0 +1,12 @@
+# 多节点训练节点配置文件
+# 每行一个 IP 地址，第一个为 Ray head 节点
+# 以 # 开头的行为注释，空行会被忽略
+#
+# 使用方式：
+#   cp nodes.txt.example nodes.txt
+#   # 编辑 nodes.txt，填入实际 IP
+#   bash launch_multinode.sh --node-file nodes.txt
+# 10.96.11.2  # 无 InfiniBand，bond0 桥接，NCCL 通信失败，暂时排除
+
+10.96.11.1
+10.96.11.10
