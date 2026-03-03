@@ -71,19 +71,19 @@ def parse_args():
     parser.add_argument(
         "--input_json",
         type=str,
-        default="/data_gpu/zhengshurong/data/dataset/LongVT-Parquet/longvt_rl_selfqa_1k6.json",
+        default=None,
         help="Path to the input longvt json file"
     )
     parser.add_argument(
         "--video_base_path",
         type=str,
-        default="/data_gpu/zhengshurong/data/dataset/LongVT-Source/selfqa",
+        default=None,
         help="Base path to video files"
     )
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="/data_gpu/songlin/rl/verl/long_video_data/longvt_selfqa",
+        default=None,
         help="Output directory for parquet files"
     )
     parser.add_argument(

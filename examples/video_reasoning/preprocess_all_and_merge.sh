@@ -30,6 +30,18 @@
 set -e
 
 # =============================================================================
+# 加载服务器路径配置
+# =============================================================================
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ ! -f "$SCRIPT_DIR/env.sh" ]; then
+    echo "ERROR: $SCRIPT_DIR/env.sh not found"
+    echo "Please run: cp $SCRIPT_DIR/env.sh.example $SCRIPT_DIR/env.sh"
+    echo "Then edit env.sh with your server paths"
+    exit 1
+fi
+source "$SCRIPT_DIR/env.sh"
+
+# =============================================================================
 # 路径配置
 # =============================================================================
 OUTPUT_BASE="./long_video_data"
@@ -38,20 +50,20 @@ SEED=42
 
 # 数据集1: LongVideo-Reason
 DS1_NAME="longvideo_reason"
-DS1_INPUT_JSON="./long_video_data/results.json"
-DS1_VIDEO_BASE="/data_gpu/zhengshurong/data/dataset/LongVideo-Reason_videos/longvila_videos"
+DS1_INPUT_JSON="$LONGVIDEO_REASON_JSON"
+DS1_VIDEO_BASE="$LONGVIDEO_REASON_DIR"
 DS1_OUTPUT="$OUTPUT_BASE/$DS1_NAME"
 
 # 数据集2: Video-Holmes
 DS2_NAME="video_holmes"
-DS2_INPUT_JSON="/data_gpu/gyzhou/prj/data_gene/output_ver4/unified_gemini-3-flash-preview_cap1.0_rea1.0_vf1.0_res0_wm1_jpg100_20260114_151734/results.json"
-DS2_VIDEO_BASE="/data_gpu/zhengshurong/data/dataset/Video-Holmes/videos_cropped"
+DS2_INPUT_JSON="$HOLMES_ANNOTATION_JSON"
+DS2_VIDEO_BASE="$VIDEO_HOLMES_DIR"
 DS2_OUTPUT="$OUTPUT_BASE/$DS2_NAME"
 
 # 数据集3: LongVT Self-QA
 DS3_NAME="longvt_selfqa"
-DS3_INPUT_JSON="/data_gpu/zhengshurong/data/dataset/LongVT-Parquet/longvt_rl_selfqa_1k6.json"
-DS3_VIDEO_BASE="/data_gpu/zhengshurong/data/dataset/LongVT-Source/selfqa"
+DS3_INPUT_JSON="$LONGVT_SELFQA_JSON"
+DS3_VIDEO_BASE="$LONGVT_SELFQA_DIR"
 DS3_OUTPUT="$OUTPUT_BASE/$DS3_NAME"
 
 # =============================================================================

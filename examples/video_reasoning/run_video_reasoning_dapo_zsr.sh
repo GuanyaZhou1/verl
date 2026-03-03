@@ -33,16 +33,18 @@ set -eo pipefail  # 遇错退出，管道中任一命令失败即退出
 ulimit -n 65535
 export VLLM_USE_V1=1
 export TIKTOKEN_CACHE_DIR=${TIKTOKEN_CACHE_DIR:-/data_gpu/gyzhou/tmp/tiktoken_cache}
-export LD_LIBRARY_PATH=/usr/local/cuda-13.1/compat:$LD_LIBRARY_PATH
+#export LD_LIBRARY_PATH=/usr/local/cuda-13.1/compat:$LD_LIBRARY_PATH
 export TMPDIR=/tmp  # multiprocessing 临时文件放本地磁盘，避免 NFS 上 EBUSY 错误
-export RAY_TMPDIR=/tmp/ray_$USER  # 隔离 Ray 临时目录，避免多用户权限冲突
-# export RAY_ADDRESS=local
+# ray.init() 需通过 RAY_ADDRESS=auto 连接预启动的集群，否则会新建集群（耗时 ~50s）
+# 使用非默认端口 6380，避免与 Redis 等占用 6379 端口的服务冲突
+RAY_PORT=${RAY_PORT:-6390}
+export RAY_ADDRESS="127.0.0.1:${RAY_PORT}"
 # export CUDA_VISIBLE_DEVICES=0,1,2,3
 
 # NCCL 环境变量（多节点 IB 通信，单节点下也兼容）
 # 不指定 NCCL_IB_HCA，让 NCCL 自动探测各节点可用的 IB 设备
 # （不同节点 IB 设备名不同：.1/.6/.7 用 mlx5_2/5/6/7，.10 用 mlx5_0/1/2/3）
-export NCCL_SOCKET_IFNAME=${NCCL_SOCKET_IFNAME:-bond0}
+export NCCL_SOCKET_IFNAME=${NCCL_SOCKET_IFNAME:-br0}
 export NCCL_SOCKET_FAMILY=${NCCL_SOCKET_FAMILY:-AF_INET}   # 强制 IPv4，避免 IPv6 链路本地地址无法跨节点路由
 export NCCL_IB_DISABLE=${NCCL_IB_DISABLE:-1}   # 临时禁用 IB，走以太网 TCP
 export NCCL_IB_HCA=${NCCL_IB_HCA:-^mlx5_bond}              # 排除 bond IB 设备（sm_lid=0，未接入 fabric）
@@ -51,8 +53,8 @@ export NCCL_CUMEM_ENABLE=${NCCL_CUMEM_ENABLE:-0}
 
 # Ray 在此机器上无法自动检测 GPU（/dev/vfio 被误判为 TPU），需手动指定
 # 放在 Step 1 缓存视频之前启动，利用缓存时间完成集群初始化
-# ray stop 2>/dev/null || true
-# ray start --head --num-gpus=${N_GPUS:-8}
+ray stop 2>/dev/null || true
+ray start --head --num-gpus=${N_GPUS:-8} --port=${RAY_PORT}
 
 # =============================================================================
 # 路径配置
@@ -64,7 +66,7 @@ MODEL_PATH="/data_gpu/zhengshurong/data/project/Qwen3-VL/qwen-vl-finetune/checkp
 DATA_DIR="${DATA_DIR:-./long_video_data/video_holmes}"
 CACHE_DIR="${CACHE_DIR:-./.cache}"
 CONFIG_PATH="$(pwd)/examples/video_reasoning/config"
-LOG_DIR="./logs"
+LOG_DIR="./logs_zsr"
 
 # =============================================================================
 # 训练参数
@@ -72,7 +74,7 @@ LOG_DIR="./logs"
 TRAIN_BATCH_SIZE=16
 GEN_BATCH_SIZE=16                        # DAPO: 生成批次 2x 训练批次，给过滤留足余量，默认似乎需要是4x
 MAX_PROMPT_LENGTH=36000
-MAX_RESPONSE_LENGTH=4096
+MAX_RESPONSE_LENGTH=16384
 
 LEARNING_RATE=1e-6
 TOTAL_EPOCHS=3
@@ -145,7 +147,7 @@ BBOX_COORD_RANGE=1.0                     # bbox 坐标范围 [0, 1]
 
 SAVE_BBOX_VISUALIZATION=true
 BBOX_VIS_SAMPLE_RATE=0.01
-REWARD_LOG_DIR="./reward_logs"
+REWARD_LOG_DIR="./reward_logs_zsr"
 SAVE_SAMPLES=true
 SAVE_EVERY_N=10
 LOG_EVERY_N=10
@@ -323,7 +325,7 @@ python3 -m recipe.dapo.main_dapo \
     reward_model.enable=False \
     reward_model.reward_manager=dapo \
     reward_model.overlong_buffer.enable=True \
-    reward_model.overlong_buffer.len=512 \
+    reward_model.overlong_buffer.len=256 \
     reward_model.overlong_buffer.penalty_factor=1.0 \
     custom_reward_function.path=pkg://verl.utils.reward_score.video_reasoning_async \
     custom_reward_function.name=compute_score \
@@ -366,7 +368,7 @@ echo "===== Step 2 Complete: Training Finished ====="
 # =============================================================================
 # Step 3: 自动合并模型 (Merge FSDP checkpoints to HuggingFace format)
 # =============================================================================
-CKPT_BASE="./checkpoints/${PROJECT_NAME}/${EXPERIMENT_NAME}"
+CKPT_BASE="./checkpoints_zsr/${PROJECT_NAME}/${EXPERIMENT_NAME}"
 
 if [ -f "$CKPT_BASE/latest_checkpointed_iteration.txt" ]; then
     LATEST_STEP=$(cat "$CKPT_BASE/latest_checkpointed_iteration.txt")

@@ -8,11 +8,21 @@
 
 set -e
 
+# ===== 加载服务器路径配置 =====
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ ! -f "$SCRIPT_DIR/env.sh" ]; then
+    echo "ERROR: $SCRIPT_DIR/env.sh not found"
+    echo "Please run: cp $SCRIPT_DIR/env.sh.example $SCRIPT_DIR/env.sh"
+    echo "Then edit env.sh with your server paths"
+    exit 1
+fi
+source "$SCRIPT_DIR/env.sh"
+
 # ===== 路径配置 =====
 # 原始数据 JSON 文件
-INPUT_JSON="/data_gpu/gyzhou/prj/data_gene/output_ver4/unified_gemini-3-flash-preview_cap1.0_rea1.0_vf1.0_res0_wm1_jpg100_20260114_151734/results.json"
+INPUT_JSON="$HOLMES_ANNOTATION_JSON"
 # 视频文件目录
-VIDEO_BASE_PATH="/data_gpu/zhengshurong/data/dataset/Video-Holmes/videos_cropped/"
+VIDEO_BASE_PATH="$VIDEO_HOLMES_DIR"
 # 输出目录
 OUTPUT_DIR="./long_video_data/video_holmes"
 
