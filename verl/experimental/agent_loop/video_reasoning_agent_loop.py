@@ -161,6 +161,42 @@ class VideoReasoningAgentLoop(AgentLoopBase):
             max_frames=self.cache_max_frames,
         )
 
+    @staticmethod
+    def _fix_video_metadata_timestamps(
+        obs_videos: list,
+        per_video_timestamps: List[List[float]],
+        cache_fps: int,
+    ) -> list:
+        """
+        Fix video_metadata.frames_indices in-place so that the HF processor
+        generates correct absolute <X.X seconds> tokens.
+
+        fetch_video produces frames_indices=[0,1,2,...] for frame-list inputs,
+        causing the processor to emit relative timestamps starting from 0.
+        This method replaces them with indices derived from the known absolute
+        timestamps of the cached frames.
+
+        Args:
+            obs_videos: List of (video_tensor, metadata_dict) from process_vision_info.
+                Each entry corresponds to one segment's video.
+            per_video_timestamps: List of timestamp lists, one per video/segment.
+                e.g. [[28.0, 29.0, ...], [59.0, 60.0, ...]]
+            cache_fps: The fps used when caching frames (typically 1).
+
+        Returns:
+            The same obs_videos list, with metadata modified in-place.
+        """
+        for (video_tensor, metadata), timestamps in zip(obs_videos, per_video_timestamps):
+            n_frames = len(metadata.get("frames_indices", []))
+            # Build absolute frame indices: idx = timestamp * fps
+            abs_indices = [int(round(ts * cache_fps)) for ts in timestamps]
+            # fetch_video may have padded frames (ceil_by_factor); extend to match
+            while len(abs_indices) < n_frames:
+                abs_indices.append(abs_indices[-1] if abs_indices else 0)
+            metadata["frames_indices"] = abs_indices[:n_frames]
+            metadata["fps"] = cache_fps
+        return obs_videos
+
     def _get_frame_paths_for_segments(
         self,
         video_path: str,
@@ -521,27 +557,30 @@ class VideoReasoningAgentLoop(AgentLoopBase):
             if messages_no_watermark:
                 messages_no_watermark.append({"role": "assistant", "content": response_text})
 
-            # Load frame jpg paths from cache
+            # Load frame paths WITH timestamps per segment, so each segment
+            # gets its own video entry with correct absolute timestamps.
+            # This fixes two bugs:
+            #   1. Timestamps were relative (<0.2s>) instead of absolute (<34.0s>)
+            #   2. All segments' frames were in one video entry, so timestamps
+            #      appeared after the last "From X to Y:" instead of per-segment.
             with simple_timer("tool_calls", metrics):
-                if use_watermark:
-                    frame_paths_with_ts = self._get_frame_paths_with_timestamps_for_segments(video_path, segments)
-                    frame_paths = [fp for fp, _ in frame_paths_with_ts]
-                else:
-                    frame_paths = self._get_frame_paths_for_segments(video_path, segments)
-                    frame_paths_with_ts = None
-            metrics["num_frames"] = len(frame_paths)
+                per_segment_frames = []  # List of lists: [[(path, ts), ...], ...]
+                total_frames = 0
+                for start, end in segments:
+                    seg_frames = self._get_frame_paths_with_timestamps_for_segments(
+                        video_path, [(start, end)]
+                    )
+                    per_segment_frames.append(seg_frames)
+                    total_frames += len(seg_frames)
+            metrics["num_frames"] = total_frames
 
-            if not frame_paths:
+            if total_frames == 0:
                 # No frames loaded, stop
                 break
 
-            # Build observation message using video format (generates <|video_pad|> token)
-            # This aligns with SFT training which uses video format
-            #
-            # Format aligned with eval script:
-            #   <observation>Here are the cropped video segments.
-            #   From Xs to Ys: [video frames]
-            #   </observation>
+            # Build observation message with per-segment video entries.
+            # Each segment gets: text("From Xs to Ys:") + video([segment frames])
+            # This ensures <X.X seconds><|video_pad|> tokens follow each segment label.
             content_list = [
                 {"type": "text", "text": "<observation>Here are the cropped video segments."}
             ]
@@ -549,51 +588,53 @@ class VideoReasoningAgentLoop(AgentLoopBase):
                 {"type": "text", "text": "<observation>Here are the cropped video segments."}
             ] if use_watermark else None
 
-            # Add segment info and video for each segment
-            for start, end in segments:
-                # Boundary check (like eval script lines 497-501)
+            # Collect all absolute timestamps (flattened) for metadata fix later
+            all_absolute_timestamps = []
+
+            for (start, end), seg_frames_with_ts in zip(segments, per_segment_frames):
+                if not seg_frames_with_ts:
+                    continue
+
+                # Boundary check (like eval script)
                 if start >= end:
                     end = start + 2.0
                 if video_duration and end >= video_duration:
                     start = min(start, video_duration - 2.0)
                     end = video_duration
 
+                seg_paths = [fp for fp, _ in seg_frames_with_ts]
+                seg_timestamps = [ts for _, ts in seg_frames_with_ts]
+                all_absolute_timestamps.append(seg_timestamps)
+
                 content_list.append({"type": "text", "text": f"\nFrom {start}s to {end}s:"})
                 if content_list_no_watermark:
                     content_list_no_watermark.append({"type": "text", "text": f"\nFrom {start}s to {end}s:"})
 
-            # Add video using jpg paths - this generates <|video_pad|> token
-            # All segment frames as one video entry
-            # Use segment config params (default aligned with eval script)
-            if use_watermark and frame_paths_with_ts:
-                # For rollout: use watermarked frames (as PIL Images)
-                watermarked_frames = self._add_watermarks_to_frames(frame_paths_with_ts)
-                content_list.append({
-                    "type": "video",
-                    "video": watermarked_frames,  # PIL Images instead of paths
+                video_params = {
                     "fps": self.segment_fps,
                     "max_frames": self.segment_max_frames,
                     "min_pixels": self.segment_min_pixels,
                     "max_pixels": self.segment_max_pixels,
-                })
-                # For logp: use original frame paths
-                content_list_no_watermark.append({
-                    "type": "video",
-                    "video": frame_paths,  # Original paths
-                    "fps": self.segment_fps,
-                    "max_frames": self.segment_max_frames,
-                    "min_pixels": self.segment_min_pixels,
-                    "max_pixels": self.segment_max_pixels,
-                })
-            else:
-                content_list.append({
-                    "type": "video",
-                    "video": frame_paths,
-                    "fps": self.segment_fps,
-                    "max_frames": self.segment_max_frames,
-                    "min_pixels": self.segment_min_pixels,
-                    "max_pixels": self.segment_max_pixels,
-                })
+                }
+
+                if use_watermark:
+                    watermarked_frames = self._add_watermarks_to_frames(seg_frames_with_ts)
+                    content_list.append({
+                        "type": "video",
+                        "video": watermarked_frames,
+                        **video_params,
+                    })
+                    content_list_no_watermark.append({
+                        "type": "video",
+                        "video": seg_paths,
+                        **video_params,
+                    })
+                else:
+                    content_list.append({
+                        "type": "video",
+                        "video": seg_paths,
+                        **video_params,
+                    })
 
             content_list.append({"type": "text", "text": "\n</observation>"})
             if content_list_no_watermark:
@@ -611,6 +652,11 @@ class VideoReasoningAgentLoop(AgentLoopBase):
             # process_vision_info will load jpg files and return (tensor, metadata) tuples
             obs_multi_modal = await self.process_vision_info([observation_message])
             obs_videos = obs_multi_modal.get("videos", [])
+
+            # Fix video_metadata.frames_indices to use absolute timestamps.
+            # fetch_video sets frames_indices=[0,1,2,...] for frame lists, causing
+            # the processor to generate relative <0.2s> tokens instead of <34.0s>.
+            self._fix_video_metadata_timestamps(obs_videos, all_absolute_timestamps, self.cache_fps)
 
             # Accumulate videos for output
             if videos is None:
@@ -639,6 +685,7 @@ class VideoReasoningAgentLoop(AgentLoopBase):
             if use_watermark and observation_message_no_watermark:
                 obs_multi_modal_no_watermark = await self.process_vision_info([observation_message_no_watermark])
                 obs_videos_no_watermark = obs_multi_modal_no_watermark.get("videos", [])
+                self._fix_video_metadata_timestamps(obs_videos_no_watermark, all_absolute_timestamps, self.cache_fps)
 
                 if videos_no_watermark is None:
                     videos_no_watermark = []

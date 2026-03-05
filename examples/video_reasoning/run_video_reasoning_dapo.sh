@@ -96,8 +96,8 @@ CLIP_RATIO_HIGH=0.28                     # > low，鼓励正向更新
 NORM_ADV_BY_STD=False                      # 归一化 advantage，
 
 USE_KL_IN_REWARD=False
-USE_KL_LOSS=False
-KL_LOSS_COEF=0.01
+USE_KL_LOSS=True
+KL_LOSS_COEF=0.05
 KL_LOSS_TYPE=low_var_kl
 
 # =============================================================================
@@ -323,8 +323,8 @@ python3 -m recipe.dapo.main_dapo \
     reward_model.enable=False \
     reward_model.reward_manager=dapo \
     reward_model.overlong_buffer.enable=True \
-    reward_model.overlong_buffer.len=512 \
-    reward_model.overlong_buffer.penalty_factor=1.0 \
+    reward_model.overlong_buffer.len=2048 \
+    reward_model.overlong_buffer.penalty_factor=3.0 \
     custom_reward_function.path=pkg://verl.utils.reward_score.video_reasoning_async \
     custom_reward_function.name=compute_score \
     custom_reward_function.reward_kwargs.vlm_endpoint="$VLM_ENDPOINT" \
