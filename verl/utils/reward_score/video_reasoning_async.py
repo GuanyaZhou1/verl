@@ -543,6 +543,62 @@ def _parse_vlm_bbox_response(response: str) -> Optional[List[float]]:
     return None
 
 
+def _get_neighboring_frame_paths(
+    frame_path: str,
+    video_path: str,
+    bbox_timestamp: float,
+    cache_dir: str,
+    cache_fps: int,
+    cache_max_frames: int,
+    num_neighbors: int = 2,
+) -> List[Tuple[str, float, bool]]:
+    """
+    Get neighboring frame paths around the target timestamp.
+
+    Returns a list of (path, timestamp, is_target) tuples, sorted by timestamp.
+    Always returns up to (2 * num_neighbors + 1) frames, handling boundary conditions.
+    E.g. for timestamp=3 with num_neighbors=2: frames at t=1,2,3,4,5
+         for timestamp=1 with num_neighbors=2: frames at t=0,1,2,3 (or fewer if 0 doesn't exist)
+    """
+    from verl.utils.video_frame_cache import VideoFrameCache
+
+    cache = VideoFrameCache(cache_dir=cache_dir, fps=cache_fps, max_frames=cache_max_frames)
+    try:
+        all_frames_with_ts = cache.load_frame_paths_with_timestamps(
+            video_path, segments=None, auto_cache=False
+        )
+    except Exception:
+        return [(frame_path, bbox_timestamp, True)]
+
+    if not all_frames_with_ts:
+        return [(frame_path, bbox_timestamp, True)]
+
+    # Find the index of the target frame (closest to bbox_timestamp)
+    target_idx = min(
+        range(len(all_frames_with_ts)),
+        key=lambda i: abs(all_frames_with_ts[i][1] - bbox_timestamp)
+    )
+
+    # Collect neighbors: expand window to always get ~(2*num_neighbors+1) frames
+    start = max(0, target_idx - num_neighbors)
+    end = min(len(all_frames_with_ts), target_idx + num_neighbors + 1)
+    # If near boundaries, expand the other side
+    desired = 2 * num_neighbors + 1
+    if end - start < desired:
+        if start == 0:
+            end = min(len(all_frames_with_ts), start + desired)
+        elif end == len(all_frames_with_ts):
+            start = max(0, end - desired)
+
+    result = []
+    for i in range(start, end):
+        path, ts = all_frames_with_ts[i]
+        is_target = (i == target_idx)
+        result.append((path, ts, is_target))
+
+    return result
+
+
 async def verify_single_bbox_with_vlm(
     frame_path: str,
     bbox: List[float],
@@ -557,6 +613,11 @@ async def verify_single_bbox_with_vlm(
     iou_threshold: float = DEFAULT_IOU_THRESHOLD,
     save_visualization: bool = False,
     visualization_dir: str = "./reward_logs/bbox_vis",
+    video_path: Optional[str] = None,
+    bbox_timestamp: Optional[float] = None,
+    cache_dir: str = ".cache",
+    cache_fps: int = 1,
+    cache_max_frames: int = 512,
 ) -> Tuple[float, float, float, Optional[List[float]], str, str, str, Optional[str]]:
     """
     使用 VLM 验证单个 bbox 的准确性（基于 IOU 的双维度奖励）
@@ -617,104 +678,108 @@ async def verify_single_bbox_with_vlm(
         temporal_score = 1.0 if gt_bbox is not None else 0.0  # 仅用于日志
         spatial_score = iou  # 仅用于日志
 
-        # 5. 保存可视化图片
+        # 5. 保存可视化图片（5帧横向拼接：目标帧±2邻近帧，目标帧加亮色边框）
         saved_vis_path = None
         if save_visualization:
             os.makedirs(visualization_dir, exist_ok=True)
+            from PIL import ImageFont
 
-            img = Image.open(frame_path).convert("RGB")
-            img_width, img_height = img.size
-            draw = ImageDraw.Draw(img)
+            # 获取邻近帧路径
+            if video_path and bbox_timestamp is not None:
+                neighbor_frames = _get_neighboring_frame_paths(
+                    frame_path, video_path, bbox_timestamp,
+                    cache_dir, cache_fps, cache_max_frames, num_neighbors=2,
+                )
+            else:
+                neighbor_frames = [(frame_path, bbox_timestamp or 0, True)]
 
-            # 绘制预测 bbox（红色）- 使用自动检测的坐标范围
             pred_normalized = [c / effective_coord_range for c in bbox]
-            pred_px = [
-                int(pred_normalized[0] * img_width),
-                int(pred_normalized[1] * img_height),
-                int(pred_normalized[2] * img_width),
-                int(pred_normalized[3] * img_height),
-            ]
-            line_width = max(3, min(img_width, img_height) // 200)
-            draw.rectangle(pred_px, outline="red", width=line_width)
 
-            # 绘制 GT bbox（绿色，如果存在）
-            if gt_bbox is not None:
-                gt_px = [
-                    int(gt_bbox[0] * img_width),
-                    int(gt_bbox[1] * img_height),
-                    int(gt_bbox[2] * img_width),
-                    int(gt_bbox[3] * img_height),
+            # 加载字体
+            try:
+                label_font_size = 16
+                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", label_font_size)
+            except Exception:
+                font = ImageFont.load_default()
+
+            # 为每帧绘制 bbox 并标注时间戳
+            annotated_frames = []
+            border_width = 6
+            for fpath, fts, is_target in neighbor_frames:
+                fimg = Image.open(fpath).convert("RGB")
+                fw, fh = fimg.size
+                fdraw = ImageDraw.Draw(fimg)
+                line_w = max(2, min(fw, fh) // 200)
+
+                # 绘制预测 bbox（红色）
+                ppx = [
+                    int(pred_normalized[0] * fw), int(pred_normalized[1] * fh),
+                    int(pred_normalized[2] * fw), int(pred_normalized[3] * fh),
                 ]
-                draw.rectangle(gt_px, outline="green", width=line_width)
+                fdraw.rectangle(ppx, outline="red", width=line_w)
 
-            # 绘制物体名称标签（在预测 bbox 上方）
+                # 绘制 GT bbox（绿色）
+                if gt_bbox is not None:
+                    gpx = [
+                        int(gt_bbox[0] * fw), int(gt_bbox[1] * fh),
+                        int(gt_bbox[2] * fw), int(gt_bbox[3] * fh),
+                    ]
+                    fdraw.rectangle(gpx, outline="green", width=line_w)
+
+                # 顶部时间戳标签
+                ts_text = f"{fts:.0f}s"
+                ts_bbox = fdraw.textbbox((0, 0), ts_text, font=font)
+                ts_w = ts_bbox[2] - ts_bbox[0]
+                ts_x = (fw - ts_w) // 2
+                fdraw.rectangle([ts_x - 4, 2, ts_x + ts_w + 4, ts_bbox[3] - ts_bbox[1] + 6], fill="black")
+                fdraw.text((ts_x, 3), ts_text, fill="yellow", font=font)
+
+                # 目标帧：加亮色（cyan）边框 + "TARGET" 标记
+                if is_target:
+                    for offset in range(border_width):
+                        fdraw.rectangle(
+                            [offset, offset, fw - 1 - offset, fh - 1 - offset],
+                            outline="cyan",
+                        )
+                    tag = "TARGET"
+                    tag_bbox = fdraw.textbbox((0, 0), tag, font=font)
+                    tag_w = tag_bbox[2] - tag_bbox[0]
+                    tag_x = (fw - tag_w) // 2
+                    tag_y = fh - (tag_bbox[3] - tag_bbox[1]) - 8
+                    fdraw.rectangle([tag_x - 4, tag_y - 2, tag_x + tag_w + 4, tag_y + (tag_bbox[3] - tag_bbox[1]) + 4], fill="cyan")
+                    fdraw.text((tag_x, tag_y), tag, fill="black", font=font)
+
+                annotated_frames.append(fimg)
+
+            # 横向拼接所有帧
+            total_w = sum(f.width for f in annotated_frames) + 2 * (len(annotated_frames) - 1)
+            max_h = max(f.height for f in annotated_frames)
+            # 顶部留空间给总评分信息
+            info_height = 50
+            strip = Image.new("RGB", (total_w, max_h + info_height), color=(40, 40, 40))
+
+            # 在顶部绘制评分信息
+            strip_draw = ImageDraw.Draw(strip)
             try:
-                from PIL import ImageFont
-                label_font_size = max(16, min(img_width, img_height) // 40)
-                try:
-                    label_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", label_font_size)
-                except Exception:
-                    label_font = ImageFont.load_default()
-
-                label_text = f" {object_name} "
-                label_y = max(0, pred_px[1] - label_font_size - 8)
-
-                label_bbox = draw.textbbox((pred_px[0], label_y), label_text, font=label_font)
-                # 绘制标签背景
-                draw.rectangle(
-                    [label_bbox[0] - 2, label_bbox[1] - 2, label_bbox[2] + 2, label_bbox[3] + 2],
-                    fill="red"
-                )
-                # 绘制标签文字
-                draw.text((pred_px[0], label_y), label_text, fill="white", font=label_font)
+                info_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
             except Exception:
-                # 降级：简单绘制
-                draw.text((pred_px[0], max(0, pred_px[1] - 15)), object_name, fill="red")
+                info_font = font
+            info_text = (
+                f"Object: {object_name[:40]}  |  IOU: {iou:.2f}  |  "
+                f"Red=Pred  Green=GT  Cyan border=TARGET frame"
+            )
+            strip_draw.text((8, 8), info_text, fill="white", font=info_font)
 
-            # 添加评分信息（包含物体名称）
-            try:
-                from PIL import ImageFont
-                font_size = max(14, min(img_width, img_height) // 35)
-                try:
-                    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
-                except Exception:
-                    font = ImageFont.load_default()
-
-                # 第一行：物体名称
-                obj_text = f"Object: {object_name[:30]}{'...' if len(object_name) > 30 else ''}"
-                # 第二行：分数
-                score_text = f"T:{temporal_score:.1f} S:{spatial_score:.2f} IOU:{iou:.2f} Total:{total_score:.2f}"
-                # 第三行：图例
-                legend_text = "Red=Pred, Green=GT"
-
-                # 计算背景大小
-                lines = [obj_text, score_text, legend_text]
-                max_width = 0
-                total_height = 5
-                for line in lines:
-                    bbox_line = draw.textbbox((0, 0), line, font=font)
-                    max_width = max(max_width, bbox_line[2] - bbox_line[0])
-                    total_height += bbox_line[3] - bbox_line[1] + 5
-
-                # 绘制半透明背景
-                draw.rectangle(
-                    [3, 3, max_width + 12, total_height + 5],
-                    fill="white"
-                )
-
-                # 绘制文字
-                y_pos = 5
-                for line in lines:
-                    draw.text((5, y_pos), line, fill="black", font=font)
-                    bbox_line = draw.textbbox((0, 0), line, font=font)
-                    y_pos += bbox_line[3] - bbox_line[1] + 5
-            except Exception:
-                draw.text((5, 5), f"Obj:{object_name[:20]} T:{temporal_score:.1f} S:{spatial_score:.2f}", fill="black")
+            # 粘贴帧
+            x_offset = 0
+            for i, fimg in enumerate(annotated_frames):
+                strip.paste(fimg, (x_offset, info_height))
+                x_offset += fimg.width + 2  # 2px gap
 
             vis_filename = f"bbox_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}_iou{iou:.2f}.jpg"
             saved_vis_path = os.path.abspath(os.path.join(visualization_dir, vis_filename))
-            img.save(saved_vis_path, "JPEG", quality=90)
-            logger.debug(f"Saved bbox vis: {saved_vis_path}")
+            strip.save(saved_vis_path, "JPEG", quality=90)
+            logger.debug(f"Saved bbox vis strip: {saved_vis_path}")
         else:
             saved_vis_path = None
 
@@ -812,6 +877,11 @@ async def verify_bboxes_with_vlm(
                 iou_threshold=iou_threshold,
                 save_visualization=should_save_vis,
                 visualization_dir=visualization_dir,
+                video_path=video_path,
+                bbox_timestamp=bbox_info['time'],
+                cache_dir=cache_dir,
+                cache_fps=cache_fps,
+                cache_max_frames=cache_max_frames,
             ))
             valid_bbox_indices.append((i, frame_path))  # 同时保存 frame_path
         else:

@@ -409,9 +409,27 @@ def _get_input_embeds(
         n_video_tokens = (input_ids == model.config.video_token_id).sum().item()
         n_video_features = video_embeds.shape[0]
         if n_video_tokens != n_video_features:
-            raise ValueError(
-                f"Video features and video tokens do not match: tokens: {n_video_tokens}, features {n_video_features}"
-            )
+            if n_video_tokens > n_video_features:
+                # More tokens than features: replace excess video tokens with pad token to match
+                diff = n_video_tokens - n_video_features
+                logger.warning(
+                    f"Video tokens ({n_video_tokens}) > features ({n_video_features}), "
+                    f"replacing {diff} excess video token(s) with pad token."
+                )
+                pad_token_id = getattr(model.config, "pad_token_id", 0) or 0
+                input_ids = input_ids.clone()  # avoid in-place modification breaking autograd
+                video_token_positions = (input_ids == model.config.video_token_id).nonzero(as_tuple=True)
+                # Replace the last `diff` video tokens with pad token
+                for i in range(1, diff + 1):
+                    input_ids[video_token_positions[0][-i], video_token_positions[1][-i]] = pad_token_id
+            else:
+                # More features than tokens: truncate video_embeds to match token count
+                diff = n_video_features - n_video_tokens
+                logger.warning(
+                    f"Video features ({n_video_features}) > tokens ({n_video_tokens}), "
+                    f"truncating {diff} excess video feature(s)."
+                )
+                video_embeds = video_embeds[:n_video_tokens]
 
         mask = input_ids == model.config.video_token_id
         mask_unsqueezed = mask.unsqueeze(-1)
