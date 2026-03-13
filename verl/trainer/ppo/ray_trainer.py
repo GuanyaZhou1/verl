@@ -42,7 +42,13 @@ from verl.single_controller.ray import RayClassWithInitArgs, RayResourcePool, Ra
 from verl.single_controller.ray.base import create_colocated_worker_cls
 from verl.trainer.config import AlgoConfig
 from verl.trainer.ppo import core_algos
-from verl.trainer.ppo.core_algos import AdvantageEstimator, agg_loss
+from verl.trainer.ppo.core_algos import (
+    AdvantageEstimator,
+    TokenPlacementMethod,
+    agg_loss,
+    apply_token_placement,
+    find_turn_boundaries,
+)
 from verl.trainer.ppo.metric_utils import (
     compute_data_metrics,
     compute_throughout_metrics,
@@ -192,6 +198,7 @@ def compute_advantage(
     num_repeat: int = 1,
     norm_adv_by_std_in_grpo: bool = True,
     config: Optional[AlgoConfig] = None,
+    tokenizer=None,  # Required for token_placement with method != broadcast
 ) -> DataProto:
     """Compute advantage estimates for policy optimization.
 
@@ -207,6 +214,7 @@ def compute_advantage(
         norm_adv_by_std_in_grpo (bool, optional): Whether to normalize advantages by standard deviation in
             GRPO. Defaults to True.
         config (dict, optional): Configuration dictionary for algorithm settings. Defaults to None.
+        tokenizer: Tokenizer for decoding response tokens. Required for token_placement with method != broadcast.
 
     Returns:
         DataProto: The updated data with computed advantages and returns.
@@ -245,8 +253,177 @@ def compute_advantage(
         )
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
+    elif adv_estimator == AdvantageEstimator.GDPO:
+        # GDPO: Group reward-Decoupled normalization Policy Optimization
+        # Reference: https://arxiv.org/abs/2601.05242
+        gdpo_config = config.get("gdpo", {}) if config else {}
+        reward_weights = gdpo_config.get("reward_weights", {})
+        device = data.batch["token_level_rewards"].device
+
+        # Token placement configuration
+        token_placement_config = config.get("token_placement", {}) if config else {}
+        tp_method = token_placement_config.get("method", "broadcast")
+
+        # Auto-detect all *_score keys from non_tensor_batch
+        all_score_keys = [
+            k for k in data.non_tensor_batch.keys()
+            if k.endswith("_score") and k != "score"
+        ]
+
+        # Extract reward components, filtering by weight (weight=0 means exclude)
+        reward_components = {}
+        for name in all_score_keys:
+            # Get weight: default 1.0, skip if weight is 0
+            weight = reward_weights.get(name, 1.0)
+            if weight == 0:
+                continue
+
+            values = data.non_tensor_batch[name]
+
+            # Handle different types: bool, numpy array, list, etc.
+            if isinstance(values, np.ndarray):
+                # Convert bool array to float
+                if values.dtype == bool or values.dtype == np.bool_:
+                    values = values.astype(np.float32)
+                reward_components[name] = torch.tensor(values, device=device, dtype=torch.float32)
+            elif isinstance(values, (list, tuple)):
+                # Convert list of bools/floats to tensor
+                float_values = [float(v) for v in values]
+                reward_components[name] = torch.tensor(float_values, device=device, dtype=torch.float32)
+            elif isinstance(values, torch.Tensor):
+                reward_components[name] = values.to(device=device, dtype=torch.float32)
+            else:
+                # Skip unsupported types
+                continue
+
+        # Log which components are being used (only on first call or when components change)
+        if reward_components:
+            component_info = ", ".join([f"{k}(w={reward_weights.get(k, 1.0)})" for k in reward_components.keys()])
+            # Use a function attribute to avoid repeated logging
+            if not hasattr(compute_advantage, "_gdpo_logged_components") or \
+               compute_advantage._gdpo_logged_components != set(reward_components.keys()):
+                print(f"[GDPO] Using reward components: {component_info}")
+                compute_advantage._gdpo_logged_components = set(reward_components.keys())
+
+        # Check if token placement is enabled (method != broadcast)
+        if tp_method != "broadcast" and tokenizer is not None:
+            # Token placement: distribute rewards to specific token positions
+            from verl.utils import group_mean_std, as_torch_index
+
+            bs = data.batch["response_mask"].shape[0]
+            response_mask = data.batch["response_mask"]
+            response_ids = data.batch["responses"]
+            g = as_torch_index(data.non_tensor_batch["uid"], device=device)
+            epsilon = 1e-6
+
+            # Step 1: Compute group-normalized advantages for each component
+            normalized_advs = {}
+            for name, rewards in reward_components.items():
+                mean_g, std_g, _ = group_mean_std(rewards, g, eps=epsilon, device=device)
+                A_k = (rewards - mean_g[g]) / (std_g[g] + epsilon)
+                normalized_advs[name] = A_k
+
+            # Step 2: Extract per-component advantages
+            answer_adv = normalized_advs.get("answer_score", torch.zeros(bs, device=device))
+            format_adv = normalized_advs.get("format_score", torch.zeros(bs, device=device))
+
+            # Get bbox_details and segment_details from non_tensor_batch if available
+            bbox_details_list = data.non_tensor_batch.get("bbox_details", [None] * bs)
+            segment_details_list = data.non_tensor_batch.get("segment_details", [None] * bs)
+
+            # Prepare per-sample bbox and segment advantages
+            bbox_advs = []
+            segment_advs = []
+
+            # If we have aggregated bbox_score/segment_score, use them for all
+            bbox_score_tensor = normalized_advs.get("bbox_score", torch.zeros(bs, device=device))
+            segment_score_tensor = normalized_advs.get("segment_score", torch.zeros(bs, device=device))
+
+            for i in range(bs):
+                # For now, if bbox_details not available, use single aggregated score
+                bbox_details = bbox_details_list[i] if bbox_details_list[i] else []
+                if bbox_details:
+                    # Use per-bbox scores if available
+                    # Each bbox_detail should have "score" field
+                    per_bbox_scores = [bd.get("score", 0.0) for bd in bbox_details]
+                    # Normalize these scores using group statistics
+                    bbox_advs.append(per_bbox_scores)
+                else:
+                    # Use aggregated bbox_score for single bbox
+                    bbox_advs.append([bbox_score_tensor[i].item()])
+
+                segment_details = segment_details_list[i] if segment_details_list[i] else []
+                if segment_details:
+                    per_segment_scores = [sd.get("score", 0.0) for sd in segment_details]
+                    segment_advs.append(per_segment_scores)
+                else:
+                    # Use aggregated segment_score for single turn
+                    segment_advs.append([segment_score_tensor[i].item()])
+
+            # Step 3: Find turn boundaries for each sample
+            turn_info = []
+            for i in range(bs):
+                # Decode response to get text
+                response_tokens = response_ids[i].tolist()
+                response_str = tokenizer.decode(response_tokens, skip_special_tokens=False)
+                # Find turn boundaries
+                boundaries = find_turn_boundaries(response_str, tokenizer, response_ids[i])
+                turn_info.append(boundaries)
+
+            # Step 4: Apply token placement
+            tp_config = {
+                "method": tp_method,
+                "global_reward_mode": token_placement_config.get("global_reward_mode", "broadcast"),
+                "answer_weight": token_placement_config.get("answer_weight", 1.0),
+                "format_weight": token_placement_config.get("format_weight", 0.5),
+                "bbox_weight": token_placement_config.get("bbox_weight", 1.0),
+                "segment_weight": token_placement_config.get("segment_weight", 1.0),
+                "gamma": token_placement_config.get("gamma", 0.99),
+                "lam": token_placement_config.get("lambda", 0.95),
+            }
+
+            advantages = apply_token_placement(
+                answer_adv=answer_adv,
+                format_adv=format_adv,
+                bbox_advs=bbox_advs,
+                segment_advs=segment_advs,
+                turn_info=turn_info,
+                response_mask=response_mask,
+                **tp_config,
+            )
+
+            # Optional: Batch-wise normalization
+            if gdpo_config.get("enable_batch_norm", True):
+                valid_mask = response_mask.bool()
+                if valid_mask.any():
+                    batch_mean = advantages[valid_mask].mean()
+                    batch_std = advantages[valid_mask].std()
+                    if batch_std > epsilon:
+                        advantages = (advantages - batch_mean) / (batch_std + epsilon)
+                    advantages = advantages * response_mask
+
+            data.batch["advantages"] = advantages
+            data.batch["returns"] = advantages
+
+            # Log token placement method
+            if not hasattr(compute_advantage, "_tp_logged"):
+                print(f"[GDPO] Token placement enabled: method={tp_method}, global_mode={tp_config['global_reward_mode']}")
+                compute_advantage._tp_logged = True
+        else:
+            # Original GDPO: broadcast advantages to all tokens
+            advantages, returns = core_algos.compute_gdpo_outcome_advantage(
+                token_level_rewards=data.batch["token_level_rewards"],
+                response_mask=data.batch["response_mask"],
+                index=data.non_tensor_batch["uid"],
+                reward_components=reward_components,
+                reward_weights=reward_weights,
+                enable_batch_norm=gdpo_config.get("enable_batch_norm", True),
+                config=config,
+            )
+            data.batch["advantages"] = advantages
+            data.batch["returns"] = returns
     else:
-        # handle all other adv estimator type other than GAE and GRPO
+        # handle all other adv estimator type other than GAE, GRPO, GDPO
         adv_estimator_fn = core_algos.get_adv_estimator_fn(adv_estimator)
         adv_kwargs = {
             "token_level_rewards": data.batch["token_level_rewards"],
@@ -1627,6 +1804,7 @@ class RayPPOTrainer:
                             num_repeat=self.config.actor_rollout_ref.rollout.n,
                             norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
                             config=self.config.algorithm,
+                            tokenizer=self.tokenizer,
                         )
 
                     # update critic

@@ -119,6 +119,52 @@ algorithm:
     # Power used for weight scaling in "pow" method
     weight_pow: 2.0
 
+  # GDPO (Group reward-Decoupled normalization Policy Optimization) settings
+  # Reference: https://arxiv.org/abs/2601.05242
+  # Used when adv_estimator: gdpo
+  gdpo:
+
+    # Whether to apply batch-wise normalization after weighted sum (recommended)
+    enable_batch_norm: True
+
+    # Weights for each reward component (optional)
+    # - Auto-detects all *_score keys from reward function output
+    # - Unspecified keys default to weight 1.0
+    # - Set to 0 to exclude a component
+    # Example:
+    #   reward_weights:
+    #     answer_score: 1.0   # default weight
+    #     bbox_score: 0.5     # reduced weight
+    #     format_score: 0.0   # excluded
+    reward_weights: {}
+
+  # Token Placement strategy for multi-turn CoT
+  # Controls how different reward components are distributed across tokens
+  # Used with GDPO for fine-grained reward signal placement
+  token_placement:
+
+    # Method for distributing rewards to tokens
+    # - broadcast: All tokens share same advantage (default, original behavior)
+    # - per_turn: Rewards placed within their turn boundaries (local broadcast)
+    # - per_turn_gae: Rewards propagated within turn using GAE decay
+    method: broadcast
+
+    # How to distribute global rewards (acc, format) across tokens
+    # Only used when method != broadcast
+    # - broadcast: Average across all tokens (recommended, stable)
+    # - gae: GAE decay from EOS (may weaken signal for early tokens)
+    global_reward_mode: broadcast
+
+    # Component weights for token placement (multiplied with GDPO output)
+    answer_weight: 1.0
+    format_weight: 0.5
+    bbox_weight: 1.0
+    segment_weight: 1.0
+
+    # GAE parameters for per_turn_gae or global_reward_mode=gae
+    gamma: 0.99
+    lambda: 0.95
+
 # config for the trainer
 trainer:
 

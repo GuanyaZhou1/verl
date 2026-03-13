@@ -465,9 +465,12 @@ class AgentLoopWorker:
             temperature=config.temperature,
             top_p=config.top_p,
             top_k=config.top_k,
-            repetition_penalty=1.0,
+            repetition_penalty=getattr(config, 'repetition_penalty', 1.0),
             logprobs=config.calculate_log_probs,
         )
+        # 单轮最大生成长度（如果配置了的话）
+        if hasattr(config, 'max_tokens_per_turn') and config.max_tokens_per_turn:
+            sampling_params['max_tokens'] = config.max_tokens_per_turn
 
         # override sampling params for validation
         if batch.meta_info.get("validate", False):
@@ -556,6 +559,30 @@ class AgentLoopWorker:
 
     async def _agent_loop_postprocess(self, output, **kwargs) -> _InternalAgentLoopOutput:
         """Perform post-processing operations on the output of each individual agent loop."""
+
+        # 检查空输出（由 try-catch 跳过的样本产生）
+        if not output.prompt_ids or not output.response_ids:
+            logger.warning("Empty output detected, returning dummy result with zero mask (won't affect training)")
+            prompt_length = self.config.actor_rollout_ref.rollout.prompt_length
+            response_length = self.config.actor_rollout_ref.rollout.response_length
+            pad_token_id = self.tokenizer.pad_token_id or 0
+
+            # 返回一个有效的空结果
+            # response_mask 全为 0，这样在计算 loss 时这个样本不会贡献梯度
+            # attention_mask 全为 0，这样模型不会处理这些 token
+            return _InternalAgentLoopOutput(
+                prompt_ids=torch.full((1, prompt_length), pad_token_id, dtype=torch.long),
+                response_ids=torch.full((1, response_length), pad_token_id, dtype=torch.long),
+                response_mask=torch.zeros((1, response_length), dtype=torch.long),  # 全 0，不贡献梯度
+                input_ids=torch.full((1, prompt_length + response_length), pad_token_id, dtype=torch.long),
+                attention_mask=torch.zeros((1, prompt_length + response_length), dtype=torch.long),  # 全 0
+                position_ids=torch.zeros((1, prompt_length + response_length), dtype=torch.long),
+                response_logprobs=None,
+                multi_modal_inputs={},
+                multi_modal_inputs_no_watermark=None,
+                extra_fields={"raw_prompt": kwargs.get("raw_prompt", []), "__skip_sample__": True},
+            )
+
         output.extra_fields["raw_prompt"] = kwargs["raw_prompt"]
 
         # Some AgentLoop may have already computed the reward score, e.g SWE-agent.

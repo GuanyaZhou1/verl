@@ -101,6 +101,7 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
             - response_length/mean, max, min, clip_ratio: Statistics about response lengths
             - prompt_length/mean, max, min, clip_ratio: Statistics about prompt lengths
             - num_turns/mean, max, min: Statistics about the number of multi-turn conversations
+            - reward_components/*: Statistics about individual reward components (if available)
     """
     sequence_score = batch.batch["token_level_scores"].sum(-1)
     sequence_reward = batch.batch["token_level_rewards"].sum(-1)
@@ -221,6 +222,25 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
         metrics["tool_call_counts/min"] = tool_call_counts.min()
         metrics["tool_call_counts/max"] = tool_call_counts.max()
         metrics["tool_call_counts/mean"] = tool_call_counts.mean()
+
+    # reward components (from custom reward function)
+    # These are individual reward scores like answer_score, format_score, bbox_score, etc.
+    reward_component_keys = [
+        "answer_score", "format_score", "bbox_score",
+        "bbox_temporal_score", "bbox_spatial_score",
+        "segment_score", "segment_iou", "segment_iop", "segment_iog",
+        "acc", "format",  # boolean metrics
+    ]
+    for key in reward_component_keys:
+        if key in batch.non_tensor_batch:
+            values = batch.non_tensor_batch[key]
+            if isinstance(values, np.ndarray):
+                # Convert boolean to float for mean calculation
+                if values.dtype == bool:
+                    values = values.astype(float)
+                metrics[f"reward_components/{key}/mean"] = float(np.mean(values))
+                metrics[f"reward_components/{key}/min"] = float(np.min(values))
+                metrics[f"reward_components/{key}/max"] = float(np.max(values))
 
     return metrics
 

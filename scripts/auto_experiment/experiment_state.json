@@ -1,0 +1,893 @@
+{
+  "experiments": [],
+  "next_experiment_id": 28,
+  "active_jobs": {
+    "27": {
+      "exp_id": 27,
+      "exp_name": "exp27_nwd",
+      "job_id": 21719,
+      "nodes": [
+        "node33",
+        "node34"
+      ],
+      "params": {
+        "kl_coef": 0.4,
+        "bbox_weight": 0.5,
+        "bbox_metric": "nwd",
+        "nwd_constant": 2.0,
+        "top_p": 0.7,
+        "entropy_coef": 0.0
+      },
+      "log_file": "/tmp/training_21719_exp27_nwd.log",
+      "start_time": "2026-03-11T01:27:00",
+      "status": "running",
+      "hypothesis": "测试 NWD (Normalized Wasserstein Distance) 替代 IOU 作为 bbox 评分指标，对小目标更友好"
+    }
+  },
+  "completed_experiments": [
+    {
+      "exp_id": 1,
+      "exp_name": "exp1_kl0.1_ent0.01_bbox0.6",
+      "params": {
+        "kl_coef": 0.1,
+        "entropy_coef": 0.01,
+        "bbox_weight": 0.6,
+        "top_p": 1.0
+      },
+      "status": "crashed",
+      "crash_step": 35,
+      "initial_reward": 0.28,
+      "notes": "原始配置，entropy bonus导致发散"
+    },
+    {
+      "exp_id": 2,
+      "exp_name": "exp2_kl0.1_ent0.0_bbox0.6",
+      "params": {
+        "kl_coef": 0.1,
+        "entropy_coef": 0.0,
+        "bbox_weight": 0.6,
+        "top_p": 1.0
+      },
+      "status": "crashed",
+      "crash_step": 35,
+      "initial_reward": 0.28,
+      "notes": "关闭entropy bonus，仍然崩溃"
+    },
+    {
+      "exp_id": 3,
+      "exp_name": "exp3_kl0.2_ent0.0_bbox0.6",
+      "params": {
+        "kl_coef": 0.2,
+        "entropy_coef": 0.0,
+        "bbox_weight": 0.6,
+        "top_p": 1.0
+      },
+      "status": "crashed",
+      "crash_step": 50,
+      "initial_reward": 0.28,
+      "notes": "增加KL约束，延迟崩溃15步"
+    },
+    {
+      "exp_id": 4,
+      "exp_name": "exp4_kl0.3_ent0.0_bbox0.6",
+      "params": {
+        "kl_coef": 0.3,
+        "entropy_coef": 0.0,
+        "bbox_weight": 0.6,
+        "top_p": 1.0
+      },
+      "status": "crashed",
+      "crash_step": 67,
+      "initial_reward": 0.28,
+      "final_reward": 0.044,
+      "notes": "KL=0.3延迟到67步崩溃"
+    },
+    {
+      "exp_id": 5,
+      "exp_name": "exp5_kl0.3_bbox0.3_topp0.7",
+      "params": {
+        "kl_coef": 0.3,
+        "entropy_coef": 0.0,
+        "bbox_weight": 0.3,
+        "top_p": 0.7
+      },
+      "status": "completed",
+      "max_step": 137,
+      "initial_reward": 0.465,
+      "final_reward": 0.38,
+      "notes": "首次完整训练！reward从0.47下降到0.38，下降21%。Entropy稳定在1.3。需要进一步减少bbox噪声"
+    },
+    {
+      "exp_id": 8,
+      "exp_name": "exp8_kl0.3_bbox0.1_topp0.7",
+      "job_id": 21758,
+      "nodes": [
+        "node31",
+        "node32"
+      ],
+      "params": {
+        "kl_coef": 0.3,
+        "entropy_coef": 0.0,
+        "bbox_weight": 0.1,
+        "top_p": 0.7
+      },
+      "log_file": "/tmp/training_21758_exp8.log",
+      "start_time": "2026-03-08T21:42:00",
+      "status": "declining",
+      "hypothesis": "极低bbox权重(0.1)作为对照",
+      "metrics": [
+        {
+          "step": 12,
+          "reward": 0.576506495475769,
+          "entropy": 1.6796875
+        },
+        {
+          "step": 13,
+          "reward": 0.483680784702301,
+          "entropy": 1.703125
+        },
+        {
+          "step": 14,
+          "reward": 0.5548654198646545,
+          "entropy": 1.640625
+        },
+        {
+          "step": 15,
+          "reward": 0.4378930926322937,
+          "entropy": 1.5859375
+        },
+        {
+          "step": 16,
+          "reward": 0.454681932926178,
+          "entropy": 1.578125
+        },
+        {
+          "step": 17,
+          "reward": 0.5814113616943359,
+          "entropy": 1.5078125
+        },
+        {
+          "step": 18,
+          "reward": 0.5542833805084229,
+          "entropy": 1.4921875
+        },
+        {
+          "step": 19,
+          "reward": 0.5112361311912537,
+          "entropy": 1.4375
+        },
+        {
+          "step": 20,
+          "reward": 0.5925766789753523,
+          "entropy": 1.4609375
+        },
+        {
+          "step": 21,
+          "reward": 0.41087058186531067,
+          "entropy": 1.4765625
+        },
+        {
+          "step": 22,
+          "reward": 0.48296061158180237,
+          "entropy": 1.4921875
+        },
+        {
+          "step": 23,
+          "reward": 0.5234333276748657,
+          "entropy": 1.515625
+        },
+        {
+          "step": 24,
+          "reward": 0.5466065406799316,
+          "entropy": 1.46875
+        },
+        {
+          "step": 25,
+          "reward": 0.5069982409477234,
+          "entropy": 1.421875
+        },
+        {
+          "step": 26,
+          "reward": 0.533525288105011,
+          "entropy": 1.40625
+        },
+        {
+          "step": 27,
+          "reward": 0.47035372257232666,
+          "entropy": 1.4375
+        },
+        {
+          "step": 28,
+          "reward": 0.4267433285713196,
+          "entropy": 1.3359375
+        },
+        {
+          "step": 29,
+          "reward": 0.4836110770702362,
+          "entropy": 1.4140625
+        },
+        {
+          "step": 30,
+          "reward": 0.3899157643318176,
+          "entropy": 1.359375
+        },
+        {
+          "step": 31,
+          "reward": 0.42302820086479187,
+          "entropy": 1.34375
+        }
+      ],
+      "last_check": "2026-03-08T23:43:08.548067",
+      "end_time": "2026-03-08T23:43:17.133499",
+      "crash_step": 31,
+      "initial_reward": 0.5660360316464725,
+      "final_reward": 0.4387304186820984
+    },
+    {
+      "exp_id": 6,
+      "exp_name": "exp6_kl0.3_bbox0.0_topp0.7",
+      "job_id": 21719,
+      "nodes": [
+        "node33",
+        "node34"
+      ],
+      "params": {
+        "kl_coef": 0.3,
+        "entropy_coef": 0.0,
+        "bbox_weight": 0.0,
+        "top_p": 0.7
+      },
+      "log_file": "/tmp/training_21719_exp6.log",
+      "start_time": "2026-03-08T21:42:00",
+      "status": "declining",
+      "hypothesis": "完全去除bbox噪声应该让reward更稳定",
+      "metrics": [
+        {
+          "step": 14,
+          "reward": 0.5703125,
+          "entropy": 1.6796875
+        },
+        {
+          "step": 15,
+          "reward": 0.484375,
+          "entropy": 1.6796875
+        },
+        {
+          "step": 16,
+          "reward": 0.4609375,
+          "entropy": 1.6015625
+        },
+        {
+          "step": 17,
+          "reward": 0.55078125,
+          "entropy": 1.5
+        },
+        {
+          "step": 18,
+          "reward": 0.60546875,
+          "entropy": 1.453125
+        },
+        {
+          "step": 19,
+          "reward": 0.55078125,
+          "entropy": 1.3671875
+        },
+        {
+          "step": 20,
+          "reward": 0.6103896103896104,
+          "entropy": 1.3984375
+        },
+        {
+          "step": 21,
+          "reward": 0.4609375,
+          "entropy": 1.4375
+        },
+        {
+          "step": 22,
+          "reward": 0.58984375,
+          "entropy": 1.4921875
+        },
+        {
+          "step": 23,
+          "reward": 0.59375,
+          "entropy": 1.484375
+        },
+        {
+          "step": 24,
+          "reward": 0.6328125,
+          "entropy": 1.453125
+        },
+        {
+          "step": 25,
+          "reward": 0.53125,
+          "entropy": 1.5078125
+        },
+        {
+          "step": 26,
+          "reward": 0.6328125,
+          "entropy": 1.5234375
+        },
+        {
+          "step": 27,
+          "reward": 0.5625,
+          "entropy": 1.4453125
+        },
+        {
+          "step": 28,
+          "reward": 0.41796875,
+          "entropy": 1.3125
+        },
+        {
+          "step": 29,
+          "reward": 0.578125,
+          "entropy": 1.390625
+        },
+        {
+          "step": 30,
+          "reward": 0.44921875,
+          "entropy": 1.3828125
+        },
+        {
+          "step": 31,
+          "reward": 0.4921875,
+          "entropy": 1.359375
+        },
+        {
+          "step": 32,
+          "reward": 0.4296875,
+          "entropy": 1.359375
+        },
+        {
+          "step": 33,
+          "reward": 0.45703125,
+          "entropy": 1.40625
+        }
+      ],
+      "last_check": "2026-03-08T23:51:17.188982",
+      "end_time": "2026-03-08T23:51:41.838002",
+      "crash_step": 33,
+      "initial_reward": 0.5844155844155844,
+      "final_reward": 0.48125
+    },
+    {
+      "exp_id": 11,
+      "exp_name": "exp11_kl0.4_bbox0.0_topp0.7_ent-0.005",
+      "job_id": 21719,
+      "nodes": [
+        "node33",
+        "node34"
+      ],
+      "params": {
+        "kl_coef": 0.4,
+        "entropy_coef": -0.005,
+        "bbox_weight": 0.0,
+        "top_p": 0.7
+      },
+      "log_file": "/tmp/training_21719_exp11.log",
+      "start_time": "2026-03-09T02:00:00",
+      "status": "declining",
+      "hypothesis": "负entropy惩罚(-0.005)，抑制entropy上升",
+      "metrics": [
+        {
+          "step": 52,
+          "reward": 0.421875,
+          "entropy": null
+        },
+        {
+          "step": 53,
+          "reward": 0.5234375,
+          "entropy": null
+        },
+        {
+          "step": 54,
+          "reward": 0.4765625,
+          "entropy": null
+        },
+        {
+          "step": 55,
+          "reward": 0.53515625,
+          "entropy": null
+        },
+        {
+          "step": 56,
+          "reward": 0.46484375,
+          "entropy": null
+        },
+        {
+          "step": 57,
+          "reward": 0.5703125,
+          "entropy": null
+        },
+        {
+          "step": 58,
+          "reward": 0.546875,
+          "entropy": null
+        },
+        {
+          "step": 59,
+          "reward": 0.44140625,
+          "entropy": null
+        },
+        {
+          "step": 60,
+          "reward": 0.6103896103896104,
+          "entropy": null
+        },
+        {
+          "step": 61,
+          "reward": 0.52734375,
+          "entropy": null
+        },
+        {
+          "step": 62,
+          "reward": 0.46875,
+          "entropy": null
+        },
+        {
+          "step": 63,
+          "reward": 0.40234375,
+          "entropy": null
+        },
+        {
+          "step": 64,
+          "reward": 0.51171875,
+          "entropy": null
+        },
+        {
+          "step": 65,
+          "reward": 0.53125,
+          "entropy": null
+        },
+        {
+          "step": 66,
+          "reward": 0.5390625,
+          "entropy": null
+        },
+        {
+          "step": 67,
+          "reward": 0.3671875,
+          "entropy": null
+        },
+        {
+          "step": 68,
+          "reward": 0.54296875,
+          "entropy": null
+        },
+        {
+          "step": 69,
+          "reward": 0.45703125,
+          "entropy": null
+        },
+        {
+          "step": 70,
+          "reward": 0.421875,
+          "entropy": null
+        },
+        {
+          "step": 71,
+          "reward": 0.40234375,
+          "entropy": null
+        }
+      ],
+      "last_check": "2026-03-09T05:33:31.476959",
+      "end_time": "2026-03-09T05:34:00.595038",
+      "crash_step": 71,
+      "initial_reward": 0.6103896103896104,
+      "final_reward": 0.43828125
+    },
+    {
+      "exp_id": 12,
+      "exp_name": "exp12_kl0.5_bbox0.0_topp0.7",
+      "job_id": 21719,
+      "nodes": [
+        "node33",
+        "node34"
+      ],
+      "params": {
+        "kl_coef": 0.5,
+        "bbox_weight": 0.0,
+        "top_p": 0.7,
+        "entropy_coef": 0.0
+      },
+      "log_file": "/tmp/training_21719_exp12_kl0.5_bbox0.0_topp0.7.log",
+      "start_time": "2026-03-09T05:34:48.738641",
+      "status": "declining",
+      "metrics": [
+        {
+          "step": 14,
+          "reward": 0.58984375,
+          "entropy": 1.6796875
+        },
+        {
+          "step": 15,
+          "reward": 0.515625,
+          "entropy": 1.703125
+        },
+        {
+          "step": 16,
+          "reward": 0.44921875,
+          "entropy": 1.6484375
+        },
+        {
+          "step": 17,
+          "reward": 0.60546875,
+          "entropy": 1.5625
+        },
+        {
+          "step": 18,
+          "reward": 0.58203125,
+          "entropy": 1.5
+        },
+        {
+          "step": 19,
+          "reward": 0.53125,
+          "entropy": 1.4453125
+        },
+        {
+          "step": 20,
+          "reward": 0.5714285714285714,
+          "entropy": 1.484375
+        },
+        {
+          "step": 21,
+          "reward": 0.45703125,
+          "entropy": 1.515625
+        },
+        {
+          "step": 22,
+          "reward": 0.57421875,
+          "entropy": 1.515625
+        },
+        {
+          "step": 23,
+          "reward": 0.55078125,
+          "entropy": 1.5078125
+        },
+        {
+          "step": 24,
+          "reward": 0.5859375,
+          "entropy": 1.4453125
+        },
+        {
+          "step": 25,
+          "reward": 0.51953125,
+          "entropy": 1.4453125
+        },
+        {
+          "step": 26,
+          "reward": 0.53515625,
+          "entropy": 1.4765625
+        },
+        {
+          "step": 27,
+          "reward": 0.5625,
+          "entropy": 1.5
+        },
+        {
+          "step": 28,
+          "reward": 0.4140625,
+          "entropy": 1.3984375
+        },
+        {
+          "step": 29,
+          "reward": 0.546875,
+          "entropy": 1.4140625
+        },
+        {
+          "step": 30,
+          "reward": 0.42578125,
+          "entropy": 1.3828125
+        },
+        {
+          "step": 31,
+          "reward": 0.484375,
+          "entropy": 1.375
+        },
+        {
+          "step": 32,
+          "reward": 0.4140625,
+          "entropy": 1.3671875
+        },
+        {
+          "step": 33,
+          "reward": 0.484375,
+          "entropy": 1.34375
+        }
+      ],
+      "last_check": "2026-03-09T07:24:50.037507",
+      "end_time": "2026-03-09T07:25:17.068504",
+      "crash_step": 33,
+      "initial_reward": 0.6363636363636364,
+      "final_reward": 0.47109375
+    },
+    {
+      "exp_id": 9,
+      "exp_name": "exp9_kl0.4_bbox0.0_topp0.7",
+      "job_id": 21758,
+      "nodes": [
+        "node26",
+        "node27"
+      ],
+      "params": {
+        "kl_coef": 0.4,
+        "entropy_coef": 0.0,
+        "bbox_weight": 0.0,
+        "top_p": 0.7
+      },
+      "log_file": "/tmp/training_21758_exp9.log",
+      "start_time": "2026-03-09T01:55:00",
+      "status": "killed",
+      "hypothesis": "继续exp7的配置，放宽下降阈值到25%",
+      "metrics": [
+        {
+          "step": 12,
+          "reward": 0.59765625,
+          "entropy": 1.6953125
+        },
+        {
+          "step": 13,
+          "reward": 0.546875,
+          "entropy": 1.7109375
+        },
+        {
+          "step": 14,
+          "reward": 0.61328125,
+          "entropy": 1.671875
+        },
+        {
+          "step": 15,
+          "reward": 0.48046875,
+          "entropy": 1.640625
+        },
+        {
+          "step": 16,
+          "reward": 0.4453125,
+          "entropy": 1.5625
+        },
+        {
+          "step": 17,
+          "reward": 0.62109375,
+          "entropy": 1.453125
+        },
+        {
+          "step": 18,
+          "reward": 0.625,
+          "entropy": 1.4375
+        },
+        {
+          "step": 19,
+          "reward": 0.52734375,
+          "entropy": 1.4296875
+        },
+        {
+          "step": 20,
+          "reward": 0.5194805194805194,
+          "entropy": 1.46875
+        },
+        {
+          "step": 21,
+          "reward": 0.44921875,
+          "entropy": 1.4453125
+        },
+        {
+          "step": 22,
+          "reward": 0.5234375,
+          "entropy": 1.4609375
+        },
+        {
+          "step": 23,
+          "reward": 0.546875,
+          "entropy": 1.5078125
+        },
+        {
+          "step": 24,
+          "reward": 0.5703125,
+          "entropy": 1.46875
+        },
+        {
+          "step": 25,
+          "reward": 0.5078125,
+          "entropy": 1.4609375
+        },
+        {
+          "step": 26,
+          "reward": 0.62109375,
+          "entropy": 1.46875
+        },
+        {
+          "step": 27,
+          "reward": 0.57421875,
+          "entropy": 1.421875
+        },
+        {
+          "step": 28,
+          "reward": 0.4140625,
+          "entropy": 1.3203125
+        },
+        {
+          "step": 29,
+          "reward": 0.546875,
+          "entropy": 1.390625
+        },
+        {
+          "step": 30,
+          "reward": 0.4140625,
+          "entropy": 1.3828125
+        },
+        {
+          "step": 31,
+          "reward": 0.5,
+          "entropy": 1.3359375
+        }
+      ],
+      "last_check": "2026-03-09T07:24:50.021253",
+      "end_time": "2026-03-09T10:00:55.663816"
+    },
+    {
+      "exp_id": 10,
+      "exp_name": "exp10_kl0.5_bbox0.0_topp0.7",
+      "job_id": 21758,
+      "nodes": [
+        "node31",
+        "node32"
+      ],
+      "params": {
+        "kl_coef": 0.5,
+        "entropy_coef": 0.0,
+        "bbox_weight": 0.0,
+        "top_p": 0.7
+      },
+      "log_file": "/tmp/training_21758_exp10.log",
+      "start_time": "2026-03-09T02:00:00",
+      "status": "killed",
+      "hypothesis": "更高KL=0.5约束，看是否能阻止reward下降",
+      "metrics": [
+        {
+          "step": 31,
+          "reward": 0.48828125,
+          "entropy": 1.4375
+        },
+        {
+          "step": 32,
+          "reward": 0.46875,
+          "entropy": 1.421875
+        },
+        {
+          "step": 33,
+          "reward": 0.5234375,
+          "entropy": 1.421875
+        },
+        {
+          "step": 34,
+          "reward": 0.46484375,
+          "entropy": 1.4375
+        },
+        {
+          "step": 35,
+          "reward": 0.5234375,
+          "entropy": 1.421875
+        },
+        {
+          "step": 36,
+          "reward": 0.55078125,
+          "entropy": 1.453125
+        },
+        {
+          "step": 37,
+          "reward": 0.50390625,
+          "entropy": 1.4140625
+        },
+        {
+          "step": 38,
+          "reward": 0.46484375,
+          "entropy": 1.359375
+        },
+        {
+          "step": 39,
+          "reward": 0.453125,
+          "entropy": 1.421875
+        },
+        {
+          "step": 40,
+          "reward": 0.5974025974025974,
+          "entropy": 1.4140625
+        },
+        {
+          "step": 41,
+          "reward": 0.51171875,
+          "entropy": 1.359375
+        },
+        {
+          "step": 42,
+          "reward": 0.4375,
+          "entropy": 1.328125
+        },
+        {
+          "step": 43,
+          "reward": 0.5,
+          "entropy": 1.40625
+        },
+        {
+          "step": 44,
+          "reward": 0.58203125,
+          "entropy": 1.4296875
+        },
+        {
+          "step": 45,
+          "reward": 0.45703125,
+          "entropy": 1.375
+        },
+        {
+          "step": 46,
+          "reward": 0.546875,
+          "entropy": 1.4296875
+        },
+        {
+          "step": 47,
+          "reward": 0.54296875,
+          "entropy": 1.390625
+        },
+        {
+          "step": 48,
+          "reward": 0.58984375,
+          "entropy": 1.40625
+        },
+        {
+          "step": 49,
+          "reward": 0.65625,
+          "entropy": 1.4296875
+        },
+        {
+          "step": 50,
+          "reward": 0.4765625,
+          "entropy": 1.3828125
+        }
+      ],
+      "last_check": "2026-03-09T07:24:50.030783",
+      "end_time": "2026-03-09T10:00:55.663835"
+    },
+    {
+      "exp_id": 21,
+      "exp_name": "exp15_filter_kl0.35_clip0.35",
+      "job_id": 21758,
+      "nodes": [
+        "node31",
+        "node32"
+      ],
+      "params": {
+        "filter_groups": true,
+        "gen_batch_size": 48,
+        "kl_coef": 0.35,
+        "clip_ratio_high": 0.35,
+        "bbox_weight": 0.0
+      },
+      "log_file": "/tmp/training_21758_exp15_filter_kl0.35_clip0.35.log",
+      "start_time": "2026-03-09T10:36:07.730831",
+      "status": "stopped_by_user",
+      "end_time": "2026-03-09T11:00:33.230272"
+    }
+  ],
+  "best_config": {
+    "params": {
+      "kl_coef": 0.3,
+      "entropy_coef": 0.0,
+      "bbox_weight": 0.3,
+      "top_p": 0.7
+    },
+    "max_step": 137,
+    "avg_reward": 0.38,
+    "notes": "首次完整训练，但reward仍下降"
+  },
+  "insights": [
+    "KL系数与存活步数正相关: 0.1→35步, 0.2→50步, 0.3→67步, 0.3+top_p=0.7→137步完成",
+    "Entropy从~2.0上升到~6.5-7.0导致崩溃，top_p=0.7可有效控制entropy在1.3稳定",
+    "BBox验证74%返回0分，是reward噪声的主要来源，需要进一步降低或去除",
+    "DAPO论文推荐top_p=0.7限制采样随机性",
+    "实验5证明: bbox_weight=0.3 + top_p=0.7可完整训练，但reward仍下降",
+    "新实验: 测试bbox_weight=0和0.1，预期reward应更稳定或上升",
+    "Exp11失败后: 关键诊断：所有实验都在下降，根本原因是策略漂移（policy drift）过快。对比exp6（kl=0.3, ent=0.0, 下降17.6%）vs exp11（kl=0.4, ent=-0.005, 下降28.2%），增大KL+负entropy反而加速了崩溃——负entropy系数压低熵值使模型过早确定化，陷入局部最优后reward崩塌。因此本次采用三点策略：① kl_coef=0.5取参数范围上限，提供最强的保守约束防止策略大幅偏离参考模型；② bbox_weight=0.0彻底消除74%零分导致的reward噪声，使梯度信号更纯净；③ entropy_coef=0.0放弃负entropy惩罚，让top_p=0.7自然管控熵值在1.3附近稳定，避免人为压熵造成的过拟合崩溃。",
+    "Exp12失败后: 三重平衡策略：① kl=0.4是所有实验中每步下降率最低的（0.40%/步），优于0.3（0.53%）和0.5（0.79%），说明0.4是KL约束的最优点，既能防止策略漂移又不过度压缩梯度空间；② bbox_weight=0.05而非0.0，在74%零分噪声可控的前提下提供微量reward多样性，避免纯单任务信号导致的梯度退化；③ top_p=0.7+entropy_coef=0.0维持已验证的稳定熵值约束（~1.3），不引入人为压熵风险。核心假设：exp12失败是因kl=0.5过于保守导致有效学习信号被压制，回退到exp11验证的最优kl点并补充微量bbox信号是当前最合理的探索方向。",
+    "Exp24/25设计：发现bbox验证中Qwen3-VL存在hallucination问题（报告物体存在但实际不存在），改用新prompt强制VLM先回答YES/NO再给bbox。同时对比Grounding DINO专用检测模型vs VLM grounding效果。Exp24使用新prompt+bbox=0.2测试grounding信号，Exp25用bbox=0.0作为纯答案baseline对照。"
+  ],
+  "total_ai_cost": 0.183523
+}

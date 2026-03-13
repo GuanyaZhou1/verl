@@ -8,6 +8,7 @@
 **/playground
 **/wandb
 .codeatlas/
+checkpoints_zsr/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

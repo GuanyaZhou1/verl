@@ -404,6 +404,25 @@ class VideoReasoningAgentLoop(AgentLoopBase):
         - Frames with watermarks are used for rollout generation (helps model understand time)
         - Original frames (no watermark) are tracked separately for logp calculation
         """
+        try:
+            return await self._run_impl(sampling_params, **kwargs)
+        except Exception as e:
+            # 遇到损坏图片等错误时，返回空结果而不是崩溃
+            logger.warning(f"Error in video reasoning agent loop, skipping sample: {e}")
+            # 返回一个空的 AgentLoopOutput
+            return AgentLoopOutput(
+                prompt_ids=[],
+                response_ids=[],
+                response_mask=[],
+                multi_modal_data={},
+                accumulated_multi_modal_inputs={},
+                accumulated_multi_modal_inputs_no_watermark=None,
+                num_turns=0,
+                metrics=AgentLoopMetrics(),
+            )
+
+    async def _run_impl(self, sampling_params: dict[str, Any], **kwargs) -> AgentLoopOutput:
+        """实际的 run 实现"""
         raw_prompt = kwargs.get("raw_prompt", [])
         extra_info = kwargs.get("extra_info", {})
 

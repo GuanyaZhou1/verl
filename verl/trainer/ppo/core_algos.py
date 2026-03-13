@@ -18,11 +18,12 @@ The function implemented in this file should be used by trainer with different d
 implement PPO-like algorithms.
 """
 
-__all__ = ["register_adv_est", "get_adv_estimator_fn", "AdvantageEstimator"]
+__all__ = ["register_adv_est", "get_adv_estimator_fn", "AdvantageEstimator", "TokenPlacementMethod", "apply_token_placement"]
 
+import re
 from collections import defaultdict
 from enum import Enum
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -105,8 +106,21 @@ class AdvantageEstimator(str, Enum):
     GPG = "gpg"
     RLOO_VECTORIZED = "rloo_vectorized"
     GRPO_VECTORIZED = "grpo_vectorized"
+    GDPO = "gdpo"  # Group reward-Decoupled normalization Policy Optimization
     OPTIMAL_TOKEN_BASELINE = "optimal_token_baseline"
     TIR_OPTIMAL_TOKEN_BASELINE = "tir_optimal_token_baseline"
+
+
+class TokenPlacementMethod(str, Enum):
+    """Token placement methods for distributing rewards to tokens.
+
+    Used with GDPO for multi-turn CoT to control how different reward
+    components are distributed across response tokens.
+    """
+
+    BROADCAST = "broadcast"  # All tokens share same advantage (default)
+    PER_TURN = "per_turn"  # Rewards placed within turn boundaries
+    PER_TURN_GAE = "per_turn_gae"  # Rewards propagated within turn using GAE decay
 
 
 ADV_ESTIMATOR_REGISTRY: dict[str, Any] = {}
@@ -357,7 +371,366 @@ def compute_grpo_vectorized_outcome_advantage(
         return advantages, advantages
 
 
-@register_adv_est(AdvantageEstimator.GRPO_PASSK)  # or simply: @register_adv_est("grpo_passk")
+@register_adv_est(AdvantageEstimator.GDPO)
+def compute_gdpo_outcome_advantage(
+    token_level_rewards: torch.Tensor,
+    response_mask: torch.Tensor,
+    index: np.ndarray,
+    reward_components: dict[str, torch.Tensor] = None,
+    reward_weights: dict[str, float] = None,
+    epsilon: float = 1e-6,
+    enable_batch_norm: bool = True,
+    config: Optional[AlgoConfig] = None,
+    **kwargs,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    GDPO (Group reward-Decoupled normalization Policy Optimization):
+    Decoupled normalization for each reward component, then weighted sum and batch-normalize.
+
+    Reference: https://arxiv.org/abs/2601.05242
+
+    Key differences from GRPO:
+    - GRPO: sum rewards first, then normalize -> causes advantage collapse
+    - GDPO: normalize each reward separately, then weighted sum -> preserves distinctions
+
+    Steps:
+    1. For each reward component k: A_k = (r_k - mean_g) / std_g  (group-wise normalization)
+    2. A_sum = sum(w_k * A_k)  (weighted sum of normalized advantages)
+    3. Â = (A_sum - mean_batch) / std_batch  (batch-wise normalization for stability)
+
+    Args:
+        token_level_rewards: (bs, response_length) - fallback if no reward_components
+        response_mask: (bs, response_length)
+        index: (bs,) - group ID per sample (uid)
+        reward_components: dict mapping reward names to (bs,) tensors of scores
+        reward_weights: dict mapping reward names to float weights
+        epsilon: float for numerical stability
+        enable_batch_norm: whether to apply batch-wise normalization (recommended)
+        config: algorithm config (can contain gdpo settings)
+
+    Returns:
+        advantages: (bs, response_length)
+        returns: (bs, response_length)
+    """
+    with torch.no_grad():
+        device = token_level_rewards.device
+        g = as_torch_index(index, device=device)
+
+        # If no reward_components provided, fall back to GRPO behavior
+        if reward_components is None or len(reward_components) == 0:
+            scores = token_level_rewards.sum(dim=-1)
+            mean_g, std_g, _ = group_mean_std(scores, g, eps=epsilon, device=device)
+            A_sum = (scores - mean_g[g]) / (std_g[g] + epsilon)
+        else:
+            # Step 1: Group-wise normalize each reward component independently
+            normalized_advantages = {}
+            for reward_name, rewards in reward_components.items():
+                if rewards is None:
+                    continue
+                # Ensure tensor is on correct device
+                if not isinstance(rewards, torch.Tensor):
+                    rewards = torch.tensor(rewards, device=device, dtype=torch.float32)
+                else:
+                    rewards = rewards.to(device=device, dtype=torch.float32)
+
+                # Group-wise normalization: (r - mean_g) / std_g
+                mean_g, std_g, _ = group_mean_std(rewards, g, eps=epsilon, device=device)
+                A_k = (rewards - mean_g[g]) / (std_g[g] + epsilon)
+                normalized_advantages[reward_name] = A_k
+
+            # Step 2: Weighted sum of normalized advantages
+            if reward_weights is None:
+                reward_weights = {k: 1.0 for k in normalized_advantages.keys()}
+
+            # Initialize A_sum
+            first_key = next(iter(normalized_advantages.keys()))
+            A_sum = torch.zeros_like(normalized_advantages[first_key])
+
+            for reward_name, A_k in normalized_advantages.items():
+                weight = reward_weights.get(reward_name, 1.0)
+                A_sum = A_sum + weight * A_k
+
+        # Step 3: Batch-wise normalization (stabilizes training, recommended by paper)
+        if enable_batch_norm:
+            batch_mean = A_sum.mean()
+            batch_std = A_sum.std()
+            A_sum = (A_sum - batch_mean) / (batch_std + epsilon)
+
+        advantages = A_sum.unsqueeze(-1) * response_mask
+        return advantages, advantages
+
+
+# =============================================================================
+# Token Placement for Multi-Turn CoT (used with GDPO)
+# =============================================================================
+
+
+def char_to_token_position(
+    char_pos: int,
+    token_char_offsets: List[int],
+) -> int:
+    """
+    Convert character position to token position using token character offsets.
+
+    Args:
+        char_pos: Character position in the decoded response string
+        token_char_offsets: List of cumulative character counts for each token
+
+    Returns:
+        Token position (index) corresponding to the character position
+    """
+    for i, offset in enumerate(token_char_offsets):
+        if char_pos <= offset:
+            return i
+    return len(token_char_offsets) - 1
+
+
+def find_turn_boundaries(
+    response_str: str,
+    tokenizer,
+    response_ids: torch.Tensor,
+) -> Dict[str, Any]:
+    """
+    Find turn boundaries and bbox positions in the response.
+
+    Identifies <think>...</think><answer>...</answer> boundaries for each turn
+    and locates bbox positions within think sections.
+
+    Args:
+        response_str: Decoded response string
+        tokenizer: Tokenizer for decoding individual tokens
+        response_ids: Token IDs of the response (1D tensor)
+
+    Returns:
+        Dictionary with:
+        - turns: List of turn info dicts with think_start, think_end, answer_start, answer_end
+        - bbox_positions: List of bbox position dicts with token_pos, turn_idx, char_pos
+    """
+    result = {"turns": [], "bbox_positions": []}
+
+    # Build token character offsets by decoding each token
+    token_char_offsets = []
+    cumulative_chars = 0
+    for token_id in response_ids.tolist():
+        decoded = tokenizer.decode([token_id], skip_special_tokens=False)
+        cumulative_chars += len(decoded)
+        token_char_offsets.append(cumulative_chars)
+
+    # Find all turn boundaries
+    think_starts = [m.start() for m in re.finditer(r'<think>', response_str, re.IGNORECASE)]
+    think_ends = [m.end() for m in re.finditer(r'</think>', response_str, re.IGNORECASE)]
+    answer_starts = [m.start() for m in re.finditer(r'<answer>', response_str, re.IGNORECASE)]
+    answer_ends = [m.end() for m in re.finditer(r'</answer>', response_str, re.IGNORECASE)]
+
+    # Build turn info
+    num_turns = len(think_starts)
+    for i in range(num_turns):
+        turn = {
+            "think_start_char": think_starts[i] if i < len(think_starts) else -1,
+            "think_end_char": think_ends[i] if i < len(think_ends) else -1,
+            "answer_start_char": answer_starts[i] if i < len(answer_starts) else -1,
+            "answer_end_char": answer_ends[i] if i < len(answer_ends) else -1,
+        }
+        # Convert char positions to token positions
+        turn["think_start"] = char_to_token_position(turn["think_start_char"], token_char_offsets) if turn["think_start_char"] >= 0 else -1
+        turn["think_end"] = char_to_token_position(turn["think_end_char"], token_char_offsets) if turn["think_end_char"] >= 0 else -1
+        turn["answer_start"] = char_to_token_position(turn["answer_start_char"], token_char_offsets) if turn["answer_start_char"] >= 0 else -1
+        turn["answer_end"] = char_to_token_position(turn["answer_end_char"], token_char_offsets) if turn["answer_end_char"] >= 0 else -1
+        result["turns"].append(turn)
+
+    # Find bbox positions (marked by </t> as the end of bbox)
+    bbox_pattern = r'</t>'
+    for m in re.finditer(bbox_pattern, response_str, re.IGNORECASE):
+        char_pos = m.end()
+        token_pos = char_to_token_position(char_pos, token_char_offsets)
+
+        # Determine which turn this bbox belongs to
+        turn_idx = -1
+        for i, turn in enumerate(result["turns"]):
+            if turn["think_start_char"] >= 0 and turn["think_end_char"] >= 0:
+                if turn["think_start_char"] <= char_pos <= turn["think_end_char"]:
+                    turn_idx = i
+                    break
+
+        if turn_idx >= 0:
+            result["bbox_positions"].append({
+                "token_pos": token_pos,
+                "turn_idx": turn_idx,
+                "char_pos": char_pos,
+            })
+
+    return result
+
+
+def apply_token_placement(
+    # Normalized scalar advantages from GDPO (bs,) tensors
+    answer_adv: torch.Tensor,
+    format_adv: torch.Tensor,
+    bbox_advs: List[List[float]],  # Per-sample per-bbox advantages
+    segment_advs: List[List[float]],  # Per-sample per-turn segment advantages
+    # Token position information
+    turn_info: List[Dict[str, Any]],  # Per-sample turn boundaries from find_turn_boundaries
+    response_mask: torch.Tensor,  # (bs, response_length)
+    # Configuration
+    method: str = "broadcast",  # broadcast / per_turn / per_turn_gae
+    global_reward_mode: str = "broadcast",  # broadcast / gae
+    answer_weight: float = 1.0,
+    format_weight: float = 0.5,
+    bbox_weight: float = 1.0,
+    segment_weight: float = 1.0,
+    gamma: float = 0.99,
+    lam: float = 0.95,
+) -> torch.Tensor:
+    """
+    Apply token placement strategy to distribute advantages across tokens.
+
+    For multi-turn CoT, this allows different reward components to be placed
+    at their relevant token positions:
+    - bbox_score → tokens in the <think> section where bbox was generated
+      (plus previous turn's <answer> for segment context)
+    - segment_score → entire turn (<think></think><answer></answer>)
+    - acc/format → global, controlled by global_reward_mode
+
+    Args:
+        answer_adv: (bs,) normalized advantage for answer correctness
+        format_adv: (bs,) normalized advantage for format correctness
+        bbox_advs: List of per-sample bbox advantages, each is a list of floats
+        segment_advs: List of per-sample segment advantages per turn
+        turn_info: List of turn boundary dicts from find_turn_boundaries
+        response_mask: (bs, response_length) mask for valid response tokens
+        method: Token placement method (broadcast/per_turn/per_turn_gae)
+        global_reward_mode: How to distribute global rewards (broadcast/gae)
+        answer_weight: Weight for answer advantage
+        format_weight: Weight for format advantage
+        bbox_weight: Weight for bbox advantages
+        segment_weight: Weight for segment advantages
+        gamma: Discount factor for GAE
+        lam: Lambda for GAE
+
+    Returns:
+        advantages: (bs, response_length) token-level advantages
+    """
+    bs, response_length = response_mask.shape
+    device = response_mask.device
+    advantages = torch.zeros(bs, response_length, device=device, dtype=torch.float32)
+
+    for i in range(bs):
+        turns = turn_info[i].get("turns", []) if turn_info[i] else []
+        bbox_positions = turn_info[i].get("bbox_positions", []) if turn_info[i] else []
+        eos_pos = int(response_mask[i].sum().long().item()) - 1
+        if eos_pos < 0:
+            continue
+
+        # 1. Global rewards (acc, format)
+        global_adv = answer_weight * answer_adv[i].item() + format_weight * format_adv[i].item()
+
+        if global_reward_mode == "broadcast" or method == "broadcast":
+            # Average across all valid tokens
+            num_tokens = response_mask[i].sum().item()
+            if num_tokens > 0:
+                per_token_adv = global_adv
+                for t in range(eos_pos + 1):
+                    if response_mask[i, t] > 0:
+                        advantages[i, t] = per_token_adv
+        elif global_reward_mode == "gae":
+            # GAE decay from EOS
+            advantages[i, eos_pos] = global_adv
+            for t in range(eos_pos - 1, -1, -1):
+                if response_mask[i, t] > 0:
+                    advantages[i, t] = gamma * lam * advantages[i, t + 1].item()
+
+        # If method is broadcast, we're done (all rewards go to all tokens equally)
+        if method == "broadcast":
+            continue
+
+        # 2. Segment reward (per-turn)
+        sample_segment_advs = segment_advs[i] if i < len(segment_advs) else []
+        for turn_idx, turn in enumerate(turns):
+            if turn_idx >= len(sample_segment_advs):
+                continue
+            seg_adv = segment_weight * sample_segment_advs[turn_idx]
+            if seg_adv == 0:
+                continue
+
+            turn_start = turn.get("think_start", -1)
+            turn_end = turn.get("answer_end", -1)
+            if turn_start < 0:
+                continue
+            if turn_end < 0:
+                turn_end = eos_pos
+
+            if method == "per_turn":
+                # Broadcast within turn
+                for t in range(turn_start, min(turn_end + 1, response_length)):
+                    if response_mask[i, t] > 0:
+                        advantages[i, t] += seg_adv
+            elif method == "per_turn_gae":
+                # GAE decay within turn from turn end
+                effective_end = min(turn_end, eos_pos)
+                advantages[i, effective_end] += seg_adv
+                decay = 1.0
+                for t in range(effective_end - 1, turn_start - 1, -1):
+                    if response_mask[i, t] > 0:
+                        decay *= gamma * lam
+                        advantages[i, t] += seg_adv * decay
+
+        # 3. BBox reward
+        # bbox_score → current turn <think> + previous turn <answer> (segment selection affects bbox)
+        sample_bbox_advs = bbox_advs[i] if i < len(bbox_advs) else []
+        for bbox_idx, bbox in enumerate(bbox_positions):
+            if bbox_idx >= len(sample_bbox_advs):
+                continue
+            bbox_adv_value = bbox_weight * sample_bbox_advs[bbox_idx]
+            if bbox_adv_value == 0:
+                continue
+
+            token_pos = bbox.get("token_pos", -1)
+            turn_idx = bbox.get("turn_idx", -1)
+            if token_pos < 0 or turn_idx < 0 or turn_idx >= len(turns):
+                continue
+
+            # Current turn's <think> range
+            think_start = turns[turn_idx].get("think_start", -1)
+            think_end = turns[turn_idx].get("think_end", -1)
+            if think_start < 0:
+                continue
+            if think_end < 0:
+                think_end = token_pos
+
+            # Previous turn's <answer> range (if exists)
+            prev_answer_start = -1
+            prev_answer_end = -1
+            if turn_idx > 0:
+                prev_turn = turns[turn_idx - 1]
+                prev_answer_start = prev_turn.get("answer_start", -1)
+                prev_answer_end = prev_turn.get("answer_end", -1)
+
+            if method == "per_turn":
+                # Bbox reward → current think + previous answer
+                # Previous answer
+                if prev_answer_start >= 0 and prev_answer_end >= 0:
+                    for t in range(prev_answer_start, min(prev_answer_end + 1, response_length)):
+                        if response_mask[i, t] > 0:
+                            advantages[i, t] += bbox_adv_value
+                # Current think
+                for t in range(think_start, min(think_end + 1, response_length)):
+                    if response_mask[i, t] > 0:
+                        advantages[i, t] += bbox_adv_value
+
+            elif method == "per_turn_gae":
+                # GAE propagation from bbox position to previous answer start (or think start)
+                propagate_start = prev_answer_start if prev_answer_start >= 0 else think_start
+                advantages[i, token_pos] += bbox_adv_value
+                decay = 1.0
+                for t in range(token_pos - 1, propagate_start - 1, -1):
+                    if response_mask[i, t] > 0:
+                        decay *= gamma * lam
+                        advantages[i, t] += bbox_adv_value * decay
+
+    return advantages * response_mask
+
+
+@register_adv_est(AdvantageEstimator.GRPO_PASSK)
 def compute_grpo_passk_outcome_advantage(
     token_level_rewards: torch.Tensor,
     response_mask: torch.Tensor,

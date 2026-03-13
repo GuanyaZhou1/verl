@@ -39,7 +39,6 @@ DEFAULT_ANSWER_WEIGHT = 0.4          # 答案分数权重
 DEFAULT_BBOX_WEIGHT = 0.3            # bbox 分数权重
 DEFAULT_VLM_WEIGHT = 0.3             # VLM 打分权重
 DEFAULT_FORMAT_WEIGHT = 0.0          # 格式分数权重 (0 = 不使用, 设为正值启用)
-DEFAULT_SEGMENT_WEIGHT = 0.0         # segment 分数权重 (0 = 不使用, 设为正值启用)
 
 
 # ============== 日志和样本保存 ==============
@@ -163,70 +162,29 @@ def image_to_base64(image: Image.Image, format: str = "JPEG") -> str:
 
 # ============== BBox 提取 ==============
 
-def extract_bboxes(text: str, include_positions: bool = False) -> List[Dict[str, Any]]:
+def extract_bboxes(text: str) -> List[Dict[str, Any]]:
     """
     从文本中提取 bbox 信息
     格式: <obj>object_name</obj><box>[x1,y1,x2,y2]</box>at<t>time_in_seconds</t>
 
-    Args:
-        text: 模型输出文本
-        include_positions: 是否包含字符位置和轮次信息 (用于 token placement)
-
     Returns:
-        List of dicts: [{"object": str, "bbox": [x1,y1,x2,y2], "time": float, "char_pos": int, "turn_idx": int}, ...]
-        char_pos 是 </t> 结束位置，turn_idx 是所属轮次 (仅当 include_positions=True 时)
+        List of dicts: [{"object": str, "bbox": [x1,y1,x2,y2], "time": float}, ...]
     """
     pattern = r'<obj>(.*?)</obj><box>\[([\d.,\s]+)\]</box>at<t>([\d.]+)</t>'
+    matches = re.findall(pattern, text, re.IGNORECASE)
 
     bboxes = []
-
-    if include_positions:
-        # 先找出所有 <think> 的位置用于确定轮次
-        think_starts = [m.start() for m in re.finditer(r'<think>', text, re.IGNORECASE)]
-        think_ends = [m.end() for m in re.finditer(r'</think>', text, re.IGNORECASE)]
-
-        def find_turn_for_position(pos: int) -> int:
-            """确定字符位置属于哪个轮次的 think"""
-            for i in range(len(think_starts)):
-                start = think_starts[i]
-                end = think_ends[i] if i < len(think_ends) else len(text)
-                if start <= pos <= end:
-                    return i
-            return -1  # 不在任何 think 中
-
-        for m in re.finditer(pattern, text, re.IGNORECASE):
-            obj_name = m.group(1)
-            bbox_str = m.group(2)
-            time_str = m.group(3)
-            char_pos = m.end()  # </t> 结束位置
-
-            try:
-                coords = [float(x.strip()) for x in bbox_str.split(',')]
-                if len(coords) == 4:
-                    turn_idx = find_turn_for_position(char_pos)
-                    bboxes.append({
-                        'object': obj_name.strip(),
-                        'bbox': coords,  # [x1, y1, x2, y2]
-                        'time': float(time_str),
-                        'char_pos': char_pos,
-                        'turn_idx': turn_idx,
-                    })
-            except ValueError:
-                continue
-    else:
-        # 原始逻辑，不包含位置信息
-        matches = re.findall(pattern, text, re.IGNORECASE)
-        for obj_name, bbox_str, time_str in matches:
-            try:
-                coords = [float(x.strip()) for x in bbox_str.split(',')]
-                if len(coords) == 4:
-                    bboxes.append({
-                        'object': obj_name.strip(),
-                        'bbox': coords,  # [x1, y1, x2, y2]
-                        'time': float(time_str)
-                    })
-            except ValueError:
-                continue
+    for obj_name, bbox_str, time_str in matches:
+        try:
+            coords = [float(x.strip()) for x in bbox_str.split(',')]
+            if len(coords) == 4:
+                bboxes.append({
+                    'object': obj_name.strip(),
+                    'bbox': coords,  # [x1, y1, x2, y2]
+                    'time': float(time_str)
+                })
+        except ValueError:
+            continue
     return bboxes
 
 
@@ -439,49 +397,6 @@ def compute_nwd(bbox1: List[float], bbox2: List[float], constant: float = DEFAUL
     return nwd
 
 
-def compute_adaptive_iou(
-    iou: float,
-    gt_area: float,
-    small_threshold: float = 0.05,
-    large_threshold: float = 0.20,
-) -> float:
-    """
-    尺度自适应 IOU 评分
-
-    - 小目标 (面积 < 5%):  √IOU (宽松，因为小目标的小偏移会导致 IOU 大幅下降)
-    - 大目标 (面积 > 20%): IOU² (严格，大目标应该更容易精确定位)
-    - 中等目标: 线性插值
-
-    Args:
-        iou: 原始 IOU 值
-        gt_area: GT 框面积 (相对于整个图像，范围 0-1)
-        small_threshold: 小目标面积阈值 (默认 5%)
-        large_threshold: 大目标面积阈值 (默认 20%)
-
-    Returns:
-        自适应调整后的分数 (0-1)
-    """
-    import math
-
-    if iou <= 0:
-        return 0.0
-
-    sqrt_iou = math.sqrt(iou)
-    iou_sq = iou ** 2
-
-    if gt_area < small_threshold:
-        # 小目标：宽松，用 √IOU
-        return sqrt_iou
-    elif gt_area > large_threshold:
-        # 大目标：严格，用 IOU²
-        return iou_sq
-    else:
-        # 中等目标：线性插值 √IOU → IOU²
-        # gt_area 从 small_threshold 到 large_threshold 时，t 从 0 到 1
-        t = (gt_area - small_threshold) / (large_threshold - small_threshold)
-        return sqrt_iou * (1 - t) + iou_sq * t
-
-
 def compute_bbox_similarity(
     bbox1: List[float],
     bbox2: List[float],
@@ -495,22 +410,25 @@ def compute_bbox_similarity(
     Args:
         bbox1: [x1, y1, x2, y2] 归一化坐标 (预测框)
         bbox2: [x1, y1, x2, y2] 归一化坐标 (GT框)
-        metric: 评分指标，"iou" 或 "nwd" (nwd 现在使用自适应 IOU)
-        nwd_constant: 已废弃，保留参数兼容性
-        nwd_iou_floor: 已废弃，保留参数兼容性
+        metric: 评分指标，"iou" 或 "nwd"
+        nwd_constant: NWD 的归一化常数 (仅当 metric="nwd" 时使用)
+        nwd_iou_floor: NWD 的 IOU 下限保护阈值 (默认 0.1)
+                       当 IOU < 此值时，使用 IOU 而非 NWD，避免完全无重叠的框获得高分
 
     Returns:
         相似度分数 (0-1)
     """
-    iou = compute_iou(bbox1, bbox2)
-
     if metric == "nwd":
-        # 使用自适应 IOU 评分（替代原来的 NWD）
-        # 小目标宽松 (√IOU)，大目标严格 (IOU²)
-        gt_area = (bbox2[2] - bbox2[0]) * (bbox2[3] - bbox2[1])
-        return compute_adaptive_iou(iou, gt_area)
+        # 计算 IOU 作为下限保护
+        iou = compute_iou(bbox1, bbox2)
+        # 如果 IOU 太低（几乎无重叠），直接返回 IOU 而非 NWD
+        # 这避免了 NWD 对完全错误的预测过于宽松
+        if iou < nwd_iou_floor:
+            return iou
+        # IOU >= 阈值时，使用 NWD（对小目标更宽松）
+        return compute_nwd(bbox1, bbox2, constant=nwd_constant)
     else:
-        return iou
+        return compute_iou(bbox1, bbox2)
 
 
 def extract_bbox_context(solution_str: str, object_name: str) -> str:
@@ -1476,106 +1394,6 @@ def extract_all_segments(text: str) -> List[List[Tuple[float, float]]]:
     return all_segments
 
 
-def compute_segment_score(
-    pred_segments: List[List[Tuple[float, float]]],
-    gt_segments: List[Tuple[float, float]],
-) -> Tuple[float, float, float, float]:
-    """
-    计算预测 segments 与 GT segments 的匹配分数
-
-    使用公式: (2*IoU + IoP + IoG) / 4
-    其中:
-    - IoU = Intersection over Union
-    - IoP = Intersection over Prediction (预测的总长度)
-    - IoG = Intersection over Ground Truth (GT 的总长度)
-
-    Args:
-        pred_segments: 模型预测的所有轮次的 segments，格式为 [[(start, end), ...], ...]
-        gt_segments: GT 的 reference_segments，格式为 [(start, end), ...]
-
-    Returns:
-        (final_score, iou, iop, iog): 最终分数和三个组件分数
-    """
-    if not gt_segments:
-        # 没有 GT segments，无法计算
-        return 0.0, 0.0, 0.0, 0.0
-
-    # 将所有预测的 segments 展平为一个列表
-    all_pred_segments = []
-    for turn_segments in pred_segments:
-        all_pred_segments.extend(turn_segments)
-
-    if not all_pred_segments:
-        # 没有预测的 segments
-        return 0.0, 0.0, 0.0, 0.0
-
-    # 将 segments 转换为时间轴上的区间集合，用于计算交集和并集
-    def segments_to_intervals(segments: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
-        """将 segments 合并为不重叠的区间"""
-        if not segments:
-            return []
-        # 按起始时间排序
-        sorted_segs = sorted(segments, key=lambda x: x[0])
-        merged = [sorted_segs[0]]
-        for start, end in sorted_segs[1:]:
-            if start <= merged[-1][1]:
-                # 重叠，合并
-                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
-            else:
-                merged.append((start, end))
-        return merged
-
-    def total_length(intervals: List[Tuple[float, float]]) -> float:
-        """计算区间总长度"""
-        return sum(end - start for start, end in intervals)
-
-    def compute_intersection(intervals1: List[Tuple[float, float]],
-                            intervals2: List[Tuple[float, float]]) -> float:
-        """计算两个区间集合的交集长度"""
-        if not intervals1 or not intervals2:
-            return 0.0
-
-        intersection = 0.0
-        i, j = 0, 0
-        while i < len(intervals1) and j < len(intervals2):
-            start1, end1 = intervals1[i]
-            start2, end2 = intervals2[j]
-
-            # 计算交集
-            inter_start = max(start1, start2)
-            inter_end = min(end1, end2)
-            if inter_start < inter_end:
-                intersection += inter_end - inter_start
-
-            # 移动指针
-            if end1 < end2:
-                i += 1
-            else:
-                j += 1
-
-        return intersection
-
-    # 合并区间
-    pred_intervals = segments_to_intervals(all_pred_segments)
-    gt_intervals = segments_to_intervals(gt_segments)
-
-    # 计算各项指标
-    pred_length = total_length(pred_intervals)
-    gt_length = total_length(gt_intervals)
-    intersection = compute_intersection(pred_intervals, gt_intervals)
-    union = pred_length + gt_length - intersection
-
-    # 计算 IoU, IoP, IoG
-    iou = intersection / union if union > 0 else 0.0
-    iop = intersection / pred_length if pred_length > 0 else 0.0
-    iog = intersection / gt_length if gt_length > 0 else 0.0
-
-    # 最终分数: (2*IoU + IoP + IoG) / 4
-    final_score = (2 * iou + iop + iog) / 4
-
-    return final_score, iou, iop, iog
-
-
 async def compute_score(
     data_source: str,
     solution_str: str,
@@ -1670,8 +1488,8 @@ async def compute_score(
     all_segments = extract_all_segments(solution_str)
     segments = extract_segments(solution_str)  # 最后一个 segment
 
-    # 3. 提取 bboxes (包含位置信息用于 token placement)
-    bboxes = extract_bboxes(solution_str, include_positions=True)
+    # 3. 提取 bboxes
+    bboxes = extract_bboxes(solution_str)
 
     # 4. 统计多轮信息
     turn_counts = count_turns(solution_str)
@@ -1744,12 +1562,6 @@ async def compute_score(
         correct = extract_option_letter(ground_truth)
         answer_score = 1.0 if predicted == correct else 0.0
 
-    # 6.5. Segment 分数计算（用于 GDPO）
-    segment_score = 0.0
-    gt_segments = extra_info.get("reference_segments", [])
-    if gt_segments and all_segments:
-        segment_score, _, _, _ = compute_segment_score(all_segments, gt_segments)
-
     # 7. 计算最终分数
     if use_bbox_verification:
         # 答案分数 + BBox 分数 + 格式分数
@@ -1782,17 +1594,13 @@ async def compute_score(
     # 日志输出
     if enable_logging:
         score_method = "VLM" if use_vlm_for_answer else "rule"
-        # Format segments for logging
-        gt_segs_str = str(gt_segments) if gt_segments else "[]"
-        pred_segs_str = str(all_segments) if all_segments else "[]"
         logger.info(
             f"[Sample {_sample_counter+1}] video={video_id}, "
             f"pred={predicted_answer[:20] if predicted_answer else 'N/A'}..., "
             f"gt={ground_truth}, method={score_method}, "
             f"turns=(think={turn_counts['think']}, seg={turn_counts['segment']}, obs={turn_counts['observation']}), "
             f"num_bboxes={len(bboxes)}, "
-            f"scores=(ans={answer_score:.2f}, bbox={bbox_score:.2f}, fmt={format_score:.2f}, seg={segment_score:.2f}), "
-            f"gt_segs={gt_segs_str}, pred_segs={pred_segs_str}, "
+            f"scores=(ans={answer_score:.2f}, bbox={bbox_score:.2f}, fmt={format_score:.2f}, temporal={bbox_temporal_score:.2f}, spatial={bbox_spatial_score:.2f}), "
             f"final={final_score:.4f}, time={elapsed_time:.2f}s"
         )
 
@@ -1828,7 +1636,6 @@ async def compute_score(
                 "answer_score": answer_score,
                 "format_score": format_score,
                 "bbox_score": bbox_score,
-                "segment_score": segment_score,
                 "bbox_temporal_score": bbox_temporal_score,
                 "bbox_spatial_score": bbox_spatial_score,
                 "final_score": final_score,
@@ -1860,46 +1667,15 @@ async def compute_score(
     # - score: 最终分数 (float)
     # - acc: 答案是否正确 (bool，用于 filter_groups)
     # - format: 格式是否正确 (bool)
-    # - answer_score/format_score/bbox_score/segment_score: 各组件分数 (float，用于 GDPO)
-    # - bbox_details: 每个 bbox 的详细信息和分数 (用于 token placement)
-    # - segment_details: 每轮的 segment 分数 (用于 token placement)
-
-    # 构建 segment_details (每轮的 segment 分数)
-    # 目前只有一个 aggregated segment_score，创建一个简单的列表
-    segment_details = []
-    if all_segments:
-        # 每轮给相同的 segment_score (简化版本)
-        # TODO: 实现真正的 per-turn segment 评分
-        per_turn_score = segment_score / len(all_segments) if len(all_segments) > 0 else 0.0
-        for turn_idx, turn_segments in enumerate(all_segments):
-            segment_details.append({
-                "turn_idx": turn_idx,
-                "segments": turn_segments,
-                "score": per_turn_score,  # 暂时平均分配
-            })
-
-    # 为 bbox_details 添加归一化的 score 字段 (用于 token placement)
-    # bbox_details 中已经有 total_score，直接使用
-    for bd in bbox_details:
-        # 添加统一的 score 字段 (token placement 会读取这个)
-        bd["score"] = bd.get("total_score", 0.0)
-        # 添加位置信息 (从 bbox_info 中获取)
-        bbox_info = bd.get("bbox_info", {})
-        bd["char_pos"] = bbox_info.get("char_pos", -1)
-        bd["turn_idx"] = bbox_info.get("turn_idx", -1)
-
+    # - answer_score/format_score/bbox_score: 各组件分数 (float)
     return {
         "score": final_score,
         "acc": answer_score == 1.0,  # 二元分类：答案正确为 True
         "format": format_score == 1.0,  # 格式正确为 True
-        # 各组件的原始分数 (用于 TensorBoard 分析和 GDPO)
+        # 各组件的原始分数 (用于 TensorBoard 分析)
         "answer_score": answer_score,
         "format_score": format_score,
         "bbox_score": bbox_score,
-        "segment_score": segment_score,  # 用于 GDPO 独立归一化
         "bbox_temporal_score": bbox_temporal_score,
         "bbox_spatial_score": bbox_spatial_score,
-        # Token placement 详细信息
-        "bbox_details": bbox_details,  # 每个 bbox 的详细信息 (含 score, char_pos, turn_idx)
-        "segment_details": segment_details,  # 每轮的 segment 信息 (含 score)
     }

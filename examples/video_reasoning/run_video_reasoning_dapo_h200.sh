@@ -41,13 +41,15 @@ export RAY_TMPDIR=/tmp/ray_$USER  # 隔离 Ray 临时目录，避免多用户权
 # export RAY_ADDRESS=local
 # export CUDA_VISIBLE_DEVICES=0,1,2,3
 export TIKTOKEN_RS_CACHE_DIR=/mnt/data/home/zhengshurong/harmony_cache
-# NCCL 环境变量（多节点 IB 通信，单节点下也兼容）
-# 不指定 NCCL_IB_HCA，让 NCCL 自动探测各节点可用的 IB 设备
-# （不同节点 IB 设备名不同：.1/.6/.7 用 mlx5_2/5/6/7，.10 用 mlx5_0/1/2/3）
-export NCCL_SOCKET_IFNAME=${NCCL_SOCKET_IFNAME:-bond0}
-export NCCL_SOCKET_FAMILY=${NCCL_SOCKET_FAMILY:-AF_INET}   # 强制 IPv4，避免 IPv6 链路本地地址无法跨节点路由
-export NCCL_IB_DISABLE=${NCCL_IB_DISABLE:-1}   # 临时禁用 IB，走以太网 TCP
-export NCCL_IB_HCA=${NCCL_IB_HCA:-^mlx5_bond}              # 排除 bond IB 设备（sm_lid=0，未接入 fabric）
+# =============================================================================
+# NCCL 环境变量（IB 优先，单机多机通用）
+# =============================================================================
+# 使用 ${VAR:-default} 语法，允许 launcher 脚本覆盖
+export NCCL_IB_DISABLE=${NCCL_IB_DISABLE:-0}               # 启用 IB
+export NCCL_IB_HCA=${NCCL_IB_HCA:-^mlx5_bond,mlx5_6}       # 排除 bond 和有问题的 mlx5_6
+export NCCL_CROSS_NIC=${NCCL_CROSS_NIC:-1}                 # 允许跨 NIC 通信
+export NCCL_SOCKET_IFNAME=${NCCL_SOCKET_IFNAME:-bond0}     # fallback 以太网接口
+export NCCL_SOCKET_FAMILY=${NCCL_SOCKET_FAMILY:-AF_INET}   # 强制 IPv4
 export TORCH_NCCL_AVOID_RECORD_STREAMS=${TORCH_NCCL_AVOID_RECORD_STREAMS:-1}
 export NCCL_CUMEM_ENABLE=${NCCL_CUMEM_ENABLE:-0}
 
@@ -71,37 +73,79 @@ LOG_DIR="./logs"
 # =============================================================================
 # 训练参数
 # =============================================================================
-TRAIN_BATCH_SIZE=16
-GEN_BATCH_SIZE=16                        # DAPO: 生成批次 2x 训练批次，给过滤留足余量，默认似乎需要是4x
-MAX_PROMPT_LENGTH=36000
-MAX_RESPONSE_LENGTH=4096
+TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-32}
+GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-32}                        # DAPO: 生成批次
+MAX_PROMPT_LENGTH=${MAX_PROMPT_LENGTH:-36000}
+MAX_RESPONSE_LENGTH=${MAX_RESPONSE_LENGTH:-8192}
 
-LEARNING_RATE=1e-6
-TOTAL_EPOCHS=3
+LEARNING_RATE=${LEARNING_RATE:-1e-6}
+TOTAL_EPOCHS=${TOTAL_EPOCHS:-3}
 
-N_ROLLOUTS=8                             # 每个 prompt 生成的 response 数
-AGENT_NUM_WORKERS=8                      # AgentLoopWorker 数量
+N_ROLLOUTS=${N_ROLLOUTS:-8}                             # 每个 prompt 生成的 response 数
+AGENT_NUM_WORKERS=${AGENT_NUM_WORKERS:-16}                      # AgentLoopWorker 数量
 
 N_GPUS=${N_GPUS:-8}
 NNODES=${NNODES:-1}
 
 # =============================================================================
-# DAPO 算法参数
+# DAPO 算法参数（支持环境变量覆盖，便于自动化实验）
 # =============================================================================
-ENABLE_FILTER_GROUPS=False                # 过滤组内全对/全错的样本
-FILTER_GROUPS_METRIC=score               # 用总分(含 bbox IOU)做组过滤
-MAX_NUM_GEN_BATCHES=5                    # 最多重采样轮数，0=无限制
+ENABLE_FILTER_GROUPS=${ENABLE_FILTER_GROUPS:-false}   # 过滤组内全对/全错的样本
+FILTER_GROUPS_METRIC=${FILTER_GROUPS_METRIC:-score}   # 用总分做组过滤
+MAX_NUM_GEN_BATCHES=${MAX_NUM_GEN_BATCHES:-5}         # 最多重采样轮数
 
-CLIP_RATIO_LOW=0.2                       # Clip-Higher: 非对称 clip ratio
-CLIP_RATIO_HIGH=0.28                     # > low，鼓励正向更新
+CLIP_RATIO_LOW=${CLIP_RATIO_LOW:-0.2}                 # Clip-Higher: 非对称 clip ratio
+CLIP_RATIO_HIGH=${CLIP_RATIO_HIGH:-0.25}              # > low，鼓励正向更新
 
-NORM_ADV_BY_STD=False                      # 归一化 advantage，
+NORM_ADV_BY_STD=${NORM_ADV_BY_STD:-false}             # 归一化 advantage
 
-USE_KL_IN_REWARD=False
-USE_KL_LOSS=False
-KL_LOSS_COEF=0.01
+USE_KL_IN_REWARD=false
+USE_KL_LOSS=true
+KL_LOSS_COEF=${KL_LOSS_COEF:-0.3}                     # KL 约束系数
 KL_LOSS_TYPE=low_var_kl
 
+BY_PASS_ROLLOUT_CORRECTION=false
+ENTROPY_COEFF=${ENTROPY_COEFF:-0.0}                   # Entropy 系数
+TOP_P=${TOP_P:-1.0}                                   # Top-p 采样
+
+# =============================================================================
+# GDPO & Token Placement 配置（多轮 CoT 细粒度奖励分配）
+# =============================================================================
+# Advantage 估计器选择:
+#   - grpo: 原始 GRPO（默认）
+#   - gdpo: Group reward-Decoupled normalization Policy Optimization
+#           每个 reward component 独立归一化，避免 advantage collapse
+ADV_ESTIMATOR=${ADV_ESTIMATOR:-grpo}
+
+# GDPO reward component 权重（仅 adv_estimator=gdpo 时生效）
+# 设为 0 可排除该 component
+GDPO_ANSWER_WEIGHT=${GDPO_ANSWER_WEIGHT:-1.0}         # 答案正确性权重
+GDPO_FORMAT_WEIGHT=${GDPO_FORMAT_WEIGHT:-0.5}         # 格式正确性权重
+GDPO_BBOX_WEIGHT=${GDPO_BBOX_WEIGHT:-1.0}             # BBox 验证权重
+GDPO_SEGMENT_WEIGHT=${GDPO_SEGMENT_WEIGHT:-1.0}       # Segment 定位权重
+GDPO_ENABLE_BATCH_NORM=${GDPO_ENABLE_BATCH_NORM:-true}  # 批次归一化（推荐开启）
+
+# Token Placement 方法（控制奖励如何分配到 token）
+# 仅 adv_estimator=gdpo 时生效
+#   - broadcast: 所有 token 共享同一 advantage（默认，原始行为）
+#   - per_turn: 轮内广播（bbox→所在轮think，segment→整轮）
+#   - per_turn_gae: 轮内 GAE 衰减传播
+TOKEN_PLACEMENT_METHOD=${TOKEN_PLACEMENT_METHOD:-broadcast}
+
+# 全局奖励（acc, format）的传播方式
+#   - broadcast: 平均分配到所有 token（推荐，稳定）
+#   - gae: 从 EOS 向前 GAE 衰减传播（可能导致前面 token 信号过弱）
+TOKEN_PLACEMENT_GLOBAL_MODE=${TOKEN_PLACEMENT_GLOBAL_MODE:-broadcast}
+
+# Token Placement 各 component 权重（用于组合 advantage）
+TP_ANSWER_WEIGHT=${TP_ANSWER_WEIGHT:-1.0}
+TP_FORMAT_WEIGHT=${TP_FORMAT_WEIGHT:-0.5}
+TP_BBOX_WEIGHT=${TP_BBOX_WEIGHT:-1.0}
+TP_SEGMENT_WEIGHT=${TP_SEGMENT_WEIGHT:-1.0}
+
+# GAE 参数（per_turn_gae 或 global_mode=gae 时使用）
+TP_GAMMA=${TP_GAMMA:-0.99}                            # 衰减因子
+TP_LAMBDA=${TP_LAMBDA:-0.95}                          # GAE lambda
 # =============================================================================
 # 视频缓存参数
 # =============================================================================
@@ -127,7 +171,7 @@ SEGMENT_VIDEO_MAX_PIXELS=50176           # ~224x224
 # =============================================================================
 # 启用后，rollout 时帧上会显示时间戳（如 "12s"），帮助模型理解时序
 # logp 计算时使用原始帧（无水印），避免模型只学会从水印获取时序
-USE_TIMESTAMP_WATERMARK=True            # 是否启用时间戳水印
+USE_TIMESTAMP_WATERMARK=False            # 是否启用时间戳水印
 WATERMARK_POSITION="top_left"            # 水印位置: top_left, top_right, bottom_left, bottom_right
 WATERMARK_FONT_SIZE=0                    # 字体大小 (0=根据图片高度自适应)
 WATERMARK_RATIO=1.0                     # 水印采样比例: 1.0=全部使用, 0.0=全部不使用, 0.5=50%采样
@@ -135,19 +179,25 @@ WATERMARK_RATIO=1.0                     # 水印采样比例: 1.0=全部使用, 
 # =============================================================================
 # 奖励函数参数
 # =============================================================================
-VLM_ENDPOINT="10.0.1.36:8081"
-VLM_MODEL_NAME="Qwen3-VL-30B-A3B-Instruct"
+VLM_ENDPOINT="10.0.1.35:8081"
+# 必须与 vLLM 服务 /v1/models 返回的 id 一致（用完整路径，否则会 404）
+VLM_MODEL_NAME="Qwen3-VL-235B-A22B-Instruct"
 VLM_API_KEY="123456"
 
 USE_VLM_SCORING=true
 USE_BBOX_VERIFICATION=true
-ANSWER_WEIGHT=1.0
-BBOX_WEIGHT=0.6
+ANSWER_WEIGHT=${ANSWER_WEIGHT:-1.0}
+BBOX_WEIGHT=${BBOX_WEIGHT:-0.3}    # bbox验证权重（降低可减少噪声）
 BBOX_COORD_RANGE=1.0                     # bbox 坐标范围 [0, 1]
 
+# BBox 评分指标选择
+BBOX_METRIC=${BBOX_METRIC:-iou}          # "iou" 传统指标，"nwd" 对小目标更友好
+NWD_CONSTANT=${NWD_CONSTANT:-2.0}        # NWD 归一化常数，越大越宽松
+TEMPORAL_TOLERANCE=${TEMPORAL_TOLERANCE:-1}  # 相邻帧容忍度 (0=禁用, 1=±1帧)，对应 Qwen3-VL temporal_patch_size=2
+
 SAVE_BBOX_VISUALIZATION=true
-BBOX_VIS_SAMPLE_RATE=0.01
-REWARD_LOG_DIR="./reward_logs"
+BBOX_VIS_SAMPLE_RATE=0.001
+# REWARD_LOG_DIR 在 EXPERIMENT_NAME 后设置
 SAVE_SAMPLES=true
 SAVE_EVERY_N=10
 LOG_EVERY_N=10
@@ -161,12 +211,24 @@ VAL_BEFORE_TRAIN=True
 RESUME_MODE=disable                      # disable / resume_path / auto
 
 # =============================================================================
-# 实验名称
+# 实验名称（支持环境变量传入，便于自动化实验）
 # =============================================================================
 TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
-PROJECT_NAME="video-reasoning-dapo"
-EXPERIMENT_NAME="Qwen3_8B_longvt_tvg-openo3video_stgr-selfconstructdata_dapo_long_video_data_watermark_1_genbs32_ep1_lr1e_6_bbox0_6_normadvbystdfalse_${TIMESTAMP}"
+PROJECT_NAME="${PROJECT_NAME:-video-reasoning-dapo}"
 
+# 如果未设置 EXPERIMENT_NAME，则根据当前参数自动生成
+if [ -z "$EXPERIMENT_NAME" ]; then
+    # 自动生成实验名：包含关键超参数
+    EXPERIMENT_NAME="Qwen3_8B_dapo_kl${KL_LOSS_COEF}_bbox${BBOX_WEIGHT}_topp${TOP_P:-1.0}_lr${LEARNING_RATE}_${TIMESTAMP}"
+fi
+# 示例手动设置：
+# export EXPERIMENT_NAME="my_custom_exp_name"
+# bash run_video_reasoning_dapo_h200.sh
+
+# 将 reward_logs 和 tensorboard_log 放到 checkpoint 目录下
+CKPT_BASE="./checkpoints/${PROJECT_NAME}/${EXPERIMENT_NAME}"
+REWARD_LOG_DIR="${CKPT_BASE}/reward_logs"
+TENSORBOARD_DIR="${CKPT_BASE}/tensorboard_log"
 # =============================================================================
 # 预检查
 # =============================================================================
@@ -215,6 +277,7 @@ echo "Reward:"
 echo "  VLM scoring:   $USE_VLM_SCORING ($VLM_ENDPOINT)"
 echo "  BBox verify:   $USE_BBOX_VERIFICATION"
 echo "  Weights:       answer=$ANSWER_WEIGHT, bbox=$BBOX_WEIGHT"
+echo "  BBox metric:   $BBOX_METRIC (nwd_constant=$NWD_CONSTANT, temporal_tolerance=$TEMPORAL_TOLERANCE)"
 echo "================================="
 echo ""
 
@@ -243,8 +306,15 @@ fi
 # =============================================================================
 echo "===== Step 2: Starting DAPO Training ====="
 mkdir -p "$LOG_DIR"
+mkdir -p "$REWARD_LOG_DIR"
+mkdir -p "$TENSORBOARD_DIR"
 LOG_FILE="$LOG_DIR/${EXPERIMENT_NAME}.log"
 echo "Log file: $LOG_FILE"
+echo "Reward logs: $REWARD_LOG_DIR"
+echo "TensorBoard: $TENSORBOARD_DIR"
+
+# 设置 TensorBoard 目录环境变量
+export TENSORBOARD_DIR="$TENSORBOARD_DIR"
 
 python3 -m recipe.dapo.main_dapo \
     --config-path="$CONFIG_PATH" \
@@ -263,7 +333,7 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.model.use_fused_kernels=True \
     actor_rollout_ref.actor.optim.lr=$LEARNING_RATE \
-    actor_rollout_ref.actor.ppo_mini_batch_size=8 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=16 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.actor.clip_ratio_low=$CLIP_RATIO_LOW \
     actor_rollout_ref.actor.clip_ratio_high=$CLIP_RATIO_HIGH \
@@ -271,18 +341,22 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.actor.kl_loss_coef=$KL_LOSS_COEF \
     actor_rollout_ref.actor.kl_loss_type=$KL_LOSS_TYPE \
     actor_rollout_ref.actor.loss_agg_mode=token-mean \
-    actor_rollout_ref.actor.entropy_coeff=0 \
+    actor_rollout_ref.actor.entropy_coeff=$ENTROPY_COEFF \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
     actor_rollout_ref.actor.fsdp_config.forward_prefetch=True \
     actor_rollout_ref.actor.ulysses_sequence_parallel_size=4 \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.mode=async \
+    actor_rollout_ref.rollout.top_p=$TOP_P \
+    +actor_rollout_ref.rollout.enable_sleep_mode=False \
+    +actor_rollout_ref.rollout.repetition_penalty=1.1 \
+    +actor_rollout_ref.rollout.max_tokens_per_turn=2048 \
     actor_rollout_ref.rollout.n=$N_ROLLOUTS \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.max_model_len=128000 \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=4 \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=2 \
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=True \
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=104768 \
     actor_rollout_ref.rollout.calculate_log_probs=true \
@@ -317,7 +391,7 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.ref.ulysses_sequence_parallel_size=4 \
     actor_rollout_ref.ref.fsdp_config.param_offload=False \
     algorithm.adv_estimator=grpo \
-    algorithm.rollout_correction.bypass_mode=true \
+    algorithm.rollout_correction.bypass_mode=$BY_PASS_ROLLOUT_CORRECTION \
     algorithm.norm_adv_by_std_in_grpo=$NORM_ADV_BY_STD \
     algorithm.use_kl_in_reward=$USE_KL_IN_REWARD \
     algorithm.filter_groups.enable=$ENABLE_FILTER_GROUPS \
@@ -326,8 +400,8 @@ python3 -m recipe.dapo.main_dapo \
     reward_model.enable=False \
     reward_model.reward_manager=dapo \
     reward_model.overlong_buffer.enable=True \
-    reward_model.overlong_buffer.len=512 \
-    reward_model.overlong_buffer.penalty_factor=1.0 \
+    reward_model.overlong_buffer.len=2048 \
+    reward_model.overlong_buffer.penalty_factor=2.0 \
     custom_reward_function.path=pkg://verl.utils.reward_score.video_reasoning_async \
     custom_reward_function.name=compute_score \
     custom_reward_function.reward_kwargs.vlm_endpoint="$VLM_ENDPOINT" \
@@ -338,6 +412,9 @@ python3 -m recipe.dapo.main_dapo \
     custom_reward_function.reward_kwargs.answer_weight=$ANSWER_WEIGHT \
     custom_reward_function.reward_kwargs.bbox_weight=$BBOX_WEIGHT \
     custom_reward_function.reward_kwargs.bbox_coord_range=$BBOX_COORD_RANGE \
+    +custom_reward_function.reward_kwargs.bbox_metric=$BBOX_METRIC \
+    +custom_reward_function.reward_kwargs.nwd_constant=$NWD_CONSTANT \
+    +custom_reward_function.reward_kwargs.temporal_tolerance=$TEMPORAL_TOLERANCE \
     custom_reward_function.reward_kwargs.cache_dir="$CACHE_DIR" \
     custom_reward_function.reward_kwargs.cache_fps=$CACHE_FPS \
     custom_reward_function.reward_kwargs.cache_max_frames=$CACHE_MAX_FRAMES \
@@ -359,6 +436,7 @@ python3 -m recipe.dapo.main_dapo \
     trainer.critic_warmup=0 \
     trainer.resume_mode=$RESUME_MODE \
     trainer.logger='["console", "tensorboard"]' \
+    +ray_kwargs.ray_init.runtime_env.env_vars.TENSORBOARD_DIR="$TENSORBOARD_DIR" \
     "$@" 2>&1 | tee -a "$LOG_FILE"
 
 # trainer.resume_from_path=/data_gpu/songlin/rl/verl/checkpoints/video-reasoning-grpo/video_reasoning_grpo_20260131-085501/global_step_200
@@ -402,7 +480,97 @@ else
     echo "Skipping model merge step."
 fi
 
+# =============================================================================
+# Step 4: 评测 (Evaluation on head node)
+# =============================================================================
+# 评测配置
+EVAL_WORKDIR="/mnt/data/home/zhengshurong/project/lmms-eval"
+EVAL_SCRIPT="${EVAL_WORKDIR}/examples/models/vidvllm_task_parallel_multiturn_zsr.sh"
+EVAL_TASKS="video_holmes_multiturn"
+
+# 评测 conda 环境
+EVAL_CONDA_BASE="/mnt/data/home/zhengshurong/miniconda3"
+EVAL_CONDA_ENV="lmms"
+
+# 是否运行评测（可通过环境变量控制）
+RUN_EVAL=${RUN_EVAL:-true}
+
+if [ "$RUN_EVAL" = "true" ] && [ -f "$CKPT_BASE/config.json" ]; then
+    echo ""
+    echo "===== Step 4: Starting Evaluation ====="
+
+    # 4a: 停止 Ray 集群，释放 GPU 资源
+    echo "[$(date)] Stopping Ray cluster to release GPUs..."
+    ray stop --force 2>/dev/null || true
+    sleep 5
+
+    # 4b: 等待 GPU 进程完全退出
+    echo "[$(date)] Waiting for GPU processes to exit..."
+    for i in $(seq 1 60); do
+        GPU_PROCS=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>/dev/null | grep -v "^$" | wc -l)
+        if [ "$GPU_PROCS" -eq 0 ]; then
+            echo "[$(date)] All GPU processes exited."
+            break
+        fi
+        echo "[$(date)] Still $GPU_PROCS GPU process(es) running, waiting... ($i/60)"
+        sleep 5
+    done
+    sleep 5
+
+    # 4c: 切换 conda 环境
+    if [ -n "${EVAL_CONDA_BASE:-}" ] && [ -n "${EVAL_CONDA_ENV:-}" ]; then
+        echo "[$(date)] Switching to eval conda environment: ${EVAL_CONDA_ENV}"
+        eval "$(${EVAL_CONDA_BASE}/bin/conda shell.bash hook)"
+        conda activate ${EVAL_CONDA_ENV}
+    fi
+
+    # 4d: 准备评测模型路径和日志
+    EVAL_MODEL_PATH=$(realpath "$CKPT_BASE")
+    EVAL_LOG="${CKPT_BASE}/logs/eval_${TIMESTAMP:-$(date +%Y%m%d_%H%M%S)}.log"
+    mkdir -p "$(dirname $EVAL_LOG)"
+
+    echo "[$(date)] Starting evaluation..."
+    echo "Model path: ${EVAL_MODEL_PATH}"
+    echo "Eval script: ${EVAL_SCRIPT}"
+    echo "Eval tasks: ${EVAL_TASKS}"
+    echo "Eval log: ${EVAL_LOG}"
+
+    # 4e: 运行评测
+    if [ -f "${EVAL_SCRIPT}" ]; then
+        pushd "${EVAL_WORKDIR}" > /dev/null
+        bash "${EVAL_SCRIPT}" \
+            "${EVAL_MODEL_PATH}" \
+            "${EVAL_TASKS}" \
+            "${EXPERIMENT_NAME}" 2>&1 | tee "${EVAL_LOG}"
+        EVAL_EXIT_CODE=${PIPESTATUS[0]}
+        popd > /dev/null
+
+        if [ ${EVAL_EXIT_CODE} -ne 0 ]; then
+            echo "[$(date)] Evaluation failed with exit code ${EVAL_EXIT_CODE}."
+        else
+            echo "[$(date)] Evaluation completed successfully."
+            echo "Results saved to: ${EVAL_WORKDIR}/logs_zsr/${EXPERIMENT_NAME}/"
+        fi
+    else
+        echo "[$(date)] Eval script not found at ${EVAL_SCRIPT}, skipping evaluation."
+    fi
+
+    echo ""
+    echo "===== Step 4 Complete: Evaluation Finished ====="
+else
+    if [ "$RUN_EVAL" != "true" ]; then
+        echo ""
+        echo "===== Step 4: Evaluation skipped (RUN_EVAL=${RUN_EVAL}) ====="
+    elif [ ! -f "$CKPT_BASE/config.json" ]; then
+        echo ""
+        echo "===== Step 4: Evaluation skipped (no merged model found at $CKPT_BASE) ====="
+    fi
+fi
+
 echo ""
 echo "===== All Steps Complete ====="
 echo "Log file: $LOG_FILE"
-echo "TensorBoard: tensorboard --logdir=./tensorboard_log"
+echo "TensorBoard: tensorboard --logdir=$TENSORBOARD_DIR"
+if [ "$RUN_EVAL" = "true" ] && [ -f "$CKPT_BASE/config.json" ]; then
+    echo "Eval results: ${EVAL_WORKDIR}/logs_zsr/${EXPERIMENT_NAME}/"
+fi

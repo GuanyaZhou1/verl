@@ -64,7 +64,8 @@ export NCCL_CUMEM_ENABLE=${NCCL_CUMEM_ENABLE:-0}
 #MODEL_PATH="/data_gpu/songlin/rl/verl/checkpoints/video-reasoning-dapo/video_reasoning_dapo_20260205-063449/merged_model"
 #MODEL_PATH="/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-self_holmes_caption_233-self_longvideoreason_caption_930-openo3video_stgr_singleturn_7k-self_holmes_multiturn_1k5-self_longvideoreason_multiturn_5k3-sft-lr5e-5-b24"
 # MODEL_PATH="${MODEL_PATH:-/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-stgr-turn_llm_freeze25_freeze_mlp-lr1e-5-epo5}"
-MODEL_PATH="/mnt/data/home/zhengshurong/project/Qwen3-VL/qwen-vl-finetune/checkpoints/video/Qwen3-VL-8B-Instruct-longvtdata-stgrdata-selfconstructdata-sft-lr1e-5-bs128-ep1/checkpoint-3003"
+# MODEL_PATH="/mnt/data/home/zhengshurong/project/Qwen3-VL/qwen-vl-finetune/checkpoints/video/Qwen3-VL-8B-Instruct-longvtdata-stgrdata-selfconstructdata-sft-lr1e-5-bs128-ep1/checkpoint-3003"
+MODEL_PATH="/mnt/data/home/zhengshurong/project/Qwen3-VL/qwen-vl-finetune/checkpoints/video/Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1"
 DATA_DIR="${DATA_DIR:-./long_video_data/video_holmes}"
 CACHE_DIR="${CACHE_DIR:-./.cache}"
 CONFIG_PATH="$(pwd)/examples/video_reasoning/config"
@@ -95,14 +96,32 @@ FILTER_GROUPS_METRIC=${FILTER_GROUPS_METRIC:-score}   # 用总分做组过滤
 MAX_NUM_GEN_BATCHES=${MAX_NUM_GEN_BATCHES:-20}         # 最多重采样轮数
 
 CLIP_RATIO_LOW=${CLIP_RATIO_LOW:-0.2}                 # Clip-Higher: 非对称 clip ratio
-CLIP_RATIO_HIGH=${CLIP_RATIO_HIGH:-0.28}              # > low，鼓励正向更新
+CLIP_RATIO_HIGH=${CLIP_RATIO_HIGH:-0.25}              # > low，鼓励正向更新
 
 NORM_ADV_BY_STD=False                      # 归一化 advantage，
 
 USE_KL_IN_REWARD=False
 USE_KL_LOSS=True
-KL_LOSS_COEF=${KL_LOSS_COEF:-0.05}
+KL_LOSS_COEF=${KL_LOSS_COEF:-0.001}
 KL_LOSS_TYPE=low_var_kl
+
+BY_PASS_ROLLOUT_CORRECTION=false
+ENTROPY_COEFF=${ENTROPY_COEFF:-0.0}                   # Entropy 系数
+TOP_P=${TOP_P:-0.7}                                   # Top-p 采样
+TEMPERATURE=${TEMPERATURE:-0.7}                       # 采样温度
+
+# =============================================================================
+# 优势估计器配置 (GRPO vs GDPO)
+# =============================================================================
+# grpo: 传统 GRPO，先求和再归一化
+# gdpo: GDPO (Group reward-Decoupled)，每个奖励独立归一化后再加权求和
+#       参考: https://arxiv.org/abs/2601.05242
+ADV_ESTIMATOR=${ADV_ESTIMATOR:-grpo}
+
+# GDPO 专属配置 (仅当 ADV_ESTIMATOR=gdpo 时生效)
+GDPO_ENABLE_BATCH_NORM=${GDPO_ENABLE_BATCH_NORM:-true}   # batch-wise 归一化
+# GDPO 各奖励组件权重 (在 base.yaml 中配置默认值，这里可覆盖)
+# 示例: GDPO_ANSWER_WEIGHT=1.0 GDPO_FORMAT_WEIGHT=0.5 ADV_ESTIMATOR=gdpo bash run_xxx.sh
 
 # =============================================================================
 # 视频缓存参数
@@ -111,6 +130,7 @@ CACHE_FPS=1
 CACHE_MAX_FRAMES=512
 CACHE_MAX_FRAMES_PER_SEGMENT=32
 USE_CACHED_INITIAL_VIDEO=True            # 使用缓存帧而非原始视频，减少 CPU 内存
+CACHE_NUM_WORKERS=${CACHE_NUM_WORKERS:-64}  # 视频缓存并行数
 
 # 初始视频分辨率（低分辨率概览）
 INITIAL_VIDEO_FPS=1
@@ -144,7 +164,10 @@ VLM_API_KEY="123456"
 USE_VLM_SCORING=true
 USE_BBOX_VERIFICATION=true
 ANSWER_WEIGHT=${ANSWER_WEIGHT:-1.0}
-BBOX_WEIGHT=${BBOX_WEIGHT:-0.0}
+BBOX_WEIGHT=${BBOX_WEIGHT:-0.6}
+FORMAT_WEIGHT=${FORMAT_WEIGHT:-0.5}          # 格式奖励权重 (0 = 不使用)
+SEGMENT_WEIGHT=${SEGMENT_WEIGHT:-1.0}        # segment 时间段匹配奖励权重 (0 = 不使用)
+USE_STRICT_FORMAT=${USE_STRICT_FORMAT:-true}  # 是否使用严格的 segment 格式检查
 BBOX_COORD_RANGE=1.0                     # bbox 坐标范围 [0, 1]，不影响，内部后续改为根据模型的输出动态调整
 
 SAVE_BBOX_VISUALIZATION=true
@@ -167,7 +190,7 @@ RESUME_MODE=disable                      # disable / resume_path / auto
 # =============================================================================
 TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
 PROJECT_NAME="video-reasoning-dapo"
-EXPERIMENT_NAME="Qwen3-VL-8B-Instruct-longvtdata-stgrdata-selfconstructdata-sft-lr1e-5-bs128-ep1_dapo_holmes_genbs${GEN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_bbox${BBOX_WEIGHT}_klcoef${KL_LOSS_COEF}_resp${MAX_RESPONSE_LENGTH}_filtergroups${ENABLE_FILTER_GROUPS}_0309"
+EXPERIMENT_NAME="Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1_dapo_holmes_genbs${GEN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_bbox${BBOX_WEIGHT}_fmt${FORMAT_WEIGHT}_seg${SEGMENT_WEIGHT}_strictfmt${USE_STRICT_FORMAT}_klcoef${KL_LOSS_COEF}_resp${MAX_RESPONSE_LENGTH}_filtergroups${ENABLE_FILTER_GROUPS}_bypass${BY_PASS_ROLLOUT_CORRECTION}_cliphi${CLIP_RATIO_HIGH}_topp${TOP_P}_temp${TEMPERATURE}_0312"
 # EXPERIMENT_NAME="Qwen3_8B_longvt_tvg-openo3video_stgr-selfconstructdata_dapo_long_video_data_genbs32_ep1_lr1e_6_bbox0_0_normadvbystdfalse_${TIMESTAMP}"
 
 # 将 reward_logs 和 tensorboard_log 放到 checkpoint 目录下
@@ -212,16 +235,22 @@ echo "Data:            $DATA_DIR"
 echo "Train/Gen batch: $TRAIN_BATCH_SIZE / $GEN_BATCH_SIZE"
 echo "Rollouts:        $N_ROLLOUTS"
 echo "GPUs:            $N_GPUS x $NNODES nodes"
+echo "Cache workers:   $CACHE_NUM_WORKERS"
 echo ""
 echo "DAPO Settings:"
+echo "  adv_estimator: $ADV_ESTIMATOR"
 echo "  filter_groups: $ENABLE_FILTER_GROUPS (metric=$FILTER_GROUPS_METRIC)"
 echo "  clip_ratio:    [$CLIP_RATIO_LOW, $CLIP_RATIO_HIGH]"
 echo "  norm_by_std:   $NORM_ADV_BY_STD"
+if [ "$ADV_ESTIMATOR" = "gdpo" ]; then
+    echo "  GDPO batch_norm: $GDPO_ENABLE_BATCH_NORM"
+fi
 echo ""
 echo "Reward:"
 echo "  VLM scoring:   $USE_VLM_SCORING ($VLM_ENDPOINT)"
 echo "  BBox verify:   $USE_BBOX_VERIFICATION"
-echo "  Weights:       answer=$ANSWER_WEIGHT, bbox=$BBOX_WEIGHT"
+echo "  Weights:       answer=$ANSWER_WEIGHT, bbox=$BBOX_WEIGHT, format=$FORMAT_WEIGHT, segment=$SEGMENT_WEIGHT"
+echo "  Strict format: $USE_STRICT_FORMAT"
 echo "================================="
 echo ""
 
@@ -234,7 +263,8 @@ if [ "${SKIP_VIDEO_CACHE:-false}" != "true" ]; then
         --input_parquet "$DATA_DIR/train.parquet" \
         --cache_dir "$CACHE_DIR" \
         --fps "$CACHE_FPS" \
-        --max_frames "$CACHE_MAX_FRAMES"
+        --max_frames "$CACHE_MAX_FRAMES" \
+        --num_workers "$CACHE_NUM_WORKERS"
 
     # set -eo pipefail 已确保上述命令失败时脚本自动退出
     echo "===== Step 1 Complete ====="
@@ -277,7 +307,7 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.model.use_fused_kernels=True \
     actor_rollout_ref.actor.optim.lr=$LEARNING_RATE \
-    actor_rollout_ref.actor.ppo_mini_batch_size=32 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=16 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=2 \
     actor_rollout_ref.actor.clip_ratio_low=$CLIP_RATIO_LOW \
     actor_rollout_ref.actor.clip_ratio_high=$CLIP_RATIO_HIGH \
@@ -285,13 +315,15 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.actor.kl_loss_coef=$KL_LOSS_COEF \
     actor_rollout_ref.actor.kl_loss_type=$KL_LOSS_TYPE \
     actor_rollout_ref.actor.loss_agg_mode=token-mean \
-    actor_rollout_ref.actor.entropy_coeff=0 \
+    actor_rollout_ref.actor.entropy_coeff=$ENTROPY_COEFF \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
     actor_rollout_ref.actor.fsdp_config.forward_prefetch=True \
     actor_rollout_ref.actor.ulysses_sequence_parallel_size=4 \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.mode=async \
+    actor_rollout_ref.rollout.top_p=$TOP_P \
+    actor_rollout_ref.rollout.temperature=$TEMPERATURE \
     +actor_rollout_ref.rollout.enable_sleep_mode=False \
     +actor_rollout_ref.rollout.repetition_penalty=1.1 \
     +actor_rollout_ref.rollout.max_tokens_per_turn=2048 \
@@ -333,8 +365,9 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=104768 \
     actor_rollout_ref.ref.ulysses_sequence_parallel_size=4 \
     actor_rollout_ref.ref.fsdp_config.param_offload=False \
-    algorithm.adv_estimator=grpo \
-    algorithm.rollout_correction.bypass_mode=true \
+    algorithm.adv_estimator=$ADV_ESTIMATOR \
+    algorithm.gdpo.enable_batch_norm=$GDPO_ENABLE_BATCH_NORM \
+    algorithm.rollout_correction.bypass_mode=$BY_PASS_ROLLOUT_CORRECTION \
     algorithm.norm_adv_by_std_in_grpo=$NORM_ADV_BY_STD \
     algorithm.use_kl_in_reward=$USE_KL_IN_REWARD \
     algorithm.filter_groups.enable=$ENABLE_FILTER_GROUPS \
@@ -354,6 +387,9 @@ python3 -m recipe.dapo.main_dapo \
     custom_reward_function.reward_kwargs.use_bbox_verification=$USE_BBOX_VERIFICATION \
     custom_reward_function.reward_kwargs.answer_weight=$ANSWER_WEIGHT \
     custom_reward_function.reward_kwargs.bbox_weight=$BBOX_WEIGHT \
+    custom_reward_function.reward_kwargs.format_weight=$FORMAT_WEIGHT \
+    custom_reward_function.reward_kwargs.segment_weight=$SEGMENT_WEIGHT \
+    custom_reward_function.reward_kwargs.use_strict_format=$USE_STRICT_FORMAT \
     custom_reward_function.reward_kwargs.bbox_coord_range=$BBOX_COORD_RANGE \
     custom_reward_function.reward_kwargs.cache_dir="$CACHE_DIR" \
     custom_reward_function.reward_kwargs.cache_fps=$CACHE_FPS \
