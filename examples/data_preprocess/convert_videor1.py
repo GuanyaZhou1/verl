@@ -79,6 +79,13 @@ def parse_args():
         default=None,
         help="Path to custom system prompt file (optional)"
     )
+    parser.add_argument(
+        "--prompt_version",
+        type=str,
+        default="default",
+        choices=["default", "multiturn", "singleturn"],
+        help="Prompt version: default/multiturn (multi-turn reasoning) or singleturn (simple think+answer)"
+    )
     return parser.parse_args()
 
 
@@ -276,10 +283,11 @@ def main():
     args = parse_args()
 
     # Load custom prompts if specified
-    system_prompt = MULTITURN_SYSTEM_PROMPT
+    system_prompt, _, _ = get_prompts(prompt_file=args.prompt_file, prompt_version=args.prompt_version)
     if args.prompt_file:
-        system_prompt, _, _ = get_prompts(prompt_file=args.prompt_file)
         print(f"Loaded custom system prompt from: {args.prompt_file}")
+    else:
+        print(f"Using prompt version: {args.prompt_version}")
 
     # Load input parquet
     print(f"Loading data from {args.input_parquet}...")

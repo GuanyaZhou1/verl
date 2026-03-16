@@ -155,7 +155,11 @@ algorithm:
     # - gae: GAE decay from EOS (may weaken signal for early tokens)
     global_reward_mode: broadcast
 
-    # Component weights for token placement (multiplied with GDPO output)
+    # Whether to apply batch-wise normalization after token placement
+    # Recommended to keep true for training stability
+    enable_batch_norm: true
+
+    # Component weights for token placement (multiplied with normalized advantage)
     answer_weight: 1.0
     format_weight: 0.5
     bbox_weight: 1.0

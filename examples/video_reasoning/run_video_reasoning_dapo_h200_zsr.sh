@@ -278,7 +278,7 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.model.use_fused_kernels=True \
     actor_rollout_ref.actor.optim.lr=$LEARNING_RATE \
     actor_rollout_ref.actor.ppo_mini_batch_size=32 \
-    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=2 \
+    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.actor.clip_ratio_low=$CLIP_RATIO_LOW \
     actor_rollout_ref.actor.clip_ratio_high=$CLIP_RATIO_HIGH \
     actor_rollout_ref.actor.use_kl_loss=$USE_KL_LOSS \

@@ -381,8 +381,9 @@ def compute_gdpo_outcome_advantage(
     epsilon: float = 1e-6,
     enable_batch_norm: bool = True,
     config: Optional[AlgoConfig] = None,
+    return_component_advs: bool = False,
     **kwargs,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor] | tuple[torch.Tensor, torch.Tensor, dict]:
     """
     GDPO (Group reward-Decoupled normalization Policy Optimization):
     Decoupled normalization for each reward component, then weighted sum and batch-normalize.
@@ -407,10 +408,12 @@ def compute_gdpo_outcome_advantage(
         epsilon: float for numerical stability
         enable_batch_norm: whether to apply batch-wise normalization (recommended)
         config: algorithm config (can contain gdpo settings)
+        return_component_advs: if True, also return per-component normalized advantages
 
     Returns:
         advantages: (bs, response_length)
         returns: (bs, response_length)
+        [optional] component_advs: dict mapping reward names to (bs,) normalized advantages
     """
     with torch.no_grad():
         device = token_level_rewards.device
@@ -457,7 +460,152 @@ def compute_gdpo_outcome_advantage(
             A_sum = (A_sum - batch_mean) / (batch_std + epsilon)
 
         advantages = A_sum.unsqueeze(-1) * response_mask
+        if return_component_advs and reward_components is not None and len(reward_components) > 0:
+            return advantages, advantages, normalized_advantages
         return advantages, advantages
+
+
+def compute_turn_level_group_norm(
+    bbox_details_list: List[List[Dict]],
+    segment_details_list: List[List[Dict]],
+    group_idx: np.ndarray,
+    epsilon: float = 1e-6,
+) -> Tuple[List[Dict[int, float]], List[Dict[int, float]]]:
+    """
+    Compute turn-level group normalization for bbox and segment scores.
+
+    This function:
+    1. First aggregates scores within each turn (average of all bboxes/segments in that turn)
+    2. Then pools all turn-level scores from all rollouts in the same group
+    3. Normalizes at the turn level within the group
+
+    This ensures each turn is treated as a single unit for comparison, not biased
+    by the number of bboxes/segments in each turn.
+
+    Args:
+        bbox_details_list: Per-sample list of bbox details, each containing
+            {"total_score": float, "turn_idx": int, ...}
+        segment_details_list: Per-sample list of segment details, each containing
+            {"score": float, "turn_idx": int, ...}
+        group_idx: (bs,) array mapping each sample to its group ID
+        epsilon: Small value for numerical stability
+
+    Returns:
+        bbox_advs_by_turn: Per-sample dict mapping turn_idx -> normalized turn-level bbox advantage
+        segment_advs_by_turn: Per-sample dict mapping turn_idx -> normalized turn-level segment advantage
+    """
+    from collections import defaultdict
+
+    bs = len(bbox_details_list)
+
+    # =========================================================================
+    # Step 1: Aggregate bbox scores per turn within each sample
+    # =========================================================================
+    # sample_idx -> turn_idx -> list of bbox scores
+    sample_turn_bbox_scores = defaultdict(lambda: defaultdict(list))
+    for i in range(bs):
+        bbox_details = bbox_details_list[i] if bbox_details_list[i] else []
+        for bd in bbox_details:
+            score = bd.get("total_score", bd.get("score", 0.0))
+            turn_idx = bd.get("turn_idx", 0)
+            if turn_idx >= 0:  # valid turn
+                sample_turn_bbox_scores[i][turn_idx].append(score)
+
+    # sample_idx -> turn_idx -> aggregated (mean) score
+    sample_turn_bbox_mean = {}
+    for i in range(bs):
+        sample_turn_bbox_mean[i] = {}
+        for turn_idx, scores in sample_turn_bbox_scores[i].items():
+            sample_turn_bbox_mean[i][turn_idx] = np.mean(scores) if scores else 0.0
+
+    # =========================================================================
+    # Step 2: Pool turn-level bbox scores by group and normalize
+    # =========================================================================
+    # group_id -> [(sample_idx, turn_idx, turn_mean_score), ...]
+    group_turn_bbox_scores = defaultdict(list)
+    for i in range(bs):
+        g = group_idx[i]
+        for turn_idx, mean_score in sample_turn_bbox_mean[i].items():
+            group_turn_bbox_scores[g].append((i, turn_idx, mean_score))
+
+    # Normalize within each group
+    bbox_turn_normalized = {}  # (sample_idx, turn_idx) -> normalized advantage
+    for g, scores_list in group_turn_bbox_scores.items():
+        if len(scores_list) == 0:
+            continue
+        scores = np.array([s[2] for s in scores_list])
+        mean = scores.mean()
+        std = scores.std()
+        if std < epsilon:
+            std = epsilon
+        for (sample_idx, turn_idx, score) in scores_list:
+            normalized = (score - mean) / std
+            bbox_turn_normalized[(sample_idx, turn_idx)] = normalized
+
+    # =========================================================================
+    # Step 3: Aggregate segment scores per turn within each sample
+    # =========================================================================
+    # For segment, typically there's already one score per turn
+    # But we handle the general case
+    sample_turn_segment_scores = defaultdict(lambda: defaultdict(list))
+    for i in range(bs):
+        segment_details = segment_details_list[i] if segment_details_list[i] else []
+        for sd in segment_details:
+            score = sd.get("score", 0.0)
+            turn_idx = sd.get("turn_idx", 0)
+            if turn_idx >= 0:
+                sample_turn_segment_scores[i][turn_idx].append(score)
+
+    sample_turn_segment_mean = {}
+    for i in range(bs):
+        sample_turn_segment_mean[i] = {}
+        for turn_idx, scores in sample_turn_segment_scores[i].items():
+            sample_turn_segment_mean[i][turn_idx] = np.mean(scores) if scores else 0.0
+
+    # =========================================================================
+    # Step 4: Pool turn-level segment scores by group and normalize
+    # =========================================================================
+    group_turn_segment_scores = defaultdict(list)
+    for i in range(bs):
+        g = group_idx[i]
+        for turn_idx, mean_score in sample_turn_segment_mean[i].items():
+            group_turn_segment_scores[g].append((i, turn_idx, mean_score))
+
+    segment_turn_normalized = {}
+    for g, scores_list in group_turn_segment_scores.items():
+        if len(scores_list) == 0:
+            continue
+        scores = np.array([s[2] for s in scores_list])
+        mean = scores.mean()
+        std = scores.std()
+        if std < epsilon:
+            std = epsilon
+        for (sample_idx, turn_idx, score) in scores_list:
+            normalized = (score - mean) / std
+            segment_turn_normalized[(sample_idx, turn_idx)] = normalized
+
+    # =========================================================================
+    # Step 5: Build output dicts (turn_idx -> normalized advantage)
+    # =========================================================================
+    bbox_advs_by_turn = []
+    segment_advs_by_turn = []
+
+    for i in range(bs):
+        # Bbox advantages by turn
+        sample_bbox_dict = {}
+        for (si, ti), adv in bbox_turn_normalized.items():
+            if si == i:
+                sample_bbox_dict[ti] = adv
+        bbox_advs_by_turn.append(sample_bbox_dict)
+
+        # Segment advantages by turn
+        sample_segment_dict = {}
+        for (si, ti), adv in segment_turn_normalized.items():
+            if si == i:
+                sample_segment_dict[ti] = adv
+        segment_advs_by_turn.append(sample_segment_dict)
+
+    return bbox_advs_by_turn, segment_advs_by_turn
 
 
 # =============================================================================
@@ -563,11 +711,12 @@ def find_turn_boundaries(
 
 
 def apply_token_placement(
-    # Normalized scalar advantages from GDPO (bs,) tensors
+    # Global advantages: rollout-level group normalized (bs,) tensors
     answer_adv: torch.Tensor,
     format_adv: torch.Tensor,
-    bbox_advs: List[List[float]],  # Per-sample per-bbox advantages
-    segment_advs: List[List[float]],  # Per-sample per-turn segment advantages
+    # Local advantages: turn-level group normalized
+    bbox_advs: List[Dict[int, float]],  # Per-sample: turn_idx -> normalized bbox advantage
+    segment_advs: List[Dict[int, float]],  # Per-sample: turn_idx -> normalized segment advantage
     # Token position information
     turn_info: List[Dict[str, Any]],  # Per-sample turn boundaries from find_turn_boundaries
     response_mask: torch.Tensor,  # (bs, response_length)
@@ -584,18 +733,15 @@ def apply_token_placement(
     """
     Apply token placement strategy to distribute advantages across tokens.
 
-    For multi-turn CoT, this allows different reward components to be placed
-    at their relevant token positions:
-    - bbox_score → tokens in the <think> section where bbox was generated
-      (plus previous turn's <answer> for segment context)
-    - segment_score → entire turn (<think></think><answer></answer>)
-    - acc/format → global, controlled by global_reward_mode
+    Two types of rewards with different normalization and placement:
+    - Global rewards (acc, format): rollout-level group norm, broadcast to all tokens
+    - Local rewards (bbox, segment): turn-level group norm, placed at corresponding turns
 
     Args:
-        answer_adv: (bs,) normalized advantage for answer correctness
-        format_adv: (bs,) normalized advantage for format correctness
-        bbox_advs: List of per-sample bbox advantages, each is a list of floats
-        segment_advs: List of per-sample segment advantages per turn
+        answer_adv: (bs,) rollout-level normalized advantage for answer correctness
+        format_adv: (bs,) rollout-level normalized advantage for format correctness
+        bbox_advs: Per-sample dict mapping turn_idx -> turn-level normalized bbox advantage
+        segment_advs: Per-sample dict mapping turn_idx -> turn-level normalized segment advantage
         turn_info: List of turn boundary dicts from find_turn_boundaries
         response_mask: (bs, response_length) mask for valid response tokens
         method: Token placement method (broadcast/per_turn/per_turn_gae)
@@ -643,12 +789,12 @@ def apply_token_placement(
         if method == "broadcast":
             continue
 
-        # 2. Segment reward (per-turn)
-        sample_segment_advs = segment_advs[i] if i < len(segment_advs) else []
+        # 2. Segment reward (per-turn) - uses turn-level normalized advantage
+        sample_segment_advs = segment_advs[i] if i < len(segment_advs) else {}
         for turn_idx, turn in enumerate(turns):
-            if turn_idx >= len(sample_segment_advs):
-                continue
-            seg_adv = segment_weight * sample_segment_advs[turn_idx]
+            # Look up advantage by turn_idx
+            seg_adv = sample_segment_advs.get(turn_idx, 0.0)
+            seg_adv = segment_weight * seg_adv
             if seg_adv == 0:
                 continue
 
@@ -674,30 +820,27 @@ def apply_token_placement(
                         decay *= gamma * lam
                         advantages[i, t] += seg_adv * decay
 
-        # 3. BBox reward
-        # bbox_score → current turn <think> + previous turn <answer> (segment selection affects bbox)
-        sample_bbox_advs = bbox_advs[i] if i < len(bbox_advs) else []
-        for bbox_idx, bbox in enumerate(bbox_positions):
-            if bbox_idx >= len(sample_bbox_advs):
-                continue
-            bbox_adv_value = bbox_weight * sample_bbox_advs[bbox_idx]
-            if bbox_adv_value == 0:
+        # 3. BBox reward (per-turn) - uses turn-level normalized advantage
+        # bbox advantage is placed at current turn's <think> + previous turn's <answer>
+        sample_bbox_advs = bbox_advs[i] if i < len(bbox_advs) else {}
+
+        # Iterate over turns that have bbox advantages
+        for turn_idx, bbox_adv_value in sample_bbox_advs.items():
+            bbox_adv_value = bbox_weight * bbox_adv_value
+            if bbox_adv_value == 0 or turn_idx >= len(turns):
                 continue
 
-            token_pos = bbox.get("token_pos", -1)
-            turn_idx = bbox.get("turn_idx", -1)
-            if token_pos < 0 or turn_idx < 0 or turn_idx >= len(turns):
-                continue
+            turn = turns[turn_idx]
 
             # Current turn's <think> range
-            think_start = turns[turn_idx].get("think_start", -1)
-            think_end = turns[turn_idx].get("think_end", -1)
+            think_start = turn.get("think_start", -1)
+            think_end = turn.get("think_end", -1)
             if think_start < 0:
                 continue
             if think_end < 0:
-                think_end = token_pos
+                think_end = min(turn.get("answer_start", eos_pos), eos_pos)
 
-            # Previous turn's <answer> range (if exists)
+            # Previous turn's <answer> range (segment selection affects bbox quality)
             prev_answer_start = -1
             prev_answer_end = -1
             if turn_idx > 0:
@@ -706,7 +849,7 @@ def apply_token_placement(
                 prev_answer_end = prev_turn.get("answer_end", -1)
 
             if method == "per_turn":
-                # Bbox reward → current think + previous answer
+                # Bbox reward → current think + previous answer (broadcast within region)
                 # Previous answer
                 if prev_answer_start >= 0 and prev_answer_end >= 0:
                     for t in range(prev_answer_start, min(prev_answer_end + 1, response_length)):
@@ -718,11 +861,12 @@ def apply_token_placement(
                         advantages[i, t] += bbox_adv_value
 
             elif method == "per_turn_gae":
-                # GAE propagation from bbox position to previous answer start (or think start)
+                # GAE propagation from think_end to previous answer start (or think start)
                 propagate_start = prev_answer_start if prev_answer_start >= 0 else think_start
-                advantages[i, token_pos] += bbox_adv_value
+                propagate_end = min(think_end, eos_pos)
+                advantages[i, propagate_end] += bbox_adv_value
                 decay = 1.0
-                for t in range(token_pos - 1, propagate_start - 1, -1):
+                for t in range(propagate_end - 1, propagate_start - 1, -1):
                     if response_mask[i, t] > 0:
                         decay *= gamma * lam
                         advantages[i, t] += bbox_adv_value * decay

@@ -20,6 +20,7 @@ set -e
 PROCESS_LONGVIDEO=true
 PROCESS_VIDEOR1=false
 VIDEOR1_MAX_SAMPLES=-1  # -1 表示全部
+PROMPT_VERSION="default"  # default/multiturn or singleturn
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -40,9 +41,17 @@ while [[ $# -gt 0 ]]; do
             PROCESS_LONGVIDEO=false
             shift
             ;;
+        --singleturn)
+            PROMPT_VERSION="singleturn"
+            shift
+            ;;
+        --prompt_version)
+            PROMPT_VERSION="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 [--videor1] [--videor1-only] [--max_samples N] [--no-longvideo]"
+            echo "Usage: $0 [--videor1] [--videor1-only] [--max_samples N] [--no-longvideo] [--singleturn] [--prompt_version VERSION]"
             exit 1
             ;;
     esac
@@ -63,13 +72,18 @@ source "$SCRIPT_DIR/env.sh"
 INPUT_JSON="$LONGVIDEO_REASON_JSON"
 # 视频文件目录
 VIDEO_BASE_PATH="$LONGVIDEO_REASON_DIR"
-# 输出目录
-OUTPUT_DIR="./long_video_data"
+# 输出目录 (根据 prompt 版本调整)
+if [ "$PROMPT_VERSION" = "singleturn" ]; then
+    OUTPUT_DIR="./long_video_data_singleturn/longvideo_reason"
+    VIDEOR1_OUTPUT_DIR="${VIDEOR1_OUTPUT_DIR:-./long_video_data_singleturn/videor1}"
+else
+    OUTPUT_DIR="./long_video_data/longvideo_reason"
+    VIDEOR1_OUTPUT_DIR="${VIDEOR1_OUTPUT_DIR:-./long_video_data/videor1}"
+fi
 
 # ===== Video-R1 配置 (从 env.sh 读取) =====
 VIDEOR1_PARQUET="${VIDEOR1_PARQUET:-/mnt/data/home/zhengshurong/dataset/LongVT-Parquet/longvt_sft_videor1_165k5.parquet}"
 VIDEOR1_VIDEO_DIR="${VIDEOR1_VIDEO_DIR:-/mnt/data/home/zhengshurong/dataset/LongVT-Source/videor1}"
-VIDEOR1_OUTPUT_DIR="${VIDEOR1_OUTPUT_DIR:-./long_video_data/videor1}"
 
 # ===== 数据划分参数 =====
 VAL_RATIO=0.05  # 5% 作为验证集
@@ -123,7 +137,8 @@ if [ "$PROCESS_LONGVIDEO" = true ]; then
         --video_base_path "$VIDEO_BASE_PATH" \
         --output_dir "$OUTPUT_DIR" \
         --val_ratio "$VAL_RATIO" \
-        --seed "$SEED"
+        --seed "$SEED" \
+        --prompt_version "$PROMPT_VERSION"
 
     # 检查 parquet 是否生成成功
     if [ ! -f "$OUTPUT_DIR/train.parquet" ] || [ ! -f "$OUTPUT_DIR/val.parquet" ]; then
@@ -146,6 +161,7 @@ if [ "$PROCESS_VIDEOR1" = true ]; then
         --output_dir "$VIDEOR1_OUTPUT_DIR"
         --val_ratio "$VAL_RATIO"
         --seed "$SEED"
+        --prompt_version "$PROMPT_VERSION"
     )
 
     if [ "$VIDEOR1_MAX_SAMPLES" != "-1" ]; then
@@ -283,3 +299,7 @@ echo "  bash examples/video_reasoning/preprocess_video_reasoning_data.sh --video
 echo ""
 echo "  # Process video-r1 only (skip longvideo_reason):"
 echo "  bash examples/video_reasoning/preprocess_video_reasoning_data.sh --videor1-only --max_samples 5000"
+
+echo "  # Use singleturn prompt (simple think+answer, no segment/bbox):"
+echo "  bash examples/video_reasoning/preprocess_video_reasoning_data.sh --singleturn"
+echo ""

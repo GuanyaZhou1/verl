@@ -942,7 +942,29 @@ class DataProto:
 
         non_tensor_batch = list_of_dict_to_dict_of_list(list_of_dict=[d.non_tensor_batch for d in data])
         for key, val in non_tensor_batch.items():
-            non_tensor_batch[key] = np.concatenate(val, axis=0)
+            # Handle arrays with different dimensions (e.g., object arrays from inhomogeneous data)
+            # Check if all arrays have the same dimensionality
+            try:
+                # First check if dimensions are consistent
+                dims = [v.ndim if hasattr(v, 'ndim') else 1 for v in val]
+                if len(set(dims)) > 1:
+                    # Dimension mismatch - flatten all to 1D object array
+                    raise ValueError("Dimension mismatch")
+                non_tensor_batch[key] = np.concatenate(val, axis=0)
+            except (ValueError, TypeError):
+                # Fallback: concatenate as 1D object array
+                total_len = sum(len(v) if hasattr(v, '__len__') else 1 for v in val)
+                result = np.empty(total_len, dtype=object)
+                idx = 0
+                for v in val:
+                    if hasattr(v, '__iter__') and not isinstance(v, (str, dict)):
+                        for item in v:
+                            result[idx] = item
+                            idx += 1
+                    else:
+                        result[idx] = v
+                        idx += 1
+                non_tensor_batch[key] = result
 
         # Merge meta_info with special handling for metrics
         merged_meta_info = {}

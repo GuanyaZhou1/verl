@@ -32,11 +32,23 @@ When ready to provide the final answer, enclose it within '<answer>' tags:
 <answer> {final answer} </answer>
 """
 
+# Single-turn system prompt (no multi-turn, no segment/bbox grounding)
+SINGLETURN_SYSTEM_PROMPT = """You are a helpful assistant. The user asks a question, and then you solves it.
+
+Please first think deeply about the question based on the given video, and then provide the final answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think> <answer> answer here </answer>."""
+
 # Output template for multiple-choice questions
 OUTPUT_TEMPLATE = "Please provide only the single option (e.g., A, B, C, D, etc.) within the <answer> </answer> tags."
 
 # Output template for open-ended questions
 OUTPUT_TEMPLATE_OPENENDED = "Please provide your answer within the <answer> </answer> tags."
+
+# Prompt version mapping
+PROMPT_VERSIONS = {
+    "default": MULTITURN_SYSTEM_PROMPT,
+    "multiturn": MULTITURN_SYSTEM_PROMPT,
+    "singleturn": SINGLETURN_SYSTEM_PROMPT,
+}
 
 
 def load_prompt_from_file(filepath: str) -> str:
@@ -45,19 +57,24 @@ def load_prompt_from_file(filepath: str) -> str:
         return f.read().strip()
 
 
-def get_prompts(prompt_file: str = None, output_template_file: str = None, output_template_openended_file: str = None):
+def get_prompts(prompt_file: str = None, prompt_version: str = "default", output_template_file: str = None, output_template_openended_file: str = None):
     """
-    Get prompts, optionally loading from files.
+    Get prompts, optionally loading from files or using preset versions.
 
     Args:
-        prompt_file: Path to custom system prompt file (optional)
+        prompt_file: Path to custom system prompt file (optional, takes precedence)
+        prompt_version: Preset prompt version: "default"/"multiturn" or "singleturn"
         output_template_file: Path to custom multiple-choice output template (optional)
         output_template_openended_file: Path to custom open-ended output template (optional)
 
     Returns:
         tuple: (system_prompt, output_template, output_template_openended)
     """
-    system_prompt = load_prompt_from_file(prompt_file) if prompt_file else MULTITURN_SYSTEM_PROMPT
+    if prompt_file:
+        system_prompt = load_prompt_from_file(prompt_file)
+    else:
+        system_prompt = PROMPT_VERSIONS.get(prompt_version, MULTITURN_SYSTEM_PROMPT)
+
     output_tmpl = load_prompt_from_file(output_template_file) if output_template_file else OUTPUT_TEMPLATE
     output_tmpl_open = load_prompt_from_file(output_template_openended_file) if output_template_openended_file else OUTPUT_TEMPLATE_OPENENDED
 

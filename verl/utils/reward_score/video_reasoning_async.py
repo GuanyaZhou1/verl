@@ -32,7 +32,7 @@ DEFAULT_IOU_THRESHOLD = 0.0          # IOU 阈值，设为 0 不截断梯度
 DEFAULT_TEMPORAL_WEIGHT = 0.5        # 时序奖励权重 (物体是否存在)
 DEFAULT_SPATIAL_WEIGHT = 0.5         # 空间奖励权重 (IOU 分数)
 DEFAULT_BBOX_COORD_RANGE = 1000.0    # bbox 坐标范围 (1.0 = [0,1], 1000.0 = [0,1000])
-DEFAULT_BBOX_METRIC = "iou"          # bbox 评分指标: "iou" 或 "nwd"
+DEFAULT_BBOX_METRIC = "iou"          # bbox 评分指标: "iou" (原始) 或 "adaptive_iou" (小目标宽松)
 DEFAULT_NWD_CONSTANT = 2.0           # NWD 归一化常数，控制衰减速度 (越大越宽松)
 DEFAULT_TEMPORAL_TOLERANCE = 1       # 相邻帧容忍度 (0=禁用, 1=±1帧)，对应 Qwen3-VL temporal_patch_size=2
 DEFAULT_ANSWER_WEIGHT = 0.4          # 答案分数权重
@@ -98,6 +98,8 @@ def get_reward_logger():
 def save_reward_sample(
     sample_data: Dict[str, Any],
     output_dir: str = "./reward_logs/samples",
+    training_step: int = None,
+    sample_uid: str = None,
 ):
     """
     保存单个奖励计算样本到 JSONL 文件
@@ -105,8 +107,14 @@ def save_reward_sample(
     Args:
         sample_data: 样本数据字典
         output_dir: 输出目录
+        training_step: 训练步数 (用于分目录保存)
+        sample_uid: 样本唯一标识 (用于分组)
     """
     global _sample_counter
+
+    # 按 step 分目录
+    if training_step is not None:
+        output_dir = os.path.join(output_dir, f"step_{training_step}")
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -117,6 +125,10 @@ def save_reward_sample(
     _sample_counter += 1
     sample_data["sample_id"] = _sample_counter
     sample_data["timestamp"] = datetime.now().isoformat()
+    if training_step is not None:
+        sample_data["training_step"] = training_step
+    if sample_uid is not None:
+        sample_data["sample_uid"] = sample_uid
 
     with open(output_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(sample_data, ensure_ascii=False) + "\n")
@@ -486,8 +498,7 @@ def compute_bbox_similarity(
     bbox1: List[float],
     bbox2: List[float],
     metric: str = "iou",
-    nwd_constant: float = DEFAULT_NWD_CONSTANT,
-    nwd_iou_floor: float = 0.1,
+    **kwargs,
 ) -> float:
     """
     统一接口：计算两个 bbox 的相似度
@@ -495,18 +506,18 @@ def compute_bbox_similarity(
     Args:
         bbox1: [x1, y1, x2, y2] 归一化坐标 (预测框)
         bbox2: [x1, y1, x2, y2] 归一化坐标 (GT框)
-        metric: 评分指标，"iou" 或 "nwd" (nwd 现在使用自适应 IOU)
-        nwd_constant: 已废弃，保留参数兼容性
-        nwd_iou_floor: 已废弃，保留参数兼容性
+        metric: 评分指标:
+            - "iou": 原始 IOU
+            - "adaptive_iou": 尺度自适应 IOU (小目标 √IOU 宽松, 大目标 IOU² 严格)
+            - "nwd": 别名，等同于 "adaptive_iou" (历史兼容)
 
     Returns:
         相似度分数 (0-1)
     """
     iou = compute_iou(bbox1, bbox2)
 
-    if metric == "nwd":
-        # 使用自适应 IOU 评分（替代原来的 NWD）
-        # 小目标宽松 (√IOU)，大目标严格 (IOU²)
+    if metric in ("nwd", "adaptive_iou"):
+        # 尺度自适应 IOU 评分
         gt_area = (bbox2[2] - bbox2[0]) * (bbox2[3] - bbox2[1])
         return compute_adaptive_iou(iou, gt_area)
     else:
@@ -793,7 +804,6 @@ async def verify_single_bbox_with_vlm(
     spatial_weight: float = DEFAULT_SPATIAL_WEIGHT,
     iou_threshold: float = DEFAULT_IOU_THRESHOLD,
     bbox_metric: str = DEFAULT_BBOX_METRIC,
-    nwd_constant: float = DEFAULT_NWD_CONSTANT,
     temporal_tolerance: int = DEFAULT_TEMPORAL_TOLERANCE,
     save_visualization: bool = False,
     visualization_dir: str = "./reward_logs/bbox_vis",
@@ -818,8 +828,7 @@ async def verify_single_bbox_with_vlm(
         temporal_weight: 时序奖励权重
         spatial_weight: 空间奖励权重
         iou_threshold: IOU 阈值，低于此值 spatial_score=0
-        bbox_metric: 评分指标 "iou" 或 "nwd"
-        nwd_constant: NWD 归一化常数 (仅 nwd 模式使用)
+        bbox_metric: 评分指标 "iou" 或 "adaptive_iou" (小目标宽松)
         temporal_tolerance: 相邻帧容忍度 (0=禁用, 1=±1帧)，用于处理 Qwen3-VL 的时序融合
         save_visualization: 是否保存可视化图片
         visualization_dir: 可视化图片保存目录
@@ -856,18 +865,17 @@ async def verify_single_bbox_with_vlm(
         pred_normalized = [c / effective_coord_range for c in bbox]
 
         # 使用选定的指标计算 bbox 分数
-        # - bbox_metric="iou": 传统 IOU，对小目标敏感
-        # - bbox_metric="nwd": Normalized Wasserstein Distance，对小目标更宽松
+        # - bbox_metric="iou": 原始 IOU
+        # - bbox_metric="adaptive_iou" (或 "nwd"): 尺度自适应 IOU (小目标宽松, 大目标严格)
         # GT 返回 None 时分数为 0（物体不存在）
         current_similarity = 0.0
         if gt_bbox is not None:
             current_similarity = compute_bbox_similarity(
                 pred_normalized, gt_bbox,
                 metric=bbox_metric,
-                nwd_constant=nwd_constant
             )
 
-        # 2. 相邻帧融合：检查相邻帧的 GT bbox，取最大 NWD
+        # 2. 相邻帧融合：检查相邻帧的 GT bbox，取最大相似度
         # 这是为了处理 Qwen3-VL 的 temporal_patch_size=2 导致的时序融合问题
         # 模型预测的 bbox 可能对应融合帧中的任一帧
         best_similarity = current_similarity
@@ -909,7 +917,6 @@ async def verify_single_bbox_with_vlm(
                         neighbor_similarity = compute_bbox_similarity(
                             pred_normalized, neighbor_gt,
                             metric=bbox_metric,
-                            nwd_constant=nwd_constant
                         )
                         if neighbor_similarity > best_similarity:
                             best_similarity = neighbor_similarity
@@ -921,9 +928,14 @@ async def verify_single_bbox_with_vlm(
                             )
 
         similarity = best_similarity
-        total_score = similarity
-        temporal_score = 1.0 if best_gt_bbox is not None else 0.0  # 仅用于日志
-        spatial_score = similarity  # 仅用于日志 (实际是 IOU 或 NWD)
+        temporal_score = 1.0 if best_gt_bbox is not None else 0.0  # 物体是否存在
+        spatial_score = similarity  # IOU 或 NWD
+
+        # 使用类似 segment_score 的公式: (2*IoU + IoP + IoG) / 4
+        # 对于 bbox: (2*spatial + spatial + temporal) / 4 = (3*spatial + temporal) / 4
+        # 这样 temporal_score 作为"召回"惩罚：如果物体不存在则扣分
+        # 同时 spatial_score 权重更高，确保定位精度仍是主要目标
+        total_score = (3 * spatial_score + temporal_score) / 4
 
         # 5. 保存可视化图片（5帧横向拼接：目标帧±2邻近帧，目标帧加亮色边框）
         saved_vis_path = None
@@ -1056,7 +1068,6 @@ async def verify_bboxes_with_vlm(
     spatial_weight: float = DEFAULT_SPATIAL_WEIGHT,
     iou_threshold: float = DEFAULT_IOU_THRESHOLD,
     bbox_metric: str = DEFAULT_BBOX_METRIC,
-    nwd_constant: float = DEFAULT_NWD_CONSTANT,
     temporal_tolerance: int = DEFAULT_TEMPORAL_TOLERANCE,
 ) -> Tuple[float, float, float, List[Dict]]:
     """
@@ -1079,8 +1090,7 @@ async def verify_bboxes_with_vlm(
         temporal_weight: 时序奖励权重
         spatial_weight: 空间奖励权重
         iou_threshold: IOU 阈值
-        bbox_metric: 评分指标 "iou" 或 "nwd"
-        nwd_constant: NWD 归一化常数
+        bbox_metric: 评分指标 "iou" 或 "adaptive_iou"
         temporal_tolerance: 相邻帧容忍度 (0=禁用, 1=±1帧)
 
     Returns:
@@ -1127,7 +1137,6 @@ async def verify_bboxes_with_vlm(
                 spatial_weight=spatial_weight,
                 iou_threshold=iou_threshold,
                 bbox_metric=bbox_metric,
-                nwd_constant=nwd_constant,
                 temporal_tolerance=temporal_tolerance,
                 save_visualization=should_save_vis,
                 visualization_dir=visualization_dir,
@@ -1403,7 +1412,8 @@ def format_reward_lenient(predict_str: str) -> float:
 def extract_answer(text: str) -> str:
     """提取 <answer>...</answer> 中的内容"""
     match = re.search(r'<answer>(.*?)</answer>', text, re.DOTALL | re.IGNORECASE)
-    return match.group(1).strip() if match else ""
+    # return match.group(1).strip() if match else ""
+    return match.group(1).strip() if match else text.strip()
 
 
 def extract_option_letter(answer: str) -> str:
@@ -1418,14 +1428,14 @@ def extract_option_letter(answer: str) -> str:
 
 
 def extract_segments(text: str) -> List[Tuple[float, float]]:
-    """提取 <segment>[(start, end), ...]</segment> 中的时间段"""
+    """提取 <segment>[(start, end), ...]</segment> 或 <segment>[[start, end], ...]</segment> 中的时间段"""
     match = re.search(r'<segment>\s*\[(.*?)\]\s*</segment>', text, re.DOTALL | re.IGNORECASE)
     if not match:
         return []
 
     segments = []
-    # 匹配 (start, end) 格式
-    segment_pattern = r'\(\s*([\d.]+)\s*,\s*([\d.]+)\s*\)'
+    # 匹配 (start, end) 或 [start, end] 格式
+    segment_pattern = r'[\(\[]\s*([\d.]+)\s*,\s*([\d.]+)\s*[\)\]]'
     for m in re.finditer(segment_pattern, match.group(1)):
         try:
             start = float(m.group(1))
@@ -1460,7 +1470,8 @@ def extract_all_segments(text: str) -> List[List[Tuple[float, float]]]:
     """
     all_segments = []
     pattern = r'<segment>\s*\[(.*?)\]\s*</segment>'
-    segment_pattern = r'\(\s*([\d.]+)\s*,\s*([\d.]+)\s*\)'
+    # 匹配 (start, end) 或 [start, end] 格式
+    segment_pattern = r'[\(\[]\s*([\d.]+)\s*,\s*([\d.]+)\s*[\)\]]'
 
     for match in re.finditer(pattern, text, re.DOTALL | re.IGNORECASE):
         segments = []
@@ -1576,6 +1587,87 @@ def compute_segment_score(
     return final_score, iou, iop, iog
 
 
+def compute_per_turn_segment_score(
+    pred_segments: List[List[Tuple[float, float]]],
+    gt_segments: List[Tuple[float, float]],
+) -> List[float]:
+    """
+    计算每轮预测 segments 与 GT segments 的匹配分数
+
+    对每个 turn 独立计算其 segments 与 GT 的重叠程度。
+    使用公式: (2*IoU + IoP + IoG) / 4
+    其中:
+    - IoU = turn 的 segments 与 GT 的交集 / 并集
+    - IoP = 交集 / turn 预测长度
+    - IoG = 交集 / GT 长度
+
+    Args:
+        pred_segments: 模型预测的所有轮次的 segments，格式为 [[(start, end), ...], ...]
+        gt_segments: GT 的 reference_segments，格式为 [(start, end), ...]
+
+    Returns:
+        per_turn_scores: 每轮的分数列表
+    """
+    if not gt_segments:
+        return [0.0] * len(pred_segments)
+
+    def segments_to_intervals(segments):
+        if not segments:
+            return []
+        sorted_segs = sorted(segments, key=lambda x: x[0])
+        merged = [sorted_segs[0]]
+        for start, end in sorted_segs[1:]:
+            if start <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+            else:
+                merged.append((start, end))
+        return merged
+
+    def total_length(intervals):
+        return sum(end - start for start, end in intervals)
+
+    def compute_intersection(intervals1, intervals2):
+        if not intervals1 or not intervals2:
+            return 0.0
+        intersection = 0.0
+        i, j = 0, 0
+        while i < len(intervals1) and j < len(intervals2):
+            start1, end1 = intervals1[i]
+            start2, end2 = intervals2[j]
+            inter_start = max(start1, start2)
+            inter_end = min(end1, end2)
+            if inter_start < inter_end:
+                intersection += inter_end - inter_start
+            if end1 < end2:
+                i += 1
+            else:
+                j += 1
+        return intersection
+
+    gt_intervals = segments_to_intervals(gt_segments)
+    gt_length = total_length(gt_intervals)
+
+    per_turn_scores = []
+    for turn_segments in pred_segments:
+        if not turn_segments:
+            per_turn_scores.append(0.0)
+            continue
+
+        turn_intervals = segments_to_intervals(turn_segments)
+        turn_length = total_length(turn_intervals)
+        intersection = compute_intersection(turn_intervals, gt_intervals)
+        union = turn_length + gt_length - intersection
+
+        iou = intersection / union if union > 0 else 0.0
+        iop = intersection / turn_length if turn_length > 0 else 0.0
+        iog = intersection / gt_length if gt_length > 0 else 0.0
+
+        score = (2 * iou + iop + iog) / 4
+        per_turn_scores.append(score)
+
+    return per_turn_scores
+
+
 async def compute_score(
     data_source: str,
     solution_str: str,
@@ -1594,6 +1686,7 @@ async def compute_score(
     bbox_weight: float = DEFAULT_BBOX_WEIGHT,
     vlm_weight: float = DEFAULT_VLM_WEIGHT,
     format_weight: float = DEFAULT_FORMAT_WEIGHT,
+    segment_weight: float = DEFAULT_SEGMENT_WEIGHT,  # segment 分数权重
     use_strict_format: bool = False,  # 是否使用严格的 segment 格式检查
     # BBox 参数
     bbox_coord_range: float = DEFAULT_BBOX_COORD_RANGE,  # bbox 坐标范围 (1000 = [0,1000], 1 = [0,1])
@@ -1603,9 +1696,8 @@ async def compute_score(
     temporal_weight: float = DEFAULT_TEMPORAL_WEIGHT,  # 时序奖励权重
     spatial_weight: float = DEFAULT_SPATIAL_WEIGHT,   # 空间奖励权重
     iou_threshold: float = DEFAULT_IOU_THRESHOLD,    # IOU 阈值，低于此值 spatial_score=0
-    # BBox metric selection: "iou" or "nwd"
-    bbox_metric: str = DEFAULT_BBOX_METRIC,          # "iou" 传统指标，"nwd" 对小目标更友好
-    nwd_constant: float = DEFAULT_NWD_CONSTANT,      # NWD 归一化常数，越大越宽松
+    # BBox metric selection
+    bbox_metric: str = DEFAULT_BBOX_METRIC,          # "iou" 原始指标，"adaptive_iou" 小目标宽松 (别名 "nwd")
     temporal_tolerance: int = DEFAULT_TEMPORAL_TOLERANCE,  # 相邻帧容忍度 (0=禁用, 1=±1帧)
     # 日志相关参数
     enable_logging: bool = True,
@@ -1613,6 +1705,9 @@ async def compute_score(
     save_every_n: int = 1,  # 每 N 个样本保存一次 (1=全部保存, 10=每10个保存1个)
     log_dir: str = "./reward_logs",
     log_every_n: int = 10,  # 每 N 个样本打印一次统计
+    # 训练上下文参数 (用于按 step/uid 分层保存)
+    training_step: int = None,  # 当前训练步数
+    sample_uid: str = None,  # 样本唯一标识 (group id)
     **kwargs,
 ) -> float:
     """
@@ -1663,6 +1758,14 @@ async def compute_score(
     question = extra_info.get("question", "")
     video_id = extra_info.get("video_id", "")
 
+    # 从 extra_info 获取训练上下文 (如果通过 kwargs 传入则优先使用 kwargs)
+    if training_step is None:
+        training_step = extra_info.get("training_step", None)
+    if sample_uid is None:
+        sample_uid = extra_info.get("uid", extra_info.get("index", None))
+        if sample_uid is not None:
+            sample_uid = str(sample_uid)
+
     # 1. 提取预测答案
     predicted_answer = extract_answer(solution_str)
 
@@ -1689,6 +1792,7 @@ async def compute_score(
     bbox_score = 0.0
     bbox_temporal_score = 0.0
     bbox_spatial_score = 0.0
+    bbox_coverage = 1.0  # 覆盖率，默认为 1.0
     bbox_details = []
     bbox_verified = False
 
@@ -1716,10 +1820,17 @@ async def compute_score(
             spatial_weight=spatial_weight,
             iou_threshold=iou_threshold,
             bbox_metric=bbox_metric,
-            nwd_constant=nwd_constant,
             temporal_tolerance=temporal_tolerance,
         )
         bbox_verified = len(bbox_details) > 0
+
+        # 覆盖率惩罚：期望每个 think turn 至少输出一个 bbox
+        # bbox 是在 <think> 中输出的，所以用 think 数量作为期望值
+        num_think_turns = turn_counts.get("think", 0)
+        expected_bbox_count = max(num_think_turns, 1)  # 至少期望 1 个
+        actual_bbox_count = len(bbox_details)
+        bbox_coverage = min(actual_bbox_count / expected_bbox_count, 1.0)
+        bbox_score = bbox_score * bbox_coverage
 
     # 6. 答案正确性评分
     # 优先使用 VLM 判断（支持开放题和选择题）
@@ -1744,24 +1855,28 @@ async def compute_score(
         correct = extract_option_letter(ground_truth)
         answer_score = 1.0 if predicted == correct else 0.0
 
-    # 6.5. Segment 分数计算（用于 GDPO）
+    # 6.5. Segment 分数计算
     segment_score = 0.0
+    segment_iou = 0.0
+    segment_iop = 0.0
+    segment_iog = 0.0
     gt_segments = extra_info.get("reference_segments", [])
     if gt_segments and all_segments:
-        segment_score, _, _, _ = compute_segment_score(all_segments, gt_segments)
+        segment_score, segment_iou, segment_iop, segment_iog = compute_segment_score(all_segments, gt_segments)
 
     # 7. 计算最终分数
     if use_bbox_verification:
-        # 答案分数 + BBox 分数 + 格式分数
-        final_score = answer_weight * answer_score + bbox_weight * bbox_score + format_weight * format_score
-        total_weight = answer_weight + bbox_weight + format_weight
+        # 答案分数 + BBox 分数 + 格式分数 + Segment 分数
+        final_score = (answer_weight * answer_score + bbox_weight * bbox_score +
+                       format_weight * format_score + segment_weight * segment_score)
+        total_weight = answer_weight + bbox_weight + format_weight + segment_weight
         final_score = final_score / total_weight if total_weight > 0 else 0.0
     else:
-        # 答案分数 + 格式分数
-        if format_weight > 0:
-            final_score = (answer_weight * answer_score + format_weight * format_score) / (answer_weight + format_weight)
-        else:
-            final_score = answer_score
+        # 答案分数 + 格式分数 + Segment 分数
+        final_score = (answer_weight * answer_score + format_weight * format_score +
+                       segment_weight * segment_score)
+        total_weight = answer_weight + format_weight + segment_weight
+        final_score = final_score / total_weight if total_weight > 0 else 0.0
 
     elapsed_time = time.time() - start_time
 
@@ -1820,6 +1935,7 @@ async def compute_score(
             # 所有轮次的 segments
             "all_segments": all_segments,
             "last_segment": segments,
+            "gt_segments": gt_segments,
             # bboxes
             "bboxes": bboxes,
             "bbox_details": bbox_details,
@@ -1829,8 +1945,12 @@ async def compute_score(
                 "format_score": format_score,
                 "bbox_score": bbox_score,
                 "segment_score": segment_score,
+                "segment_iou": segment_iou,
+                "segment_iop": segment_iop,
+                "segment_iog": segment_iog,
                 "bbox_temporal_score": bbox_temporal_score,
                 "bbox_spatial_score": bbox_spatial_score,
+                "bbox_coverage": bbox_coverage,
                 "final_score": final_score,
             },
             "vlm_explanation": vlm_explanation[:200] if vlm_explanation else "",
@@ -1842,18 +1962,23 @@ async def compute_score(
                     "answer": answer_weight,
                     "format": format_weight,
                     "bbox": bbox_weight,
+                    "segment": segment_weight,
                 },
                 "bbox_iou_config": {
                     "temporal_weight": temporal_weight,
                     "spatial_weight": spatial_weight,
                     "iou_threshold": iou_threshold,
                     "bbox_metric": bbox_metric,
-                    "nwd_constant": nwd_constant,
                 }
             },
             "elapsed_time": elapsed_time,
         }
-        save_reward_sample(sample_data, output_dir=os.path.join(log_dir, "samples"))
+        save_reward_sample(
+            sample_data,
+            output_dir=os.path.join(log_dir, "samples"),
+            training_step=training_step,
+            sample_uid=sample_uid,
+        )
 
     # 返回字典格式，支持 FILTER_GROUPS_METRIC=acc 或 score
     # 所有返回的 key 都会被记录到 TensorBoard
@@ -1865,18 +1990,27 @@ async def compute_score(
     # - segment_details: 每轮的 segment 分数 (用于 token placement)
 
     # 构建 segment_details (每轮的 segment 分数)
-    # 目前只有一个 aggregated segment_score，创建一个简单的列表
+    # 使用 per-turn 独立评分：每个 turn 的 segments 独立与 GT 比较
     segment_details = []
+    gt_segments = extra_info.get("reference_segments", [])
     if all_segments:
-        # 每轮给相同的 segment_score (简化版本)
-        # TODO: 实现真正的 per-turn segment 评分
-        per_turn_score = segment_score / len(all_segments) if len(all_segments) > 0 else 0.0
-        for turn_idx, turn_segments in enumerate(all_segments):
-            segment_details.append({
-                "turn_idx": turn_idx,
-                "segments": turn_segments,
-                "score": per_turn_score,  # 暂时平均分配
-            })
+        if gt_segments:
+            # 计算每轮独立的 segment 分数
+            per_turn_scores = compute_per_turn_segment_score(all_segments, gt_segments)
+            for turn_idx, (turn_segments, turn_score) in enumerate(zip(all_segments, per_turn_scores)):
+                segment_details.append({
+                    "turn_idx": turn_idx,
+                    "segments": turn_segments,
+                    "score": turn_score,  # 每轮独立评分
+                })
+        else:
+            # 没有 GT，所有 turn 的 segment 分数都是 0
+            for turn_idx, turn_segments in enumerate(all_segments):
+                segment_details.append({
+                    "turn_idx": turn_idx,
+                    "segments": turn_segments,
+                    "score": 0.0,
+                })
 
     # 为 bbox_details 添加归一化的 score 字段 (用于 token placement)
     # bbox_details 中已经有 total_score，直接使用
@@ -1899,6 +2033,7 @@ async def compute_score(
         "segment_score": segment_score,  # 用于 GDPO 独立归一化
         "bbox_temporal_score": bbox_temporal_score,
         "bbox_spatial_score": bbox_spatial_score,
+        "bbox_coverage": bbox_coverage,  # 覆盖率：实际bbox数/期望bbox数
         # Token placement 详细信息
         "bbox_details": bbox_details,  # 每个 bbox 的详细信息 (含 score, char_pos, turn_idx)
         "segment_details": segment_details,  # 每轮的 segment 信息 (含 score)

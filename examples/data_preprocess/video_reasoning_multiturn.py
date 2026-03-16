@@ -102,6 +102,13 @@ def parse_args():
         help="Path to custom system prompt file (optional, uses default if not specified)"
     )
     parser.add_argument(
+        "--prompt_version",
+        type=str,
+        default="default",
+        choices=["default", "multiturn", "singleturn"],
+        help="Prompt version: default/multiturn (multi-turn reasoning) or singleturn (simple think+answer)"
+    )
+    parser.add_argument(
         "--output_template_file",
         type=str,
         default=None,
@@ -269,11 +276,14 @@ def main():
     # Load custom prompts if specified
     MULTITURN_SYSTEM_PROMPT, OUTPUT_TEMPLATE, OUTPUT_TEMPLATE_OPENENDED = get_prompts(
         prompt_file=args.prompt_file,
+        prompt_version=args.prompt_version,
         output_template_file=args.output_template_file,
         output_template_openended_file=args.output_template_openended_file
     )
     if args.prompt_file:
         print(f"Loaded custom system prompt from: {args.prompt_file}")
+    else:
+        print(f"Using prompt version: {args.prompt_version}")
     if args.output_template_file:
         print(f"Loaded custom output template from: {args.output_template_file}")
     if args.output_template_openended_file:

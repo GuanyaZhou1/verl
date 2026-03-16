@@ -47,6 +47,7 @@ from verl.trainer.ppo.core_algos import (
     TokenPlacementMethod,
     agg_loss,
     apply_token_placement,
+    compute_turn_level_group_norm,
     find_turn_boundaries,
 )
 from verl.trainer.ppo.metric_utils import (
@@ -308,69 +309,64 @@ def compute_advantage(
         # Check if token placement is enabled (method != broadcast)
         if tp_method != "broadcast" and tokenizer is not None:
             # Token placement: distribute rewards to specific token positions
+            # - Global rewards (acc, format): rollout-level group norm, broadcast to all tokens
+            # - Local rewards (bbox, segment): turn-level group norm, place at corresponding turns
             from verl.utils import group_mean_std, as_torch_index
 
             bs = data.batch["response_mask"].shape[0]
             response_mask = data.batch["response_mask"]
             response_ids = data.batch["responses"]
             g = as_torch_index(data.non_tensor_batch["uid"], device=device)
+            g_np = data.non_tensor_batch["uid"]  # numpy array for turn-level norm
             epsilon = 1e-6
 
-            # Step 1: Compute group-normalized advantages for each component
+            # =================================================================
+            # Step 1: Global rewards - rollout-level group normalization
+            # =================================================================
+            # These are per-rollout scalars, normalized within each group
             normalized_advs = {}
             for name, rewards in reward_components.items():
                 mean_g, std_g, _ = group_mean_std(rewards, g, eps=epsilon, device=device)
                 A_k = (rewards - mean_g[g]) / (std_g[g] + epsilon)
                 normalized_advs[name] = A_k
 
-            # Step 2: Extract per-component advantages
+            # Extract global advantages (rollout-level)
             answer_adv = normalized_advs.get("answer_score", torch.zeros(bs, device=device))
             format_adv = normalized_advs.get("format_score", torch.zeros(bs, device=device))
 
-            # Get bbox_details and segment_details from non_tensor_batch if available
-            bbox_details_list = data.non_tensor_batch.get("bbox_details", [None] * bs)
-            segment_details_list = data.non_tensor_batch.get("segment_details", [None] * bs)
+            # =================================================================
+            # Step 2: Local rewards - turn-level group normalization
+            # =================================================================
+            # Get bbox_details and segment_details from non_tensor_batch
+            bbox_details_list = list(data.non_tensor_batch.get("bbox_details", [None] * bs))
+            segment_details_list = list(data.non_tensor_batch.get("segment_details", [None] * bs))
 
-            # Prepare per-sample bbox and segment advantages
-            bbox_advs = []
-            segment_advs = []
+            # Convert None to empty list for consistency
+            bbox_details_list = [x if x is not None else [] for x in bbox_details_list]
+            segment_details_list = [x if x is not None else [] for x in segment_details_list]
 
-            # If we have aggregated bbox_score/segment_score, use them for all
-            bbox_score_tensor = normalized_advs.get("bbox_score", torch.zeros(bs, device=device))
-            segment_score_tensor = normalized_advs.get("segment_score", torch.zeros(bs, device=device))
+            # Compute turn-level normalized advantages for bbox and segment
+            # This pools all scores from all rollouts in the same group, then normalizes
+            bbox_advs, segment_advs = compute_turn_level_group_norm(
+                bbox_details_list=bbox_details_list,
+                segment_details_list=segment_details_list,
+                group_idx=g_np,
+                epsilon=epsilon,
+            )
 
-            for i in range(bs):
-                # For now, if bbox_details not available, use single aggregated score
-                bbox_details = bbox_details_list[i] if bbox_details_list[i] else []
-                if bbox_details:
-                    # Use per-bbox scores if available
-                    # Each bbox_detail should have "score" field
-                    per_bbox_scores = [bd.get("score", 0.0) for bd in bbox_details]
-                    # Normalize these scores using group statistics
-                    bbox_advs.append(per_bbox_scores)
-                else:
-                    # Use aggregated bbox_score for single bbox
-                    bbox_advs.append([bbox_score_tensor[i].item()])
-
-                segment_details = segment_details_list[i] if segment_details_list[i] else []
-                if segment_details:
-                    per_segment_scores = [sd.get("score", 0.0) for sd in segment_details]
-                    segment_advs.append(per_segment_scores)
-                else:
-                    # Use aggregated segment_score for single turn
-                    segment_advs.append([segment_score_tensor[i].item()])
-
+            # =================================================================
             # Step 3: Find turn boundaries for each sample
+            # =================================================================
             turn_info = []
             for i in range(bs):
-                # Decode response to get text
                 response_tokens = response_ids[i].tolist()
                 response_str = tokenizer.decode(response_tokens, skip_special_tokens=False)
-                # Find turn boundaries
                 boundaries = find_turn_boundaries(response_str, tokenizer, response_ids[i])
                 turn_info.append(boundaries)
 
+            # =================================================================
             # Step 4: Apply token placement
+            # =================================================================
             tp_config = {
                 "method": tp_method,
                 "global_reward_mode": token_placement_config.get("global_reward_mode", "broadcast"),
@@ -392,8 +388,11 @@ def compute_advantage(
                 **tp_config,
             )
 
-            # Optional: Batch-wise normalization
-            if gdpo_config.get("enable_batch_norm", True):
+            # =================================================================
+            # Step 5: Optional batch-wise normalization
+            # =================================================================
+            enable_batch_norm = token_placement_config.get("enable_batch_norm", True)
+            if enable_batch_norm:
                 valid_mask = response_mask.bool()
                 if valid_mask.any():
                     batch_mean = advantages[valid_mask].mean()
@@ -405,13 +404,59 @@ def compute_advantage(
             data.batch["advantages"] = advantages
             data.batch["returns"] = advantages
 
-            # Log token placement method
+            # Store per-component normalized advantages for TensorBoard logging
+            for name, adv_tensor in normalized_advs.items():
+                data.non_tensor_batch[f"{name}_adv_normalized"] = adv_tensor.detach().cpu().numpy()
+
+            # Store turn-level bbox/segment advantage stats for logging
+            all_bbox_advs = [a for sample_dict in bbox_advs for a in sample_dict.values()]
+            all_segment_advs = [a for sample_dict in segment_advs for a in sample_dict.values()]
+            if all_bbox_advs:
+                data.non_tensor_batch["bbox_turn_adv_mean"] = np.mean(all_bbox_advs)
+                data.non_tensor_batch["bbox_turn_adv_std"] = np.std(all_bbox_advs)
+            if all_segment_advs:
+                data.non_tensor_batch["segment_turn_adv_mean"] = np.mean(all_segment_advs)
+                data.non_tensor_batch["segment_turn_adv_std"] = np.std(all_segment_advs)
+
+            # Store token placement diagnostic info
+            total_turns = sum(len(ti["turns"]) for ti in turn_info)
+            total_bboxes = sum(len(ti["bbox_positions"]) for ti in turn_info)
+            samples_with_turns = sum(1 for ti in turn_info if len(ti["turns"]) > 0)
+
+            # Calculate within-sample advantage variance (key metric for per_turn verification)
+            within_sample_vars = []
+            for i in range(bs):
+                mask = response_mask[i].bool()
+                if mask.sum() > 1:
+                    sample_advs = advantages[i][mask]
+                    within_sample_vars.append(sample_advs.var().item())
+            avg_within_sample_var = np.mean(within_sample_vars) if within_sample_vars else 0.0
+
+            tp_info = {
+                "method": tp_method,
+                "total_turns_detected": total_turns,
+                "total_bboxes_detected": total_bboxes,
+                "total_bbox_scores_pooled": len(all_bbox_advs),
+                "total_segment_scores_pooled": len(all_segment_advs),
+                "avg_turns_per_sample": total_turns / max(bs, 1),
+                "avg_bboxes_per_sample": total_bboxes / max(bs, 1),
+                "samples_with_turns": samples_with_turns,
+                "samples_total": bs,
+                "avg_within_sample_adv_var": avg_within_sample_var,
+                "enable_batch_norm": enable_batch_norm,
+            }
+            data.non_tensor_batch["token_placement_info"] = tp_info
+
+            # Log token placement method (once)
             if not hasattr(compute_advantage, "_tp_logged"):
-                print(f"[GDPO] Token placement enabled: method={tp_method}, global_mode={tp_config['global_reward_mode']}")
+                print(f"[GDPO] Token placement enabled: method={tp_method}, "
+                      f"global_mode={tp_config['global_reward_mode']}, "
+                      f"batch_norm={enable_batch_norm}")
+                print(f"[GDPO] Local rewards use turn-level group normalization")
                 compute_advantage._tp_logged = True
         else:
             # Original GDPO: broadcast advantages to all tokens
-            advantages, returns = core_algos.compute_gdpo_outcome_advantage(
+            result = core_algos.compute_gdpo_outcome_advantage(
                 token_level_rewards=data.batch["token_level_rewards"],
                 response_mask=data.batch["response_mask"],
                 index=data.non_tensor_batch["uid"],
@@ -419,7 +464,16 @@ def compute_advantage(
                 reward_weights=reward_weights,
                 enable_batch_norm=gdpo_config.get("enable_batch_norm", True),
                 config=config,
+                return_component_advs=True,
             )
+            if len(result) == 3:
+                advantages, returns, component_advs = result
+                # Store per-component normalized advantages for TensorBoard logging
+                for name, adv_tensor in component_advs.items():
+                    data.non_tensor_batch[f"{name}_adv_normalized"] = adv_tensor.detach().cpu().numpy()
+            else:
+                advantages, returns = result
+
             data.batch["advantages"] = advantages
             data.batch["returns"] = returns
     else:
@@ -735,6 +789,12 @@ class RayPPOTrainer:
             If reward_for_val=False and sum_reward=True: summed reward_tensor (1D tensor)
             Otherwise: tuple of (reward_tensor, reward_extra_infos_dict)
         """
+        # Inject training_step into extra_info for reward logging (step-based organization)
+        if "extra_info" in batch.non_tensor_batch:
+            for i, extra_info in enumerate(batch.non_tensor_batch["extra_info"]):
+                if extra_info is not None and isinstance(extra_info, dict):
+                    extra_info["training_step"] = self.global_steps
+
         # When rm_scores already exists, extract it directly (format conversion only)
         if "rm_scores" in batch.batch.keys():
             reward_tensor = batch.batch["rm_scores"]

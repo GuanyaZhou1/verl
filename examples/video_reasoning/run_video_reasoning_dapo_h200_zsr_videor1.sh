@@ -66,7 +66,7 @@ export NCCL_CUMEM_ENABLE=${NCCL_CUMEM_ENABLE:-0}
 # MODEL_PATH="${MODEL_PATH:-/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-stgr-turn_llm_freeze25_freeze_mlp-lr1e-5-epo5}"
 # MODEL_PATH="/mnt/data/home/zhengshurong/project/Qwen3-VL/qwen-vl-finetune/checkpoints/video/Qwen3-VL-8B-Instruct-longvtdata-stgrdata-selfconstructdata-sft-lr1e-5-bs128-ep1/checkpoint-3003"
 MODEL_PATH="/mnt/data/home/zhengshurong/project/Qwen3-VL/qwen-vl-finetune/checkpoints/video/Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1"
-DATA_DIR="${DATA_DIR:-./long_video_data/video_holmes}"
+DATA_DIR="${DATA_DIR:-./long_video_data/longvt_selfqa}"
 CACHE_DIR="${CACHE_DIR:-./.cache}"
 CONFIG_PATH="$(pwd)/examples/video_reasoning/config"
 LOG_DIR="./logs_zsr"
@@ -163,8 +163,8 @@ VLM_API_KEY="123456"
 
 USE_VLM_SCORING=true
 USE_BBOX_VERIFICATION=true
-ANSWER_WEIGHT=${ANSWER_WEIGHT:-1.0}
-BBOX_WEIGHT=${BBOX_WEIGHT:-0.6}
+ANSWER_WEIGHT=${ANSWER_WEIGHT:-0.0}
+BBOX_WEIGHT=${BBOX_WEIGHT:-0.0}
 FORMAT_WEIGHT=${FORMAT_WEIGHT:-0.5}          # 格式奖励权重 (0 = 不使用)
 SEGMENT_WEIGHT=${SEGMENT_WEIGHT:-1.0}        # segment 时间段匹配奖励权重 (0 = 不使用)
 USE_STRICT_FORMAT=${USE_STRICT_FORMAT:-true}  # 是否使用严格的 segment 格式检查
@@ -174,7 +174,7 @@ SAVE_BBOX_VISUALIZATION=true
 BBOX_VIS_SAMPLE_RATE=0.001
 # REWARD_LOG_DIR 在 EXPERIMENT_NAME 后设置
 SAVE_SAMPLES=true
-SAVE_EVERY_N=10
+SAVE_EVERY_N=1
 LOG_EVERY_N=10
 
 # =============================================================================
@@ -190,12 +190,13 @@ RESUME_MODE=disable                      # disable / resume_path / auto
 # =============================================================================
 TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
 PROJECT_NAME="video-reasoning-dapo"
-EXPERIMENT_NAME="Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1_dapo_holmes_genbs${GEN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_bbox${BBOX_WEIGHT}_fmt${FORMAT_WEIGHT}_seg${SEGMENT_WEIGHT}_strictfmt${USE_STRICT_FORMAT}_klcoef${KL_LOSS_COEF}_resp${MAX_RESPONSE_LENGTH}_filtergroups${ENABLE_FILTER_GROUPS}_bypass${BY_PASS_ROLLOUT_CORRECTION}_cliphi${CLIP_RATIO_HIGH}_topp${TOP_P}_temp${TEMPERATURE}_0312"
+EXPERIMENT_NAME="Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1_dapo_longvtrl_genbs${GEN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_ans${ANSWER_WEIGHT}_bbox${BBOX_WEIGHT}_fmt${FORMAT_WEIGHT}_seg${SEGMENT_WEIGHT}_strictfmt${USE_STRICT_FORMAT}_klcoef${KL_LOSS_COEF}_resp${MAX_RESPONSE_LENGTH}_filtergroups${ENABLE_FILTER_GROUPS}_bypass${BY_PASS_ROLLOUT_CORRECTION}_cliphi${CLIP_RATIO_HIGH}_topp${TOP_P}_temp${TEMPERATURE}_0312"
 # EXPERIMENT_NAME="Qwen3_8B_longvt_tvg-openo3video_stgr-selfconstructdata_dapo_long_video_data_genbs32_ep1_lr1e_6_bbox0_0_normadvbystdfalse_${TIMESTAMP}"
 
 # 将 reward_logs 和 tensorboard_log 放到 checkpoint 目录下
 CKPT_BASE="./checkpoints_zsr/${PROJECT_NAME}/${EXPERIMENT_NAME}"
 REWARD_LOG_DIR="${CKPT_BASE}/reward_logs"
+ROLLOUT_DATA_DIR="${CKPT_BASE}/rollout_data"
 TENSORBOARD_DIR="${CKPT_BASE}/tensorboard_log"
 # =============================================================================
 # 预检查
@@ -281,10 +282,13 @@ fi
 echo "===== Step 2: Starting DAPO Training ====="
 mkdir -p "$LOG_DIR"
 mkdir -p "$REWARD_LOG_DIR"
+mkdir -p "$ROLLOUT_DATA_DIR"
 mkdir -p "$TENSORBOARD_DIR"
-LOG_FILE="$LOG_DIR/${EXPERIMENT_NAME}.log"
+LOG_FILE="$LOG_DIR/${EXPERIMENT_NAME}/${TIMESTAMP}.log"
+mkdir -p "$(dirname "$LOG_FILE")"
 echo "Log file: $LOG_FILE"
 echo "Reward logs: $REWARD_LOG_DIR"
+echo "Rollout data: $ROLLOUT_DATA_DIR"
 echo "TensorBoard: $TENSORBOARD_DIR"
 
 # 设置 TensorBoard 目录环境变量
@@ -308,7 +312,7 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.model.use_fused_kernels=True \
     actor_rollout_ref.actor.optim.lr=$LEARNING_RATE \
     actor_rollout_ref.actor.ppo_mini_batch_size=16 \
-    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=2 \
+    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.actor.clip_ratio_low=$CLIP_RATIO_LOW \
     actor_rollout_ref.actor.clip_ratio_high=$CLIP_RATIO_HIGH \
     actor_rollout_ref.actor.use_kl_loss=$USE_KL_LOSS \
@@ -412,6 +416,7 @@ python3 -m recipe.dapo.main_dapo \
     trainer.val_before_train=$VAL_BEFORE_TRAIN \
     trainer.critic_warmup=0 \
     trainer.resume_mode=$RESUME_MODE \
+    trainer.rollout_data_dir="$ROLLOUT_DATA_DIR" \
     trainer.logger='["console", "tensorboard"]' \
     +ray_kwargs.ray_init.runtime_env.env_vars.TENSORBOARD_DIR="$TENSORBOARD_DIR" \
     "$@" 2>&1 | tee -a "$LOG_FILE"

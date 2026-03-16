@@ -64,43 +64,45 @@ export NCCL_CUMEM_ENABLE=${NCCL_CUMEM_ENABLE:-0}
 #MODEL_PATH="/data_gpu/songlin/rl/verl/checkpoints/video-reasoning-dapo/video_reasoning_dapo_20260205-063449/merged_model"
 #MODEL_PATH="/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-self_holmes_caption_233-self_longvideoreason_caption_930-openo3video_stgr_singleturn_7k-self_holmes_multiturn_1k5-self_longvideoreason_multiturn_5k3-sft-lr5e-5-b24"
 # MODEL_PATH="${MODEL_PATH:-/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-stgr-turn_llm_freeze25_freeze_mlp-lr1e-5-epo5}"
+# MODEL_PATH="/mnt/data/home/zhengshurong/project/Qwen3-VL/qwen-vl-finetune/checkpoints/video/Qwen3-VL-8B-Instruct-longvtdata-stgrdata-selfconstructdata-sft-lr1e-5-bs128-ep1/checkpoint-3003"
 MODEL_PATH="/mnt/data/home/zhengshurong/project/Qwen3-VL/qwen-vl-finetune/checkpoints/video/Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1"
-DATA_DIR="${DATA_DIR:-/mnt/data/home/zhengshurong/project/verl/long_video_data/video_holmes}"
+DATA_DIR="${DATA_DIR:-./long_video_data/longvt_selfqa}"
 CACHE_DIR="${CACHE_DIR:-./.cache}"
 CONFIG_PATH="$(pwd)/examples/video_reasoning/config"
-LOG_DIR="./logs"
+LOG_DIR="./logs_zsr"
+
 # =============================================================================
-# 训练参数
+# 训练参数 (支持环境变量覆盖)
 # =============================================================================
-TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-32}
-GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-32}                        # DAPO: 生成批次
+TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-16}
+GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-32}     # DAPO: 生成批次，开启 filter 时需要增大
 MAX_PROMPT_LENGTH=${MAX_PROMPT_LENGTH:-36000}
-MAX_RESPONSE_LENGTH=${MAX_RESPONSE_LENGTH:-8192}
+MAX_RESPONSE_LENGTH=${MAX_RESPONSE_LENGTH:-16384}
 
 LEARNING_RATE=${LEARNING_RATE:-1e-6}
 TOTAL_EPOCHS=${TOTAL_EPOCHS:-3}
 
-N_ROLLOUTS=${N_ROLLOUTS:-8}                             # 每个 prompt 生成的 response 数
-AGENT_NUM_WORKERS=${AGENT_NUM_WORKERS:-16}                      # AgentLoopWorker 数量
+N_ROLLOUTS=${N_ROLLOUTS:-8}              # 每个 prompt 生成的 response 数
+AGENT_NUM_WORKERS=${AGENT_NUM_WORKERS:-16}
 
 N_GPUS=${N_GPUS:-8}
 NNODES=${NNODES:-1}
 
 # =============================================================================
-# DAPO 算法参数（支持环境变量覆盖，便于自动化实验）
+# DAPO 算法参数 (支持环境变量覆盖)
 # =============================================================================
-ENABLE_FILTER_GROUPS=${ENABLE_FILTER_GROUPS:-false}   # 过滤组内全对/全错的样本
+ENABLE_FILTER_GROUPS=${ENABLE_FILTER_GROUPS:-True}   # 过滤组内全对/全错的样本
 FILTER_GROUPS_METRIC=${FILTER_GROUPS_METRIC:-score}   # 用总分做组过滤
-MAX_NUM_GEN_BATCHES=${MAX_NUM_GEN_BATCHES:-5}         # 最多重采样轮数
+MAX_NUM_GEN_BATCHES=${MAX_NUM_GEN_BATCHES:-20}         # 最多重采样轮数
 
 CLIP_RATIO_LOW=${CLIP_RATIO_LOW:-0.2}                 # Clip-Higher: 非对称 clip ratio
 CLIP_RATIO_HIGH=${CLIP_RATIO_HIGH:-0.25}              # > low，鼓励正向更新
 
-NORM_ADV_BY_STD=${NORM_ADV_BY_STD:-false}             # 归一化 advantage
+NORM_ADV_BY_STD=False                      # 归一化 advantage，
 
-USE_KL_IN_REWARD=false
-USE_KL_LOSS=true
-KL_LOSS_COEF=${KL_LOSS_COEF:-0.3}                     # KL 约束系数
+USE_KL_IN_REWARD=False
+USE_KL_LOSS=True
+KL_LOSS_COEF=${KL_LOSS_COEF:-0.001}
 KL_LOSS_TYPE=low_var_kl
 
 BY_PASS_ROLLOUT_CORRECTION=false
@@ -158,6 +160,7 @@ CACHE_FPS=1
 CACHE_MAX_FRAMES=512
 CACHE_MAX_FRAMES_PER_SEGMENT=32
 USE_CACHED_INITIAL_VIDEO=True            # 使用缓存帧而非原始视频，减少 CPU 内存
+CACHE_NUM_WORKERS=${CACHE_NUM_WORKERS:-64}  # 视频缓存并行数
 
 # 初始视频分辨率（低分辨率概览）
 INITIAL_VIDEO_FPS=1
@@ -185,27 +188,23 @@ WATERMARK_RATIO=1.0                     # 水印采样比例: 1.0=全部使用, 
 # 奖励函数参数
 # =============================================================================
 VLM_ENDPOINT="10.0.1.35:8081"
-# 必须与 vLLM 服务 /v1/models 返回的 id 一致（用完整路径，否则会 404）
 VLM_MODEL_NAME="Qwen3-VL-235B-A22B-Instruct"
 VLM_API_KEY="123456"
 
 USE_VLM_SCORING=true
 USE_BBOX_VERIFICATION=true
-ANSWER_WEIGHT=${ANSWER_WEIGHT:-1.0}
-BBOX_WEIGHT=${BBOX_WEIGHT:-0.3}    # bbox验证权重（降低可减少噪声）
-BBOX_COORD_RANGE=1.0                     # bbox 坐标范围 [0, 1]
-
-# BBox 评分指标选择
-BBOX_METRIC=${BBOX_METRIC:-adaptive_iou}          # "iou" 原始指标, "adaptive_iou" 小目标宽松 (别名 "nwd")
-TEMPORAL_TOLERANCE=${TEMPORAL_TOLERANCE:-1}  # 相邻帧容忍度 (0=禁用, 1=±1帧)，对应 Qwen3-VL temporal_patch_size=2
+ANSWER_WEIGHT=${ANSWER_WEIGHT:-0.0}
+BBOX_WEIGHT=${BBOX_WEIGHT:-0.0}
+FORMAT_WEIGHT=${FORMAT_WEIGHT:-0.5}          # 格式奖励权重 (0 = 不使用)
+SEGMENT_WEIGHT=${SEGMENT_WEIGHT:-1.0}        # segment 时间段匹配奖励权重 (0 = 不使用)
+USE_STRICT_FORMAT=${USE_STRICT_FORMAT:-true}  # 是否使用严格的 segment 格式检查
+BBOX_COORD_RANGE=1.0                     # bbox 坐标范围 [0, 1]，不影响，内部后续改为根据模型的输出动态调整
 
 SAVE_BBOX_VISUALIZATION=true
 BBOX_VIS_SAMPLE_RATE=0.001
 # REWARD_LOG_DIR 在 EXPERIMENT_NAME 后设置
-#EXPERIMENT_NAME="Qwen3_8B_dapo_kl${KL_LOSS_COEF}_bbox${BBOX_WEIGHT}_topp${TOP_P:-1.0}_lr${LEARNING_RATE}_0314_GAE_perturn"
-EXPERIMENT_NAME="Qwen3_8B_dapo_kl0.3_bbox0.3_topp0.7_lr1e-6__0314_GAE_perturn"
 SAVE_SAMPLES=true
-SAVE_EVERY_N=10
+SAVE_EVERY_N=1
 LOG_EVERY_N=10
 
 # =============================================================================
@@ -217,23 +216,23 @@ VAL_BEFORE_TRAIN=True
 RESUME_MODE=disable                      # disable / resume_path / auto
 
 # =============================================================================
-# 实验名称（支持环境变量传入，便于自动化实验）
+# 实验名称
 # =============================================================================
 TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
-PROJECT_NAME="${PROJECT_NAME:-video-reasoning-dapo}"
+PROJECT_NAME="video-reasoning-dapo"
 
-# 如果未设置 EXPERIMENT_NAME，则根据当前参数自动生成
-if [ -z "$EXPERIMENT_NAME" ]; then
-    # 自动生成实验名：包含关键超参数
-    EXPERIMENT_NAME="Qwen3_8B_dapo_kl${KL_LOSS_COEF}_bbox${BBOX_WEIGHT}_topp${TOP_P:-1.0}_lr${LEARNING_RATE}_${TIMESTAMP}"
+if [ "$ADV_ESTIMATOR" = "gdpo" ]; then
+    # GDPO 模式：使用 GDPO 和 Token Placement 参数命名
+    EXPERIMENT_NAME="Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1_gdpo_longvtrl_genbs${GEN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_gdpo-ans${GDPO_ANSWER_WEIGHT}_fmt${GDPO_FORMAT_WEIGHT}_bbox${GDPO_BBOX_WEIGHT}_seg${GDPO_SEGMENT_WEIGHT}_tp-${TOKEN_PLACEMENT_METHOD}_tpans${TP_ANSWER_WEIGHT}_tpfmt${TP_FORMAT_WEIGHT}_tpbbox${TP_BBOX_WEIGHT}_tpseg${TP_SEGMENT_WEIGHT}_klcoef${KL_LOSS_COEF}_resp${MAX_RESPONSE_LENGTH}_filtergroups${ENABLE_FILTER_GROUPS}_cliphi${CLIP_RATIO_HIGH}_0316"
+else
+    # GRPO 模式：使用原有命名
+    EXPERIMENT_NAME="Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1_dapo_longvtrl_genbs${GEN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_ans${ANSWER_WEIGHT}_bbox${BBOX_WEIGHT}_fmt${FORMAT_WEIGHT}_seg${SEGMENT_WEIGHT}_strictfmt${USE_STRICT_FORMAT}_klcoef${KL_LOSS_COEF}_resp${MAX_RESPONSE_LENGTH}_filtergroups${ENABLE_FILTER_GROUPS}_bypass${BY_PASS_ROLLOUT_CORRECTION}_cliphi${CLIP_RATIO_HIGH}_topp${TOP_P}_temp${TEMPERATURE}_0312"
 fi
-# 示例手动设置：
-# export EXPERIMENT_NAME="my_custom_exp_name"
-# bash run_video_reasoning_dapo_h200.sh
 
 # 将 reward_logs 和 tensorboard_log 放到 checkpoint 目录下
-CKPT_BASE="./checkpoints/${PROJECT_NAME}/${EXPERIMENT_NAME}"
+CKPT_BASE="./checkpoints_zsr/${PROJECT_NAME}/${EXPERIMENT_NAME}"
 REWARD_LOG_DIR="${CKPT_BASE}/reward_logs"
+ROLLOUT_DATA_DIR="${CKPT_BASE}/rollout_data"
 TENSORBOARD_DIR="${CKPT_BASE}/tensorboard_log"
 # =============================================================================
 # 预检查
@@ -273,31 +272,22 @@ echo "Data:            $DATA_DIR"
 echo "Train/Gen batch: $TRAIN_BATCH_SIZE / $GEN_BATCH_SIZE"
 echo "Rollouts:        $N_ROLLOUTS"
 echo "GPUs:            $N_GPUS x $NNODES nodes"
+echo "Cache workers:   $CACHE_NUM_WORKERS"
 echo ""
 echo "DAPO Settings:"
+echo "  adv_estimator: $ADV_ESTIMATOR"
 echo "  filter_groups: $ENABLE_FILTER_GROUPS (metric=$FILTER_GROUPS_METRIC)"
 echo "  clip_ratio:    [$CLIP_RATIO_LOW, $CLIP_RATIO_HIGH]"
 echo "  norm_by_std:   $NORM_ADV_BY_STD"
-echo ""
-echo "GDPO/Token Placement:"
-echo "  adv_estimator: $ADV_ESTIMATOR"
 if [ "$ADV_ESTIMATOR" = "gdpo" ]; then
-    echo "  gdpo_weights:  ans=$GDPO_ANSWER_WEIGHT, fmt=$GDPO_FORMAT_WEIGHT, bbox=$GDPO_BBOX_WEIGHT, seg=$GDPO_SEGMENT_WEIGHT"
-    echo "  batch_norm:    $GDPO_ENABLE_BATCH_NORM"
-    echo "  token_placement:"
-    echo "    method:      $TOKEN_PLACEMENT_METHOD"
-    echo "    global_mode: $TOKEN_PLACEMENT_GLOBAL_MODE"
-    if [ "$TOKEN_PLACEMENT_METHOD" != "broadcast" ]; then
-        echo "    weights:     ans=$TP_ANSWER_WEIGHT, fmt=$TP_FORMAT_WEIGHT, bbox=$TP_BBOX_WEIGHT, seg=$TP_SEGMENT_WEIGHT"
-        echo "    gae:         gamma=$TP_GAMMA, lambda=$TP_LAMBDA"
-    fi
+    echo "  GDPO batch_norm: $GDPO_ENABLE_BATCH_NORM"
 fi
 echo ""
 echo "Reward:"
 echo "  VLM scoring:   $USE_VLM_SCORING ($VLM_ENDPOINT)"
 echo "  BBox verify:   $USE_BBOX_VERIFICATION"
-echo "  Weights:       answer=$ANSWER_WEIGHT, bbox=$BBOX_WEIGHT"
-echo "  BBox metric:   $BBOX_METRIC (temporal_tolerance=$TEMPORAL_TOLERANCE)"
+echo "  Weights:       answer=$ANSWER_WEIGHT, bbox=$BBOX_WEIGHT, format=$FORMAT_WEIGHT, segment=$SEGMENT_WEIGHT"
+echo "  Strict format: $USE_STRICT_FORMAT"
 echo "================================="
 echo ""
 
@@ -310,7 +300,8 @@ if [ "${SKIP_VIDEO_CACHE:-false}" != "true" ]; then
         --input_parquet "$DATA_DIR/train.parquet" \
         --cache_dir "$CACHE_DIR" \
         --fps "$CACHE_FPS" \
-        --max_frames "$CACHE_MAX_FRAMES"
+        --max_frames "$CACHE_MAX_FRAMES" \
+        --num_workers "$CACHE_NUM_WORKERS"
 
     # set -eo pipefail 已确保上述命令失败时脚本自动退出
     echo "===== Step 1 Complete ====="
@@ -327,10 +318,13 @@ fi
 echo "===== Step 2: Starting DAPO Training ====="
 mkdir -p "$LOG_DIR"
 mkdir -p "$REWARD_LOG_DIR"
+mkdir -p "$ROLLOUT_DATA_DIR"
 mkdir -p "$TENSORBOARD_DIR"
-LOG_FILE="$LOG_DIR/${EXPERIMENT_NAME}.log"
+LOG_FILE="$LOG_DIR/${EXPERIMENT_NAME}/${TIMESTAMP}.log"
+mkdir -p "$(dirname "$LOG_FILE")"
 echo "Log file: $LOG_FILE"
 echo "Reward logs: $REWARD_LOG_DIR"
+echo "Rollout data: $ROLLOUT_DATA_DIR"
 echo "TensorBoard: $TENSORBOARD_DIR"
 
 # 设置 TensorBoard 目录环境变量
@@ -377,7 +371,7 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.max_model_len=128000 \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=1 \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=True \
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=104768 \
     actor_rollout_ref.rollout.calculate_log_probs=true \
@@ -406,32 +400,19 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.rollout.multi_turn.watermark_config.ratio=$WATERMARK_RATIO \
     actor_rollout_ref.rollout.agent.default_agent_loop=video_reasoning \
     actor_rollout_ref.rollout.agent.num_workers=$AGENT_NUM_WORKERS \
-    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1 \
+    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=2 \
     actor_rollout_ref.ref.log_prob_use_dynamic_bsz=True \
     actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=104768 \
     actor_rollout_ref.ref.ulysses_sequence_parallel_size=4 \
     actor_rollout_ref.ref.fsdp_config.param_offload=False \
     algorithm.adv_estimator=$ADV_ESTIMATOR \
+    algorithm.gdpo.enable_batch_norm=$GDPO_ENABLE_BATCH_NORM \
     algorithm.rollout_correction.bypass_mode=$BY_PASS_ROLLOUT_CORRECTION \
     algorithm.norm_adv_by_std_in_grpo=$NORM_ADV_BY_STD \
     algorithm.use_kl_in_reward=$USE_KL_IN_REWARD \
     algorithm.filter_groups.enable=$ENABLE_FILTER_GROUPS \
     algorithm.filter_groups.metric=$FILTER_GROUPS_METRIC \
     algorithm.filter_groups.max_num_gen_batches=$MAX_NUM_GEN_BATCHES \
-    algorithm.gdpo.enable_batch_norm=$GDPO_ENABLE_BATCH_NORM \
-    algorithm.gdpo.reward_weights.answer_score=$GDPO_ANSWER_WEIGHT \
-    algorithm.gdpo.reward_weights.format_score=$GDPO_FORMAT_WEIGHT \
-    algorithm.gdpo.reward_weights.bbox_score=$GDPO_BBOX_WEIGHT \
-    algorithm.gdpo.reward_weights.segment_score=$GDPO_SEGMENT_WEIGHT \
-    algorithm.token_placement.method=$TOKEN_PLACEMENT_METHOD \
-    algorithm.token_placement.global_reward_mode=$TOKEN_PLACEMENT_GLOBAL_MODE \
-    algorithm.token_placement.enable_batch_norm=$TP_ENABLE_BATCH_NORM \
-    algorithm.token_placement.answer_weight=$TP_ANSWER_WEIGHT \
-    algorithm.token_placement.format_weight=$TP_FORMAT_WEIGHT \
-    algorithm.token_placement.bbox_weight=$TP_BBOX_WEIGHT \
-    algorithm.token_placement.segment_weight=$TP_SEGMENT_WEIGHT \
-    algorithm.token_placement.gamma=$TP_GAMMA \
-    algorithm.token_placement.lambda=$TP_LAMBDA \
     reward_model.enable=False \
     reward_model.reward_manager=dapo \
     reward_model.overlong_buffer.enable=True \
@@ -446,9 +427,10 @@ python3 -m recipe.dapo.main_dapo \
     custom_reward_function.reward_kwargs.use_bbox_verification=$USE_BBOX_VERIFICATION \
     custom_reward_function.reward_kwargs.answer_weight=$ANSWER_WEIGHT \
     custom_reward_function.reward_kwargs.bbox_weight=$BBOX_WEIGHT \
+    custom_reward_function.reward_kwargs.format_weight=$FORMAT_WEIGHT \
+    custom_reward_function.reward_kwargs.segment_weight=$SEGMENT_WEIGHT \
+    custom_reward_function.reward_kwargs.use_strict_format=$USE_STRICT_FORMAT \
     custom_reward_function.reward_kwargs.bbox_coord_range=$BBOX_COORD_RANGE \
-    +custom_reward_function.reward_kwargs.bbox_metric=$BBOX_METRIC \
-    +custom_reward_function.reward_kwargs.temporal_tolerance=$TEMPORAL_TOLERANCE \
     custom_reward_function.reward_kwargs.cache_dir="$CACHE_DIR" \
     custom_reward_function.reward_kwargs.cache_fps=$CACHE_FPS \
     custom_reward_function.reward_kwargs.cache_max_frames=$CACHE_MAX_FRAMES \
@@ -461,6 +443,7 @@ python3 -m recipe.dapo.main_dapo \
     custom_reward_function.reward_kwargs.log_every_n=$LOG_EVERY_N \
     trainer.project_name="$PROJECT_NAME" \
     trainer.experiment_name="$EXPERIMENT_NAME" \
+    trainer.default_local_dir="$CKPT_BASE" \
     trainer.n_gpus_per_node=$N_GPUS \
     trainer.nnodes=$NNODES \
     trainer.total_epochs=$TOTAL_EPOCHS \
@@ -469,6 +452,7 @@ python3 -m recipe.dapo.main_dapo \
     trainer.val_before_train=$VAL_BEFORE_TRAIN \
     trainer.critic_warmup=0 \
     trainer.resume_mode=$RESUME_MODE \
+    trainer.rollout_data_dir="$ROLLOUT_DATA_DIR" \
     trainer.logger='["console", "tensorboard"]' \
     +ray_kwargs.ray_init.runtime_env.env_vars.TENSORBOARD_DIR="$TENSORBOARD_DIR" \
     "$@" 2>&1 | tee -a "$LOG_FILE"
@@ -481,7 +465,7 @@ echo "===== Step 2 Complete: Training Finished ====="
 # =============================================================================
 # Step 3: 自动合并模型 (Merge FSDP checkpoints to HuggingFace format)
 # =============================================================================
-CKPT_BASE="./checkpoints/${PROJECT_NAME}/${EXPERIMENT_NAME}"
+CKPT_BASE="./checkpoints_zsr/${PROJECT_NAME}/${EXPERIMENT_NAME}"
 
 if [ -f "$CKPT_BASE/latest_checkpointed_iteration.txt" ]; then
     LATEST_STEP=$(cat "$CKPT_BASE/latest_checkpointed_iteration.txt")

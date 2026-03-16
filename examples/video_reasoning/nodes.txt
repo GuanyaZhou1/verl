@@ -1,10 +1,1 @@
-# 多节点训练节点配置文件
-# 每行一个节点名，第一个为 Ray head 节点
-# 以 # 开头的行为注释，空行会被忽略
-#
-# 使用方式：
-#   launch_multinode.sh (SSH方式): 使用 IP 地址
-#   launch_multinode_slurm.sh (Slurm方式): 使用节点名
-
-node15
-node19
+node36

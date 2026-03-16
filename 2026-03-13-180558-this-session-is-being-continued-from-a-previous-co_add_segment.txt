@@ -1,0 +1,1267 @@
+ ▐▛███▜▌   Claude Code v2.1.72
+▝▜█████▛▘  claude-opus-4-5-20251101-cc · API Usage Billing
+  ▘▘ ▝▝    ~/project/verl
+
+✻ Conversation compacted (ctrl+o for history)
+
+  ⎿  Referenced file 
+     examples/video_reasoning/run_video_reasoning_dapo_h200_zsr_videor1.sh
+  ⎿  Read examples/video_reasoning/config/base.yaml (113 lines)
+  ⎿  Read verl/trainer/config/ppo_trainer.yaml (340 lines)
+  ⎿  Referenced file verl/trainer/ppo/ray_trainer.py
+  ⎿  Referenced file verl/trainer/ppo/core_algos.py
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(examples/video_reasoning/run_video_reasoning_dapo_h200_zsr_videor1.sh)
+  ⎿  Added 2 lines, removed 1 line
+      365                                                                
+           actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=104768 \ 
+      366      actor_rollout_ref.ref.ulysses_sequence_parallel_size=4 \  
+      367      actor_rollout_ref.ref.fsdp_config.param_offload=False \   
+      368 -    algorithm.adv_estimator=grpo \                            
+      368 +    algorithm.adv_estimator=$ADV_ESTIMATOR \                  
+      369 +    algorithm.gdpo.enable_batch_norm=$GDPO_ENABLE_BATCH_NORM  
+          +\                                                             
+      370      algorithm.rollout_correction.bypass_mode=$BY_PASS_ROLLOUT 
+           _CORRECTION \                                                 
+      371      algorithm.norm_adv_by_std_in_grpo=$NORM_ADV_BY_STD \      
+      372      algorithm.use_kl_in_reward=$USE_KL_IN_REWARD \            
+
+● GDPO 实现已完成。主要改动：
+
+  1. verl/trainer/ppo/core_algos.py: 添加了 GDPO 到 AdvantageEstimator
+  枚举，并实现了 compute_gdpo_outcome_advantage()
+  函数，支持各奖励组件分别归一化后加权求和
+  2. verl/trainer/ppo/metric_utils.py: 添加了 segment_score, segment_iou,
+  segment_iop, segment_iog 到 TensorBoard 日志
+  3. examples/video_reasoning/config/base.yaml: 添加了 GDPO
+  配置结构（algorithm.gdpo.*）
+  4. run_video_reasoning_dapo_h200_zsr_videor1.sh:
+    - 添加了 ADV_ESTIMATOR 和 GDPO_ENABLE_BATCH_NORM 变量
+    - 训练命令从 algorithm.adv_estimator=grpo 改为
+  algorithm.adv_estimator=$ADV_ESTIMATOR
+    - 添加了 algorithm.gdpo.enable_batch_norm=$GDPO_ENABLE_BATCH_NORM
+
+  使用方式：
+  # 使用 GRPO（默认）
+  ./run_video_reasoning_dapo_h200_zsr_videor1.sh
+
+  # 使用 GDPO
+  ADV_ESTIMATOR=gdpo ./run_video_reasoning_dapo_h200_zsr_videor1.sh
+
+  # GDPO 不使用 batch norm
+  ADV_ESTIMATOR=gdpo GDPO_ENABLE_BATCH_NORM=false
+  ./run_video_reasoning_dapo_h200_zsr_videor1.sh
+
+✻ Cogitated for 7m 43s
+
+❯ /mnt/data/home/zhengshurong/project/verl/examples/video_reasoning/config/base 
+.yaml中gdpo:后的reward_weights和custom_reward_function:后的reward_kwargs会有冲  
+突吗                                                                            
+
+● 这是个好问题。让我检查一下它们的作用范围。
+
+● Searched for 2 patterns, read 1 file (ctrl+o to expand)
+
+● 不会冲突，它们作用在不同阶段：
+
+  ┌──────────────────────────────────────┬──────────┬───────────────────────┐
+  │                 配置                 │ 作用位置 │         作用          │
+  ├──────────────────────────────────────┼──────────┼───────────────────────┤
+  │ custom_reward_function.reward_kwargs │ Reward   │ 计算 final_score =    │
+  │ .*_weight                            │ 函数内   │ Σ(weight × score)     │
+  ├──────────────────────────────────────┼──────────┼───────────────────────┤
+  │ algorithm.gdpo.reward_weights        │ GDPO 优  │ 加权合并各组件的归一  │
+  │                                      │ 势估计器 │ 化优势                │
+  └──────────────────────────────────────┴──────────┴───────────────────────┘
+
+  工作流程对比：
+
+  GRPO (当前默认):
+  answer_score, bbox_score, ... → reward_kwargs权重加权求和 → final_score →
+  组内归一化 → advantage
+
+  GDPO:
+  answer_score → 组内归一化 → A_answer ─┐
+  bbox_score   → 组内归一化 → A_bbox   ─┼→ gdpo.reward_weights加权求和 → A_sum →
+   batch归一化 → advantage
+  format_score → 组内归一化 → A_format ─┘
+
+  关键区别：
+  - GRPO: 使用 reward_kwargs 权重计算的 final_score
+  - GDPO: 直接使用各 *_score 组件，忽略 reward_kwargs 中的权重，改用
+  gdpo.reward_weights
+
+  建议：
+  如果使用 GDPO，可以将 reward_kwargs 中的权重都设为
+  1.0（或保持默认），因为它们计算的 final_score 不会被使用。真正的权重应该在
+  algorithm.gdpo.reward_weights 中配置。
+
+✻ Sautéed for 1m 6s
+
+❯ /mnt/data/home/zhengshurong/project/verl/checkpoints_zsr/video-reasoning-dapo 
+/Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5- 
+bs64-ep1_dapo_holmes_genbs32_ep3_lr1e-6_bbox0.6_fmt0.5_seg1.0_strictfmttrue_klc 
+oef0.001_resp16384_filtergroupsTrue_bypassfalse_cliphi0.25_topp0.7_temp0.7_0312 
+/reward_logs/reward_20260313_114403.log 中seg奖励为什么全是0                    
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● 所有 seg=0.00！让我检查 segment score 计算逻辑。
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● 问题在于 gt_segments = extra_info.get("reference_segments", [])
+  是空的。让我检查数据是否包含 reference_segments 字段。
+
+● Searched for 1 pattern (ctrl+o to expand)
+
+● Bash(python3 -c "
+      import pandas as pd…)
+  ⎿  Found parquet files: []
+
+● Searched for 2 patterns (ctrl+o to expand)
+
+● Bash(python3 -c "
+      import pandas as pd…)
+  ⎿  Error: Exit code 1
+     Traceback (most recent call last):
+       File "<string>", line 12, in <module>
+         print(json.dumps(extra, indent=2, ensure_ascii=False)[:2000])
+               ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+       File 
+     "/mnt/data/home/zhengshurong/miniconda3/lib/python3.13/json/__init__.py", 
+     line 242, in dumps
+         **kw).encode(obj)
+               ~~~~~~^^^^^
+       File 
+     "/mnt/data/home/zhengshurong/miniconda3/lib/python3.13/json/encoder.py", 
+     line 202, in encode
+         chunks = self.iterencode(o, _one_shot=True)
+     … +9 lines (ctrl+o to see all)
+
+● Bash(python3 -c "
+      import pandas as pd…)
+  ⎿  Columns: ['prompt', 'videos', 'video_path', 'video_id', 'question_id',
+      'question', 'options', 'correct_answer', 'reward_model', 'question_ty
+     pe', 'is_openended', 'source', 'reference_reasoning', 'reference_segme
+     … +15 lines (ctrl+o to expand)
+
+● 找到问题了！
+
+  根本原因：
+  - reference_segments 是 parquet 的顶级列，值如 [[69.0, 85.0], [90.0, 110.0], 
+  ...]
+  - 但 reward 函数在 extra_info.get("reference_segments", []) 中查找
+  - extra_info 里没有 reference_segments 字段
+
+  让我检查数据传递路径。
+
+● Searched for 6 patterns, read 1 file (ctrl+o to expand)
+
+● 我找到问题了。数据集有 reference_segments 作为顶级列，但 reward function 在
+  extra_info.get("reference_segments", []) 中查找。
+
+  修复方案： 在 rl_dataset.py 中，将 reference_segments 合并到 extra_info 中。
+
+● Update(verl/utils/dataset/rl_dataset.py)
+  ⎿  Added 17 lines
+      350          # add index for each prompt                           
+      351          if "extra_info" not in row_dict or                    
+           row_dict["extra_info"] is None:                               
+      352              row_dict["extra_info"] = dict()                   
+      353 +                                                              
+      354 +        # Merge top-level reference_segments into extra_info  
+          +for reward function access                                    
+      355 +        if "reference_segments" in row_dict and               
+          +"reference_segments" not in row_dict["extra_info"]:           
+      356 +            ref_segs = row_dict["reference_segments"]         
+      357 +            # Parse if it's a string (e.g., "[[69.0, 85.0],   
+          +[90.0, 110.0]]")                                              
+      358 +            if isinstance(ref_segs, str):                     
+      359 +                import ast                                    
+      360 +                try:                                          
+      361 +                    ref_segs = ast.literal_eval(ref_segs)     
+      362 +                except (ValueError, SyntaxError):             
+      363 +                    ref_segs = []                             
+      364 +            # Convert to list of tuples if needed             
+      365 +            if ref_segs and isinstance(ref_segs, (list,       
+          +tuple)):                                                      
+      366 +                row_dict["extra_info"]["reference_segments"]  
+          += [                                                           
+      367 +                    tuple(seg) if isinstance(seg, (list,      
+          +tuple)) else seg for seg in ref_segs                          
+      368 +                ]                                             
+      369 +                                                              
+      370          index = row_dict.get("extra_info", {}).get("index",   
+           0)                                                            
+      371          tools_kwargs = row_dict.get("extra_info",             
+           {}).get("tools_kwargs", {})                                   
+      372          interaction_kwargs = row_dict.get("extra_info",       
+           {}).get("interaction_kwargs", {})                             
+
+● Read 1 file (ctrl+o to expand)
+
+● 修复已完成。现在 reference_segments 会被自动合并到 extra_info 中。
+
+  问题总结：
+  - 数据 parquet 中 reference_segments 是顶级列，如 [[69.0, 85.0], [90.0, 
+  110.0], ...]
+  - reward function 在 extra_info.get("reference_segments", []) 查找
+  - extra_info 字典中没有 reference_segments → segment_score 始终为 0
+
+  修复方案：
+  在 verl/utils/dataset/rl_dataset.py 的数据加载时，将顶级 reference_segments
+  列合并到 extra_info 字典中。
+
+  重新训练后 segment score 应该能正常计算了。
+
+✻ Churned for 3m 39s
+
+❯ /mnt/data/home/zhengshurong/project/verl/checkpoints_zsr/video-reasoning-dapo 
+/Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5- 
+bs64-ep1_dapo_holmes_genbs32_ep3_lr1e-6_bbox0.6_fmt0.5_seg1.0_strictfmttrue_klc 
+oef0.001_resp16384_filtergroupsTrue_bypassfalse_cliphi0.25_topp0.7_temp0.7_0312 
+/reward_logs/reward_20260313_130907.log中seg奖励还是0，我需要在reward           
+log文件里把gt segments和pred segments也打印出来在[Sample n]后面                 
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(verl/utils/reward_score/video_reasoning_async.py)
+  ⎿  Added 4 lines
+      1782      # 日志输出                                               
+      1783      if enable_logging:                                       
+      1784          score_method = "VLM" if use_vlm_for_answer else      
+            "rule"                                                       
+      1785 +        # Format segments for logging                        
+      1786 +        gt_segs_str = str(gt_segments) if gt_segments else   
+           +"[]"                                                         
+      1787 +        pred_segs_str = str(all_segments) if all_segments    
+           +else "[]"                                                    
+      1788          logger.info(                                         
+      1789              f"[Sample {_sample_counter+1}] video={video_id}, 
+             "                                                           
+      1790              f"pred={predicted_answer[:20] if                 
+            predicted_answer else 'N/A'}..., "                           
+     ...
+      1789              f"turns=(think={turn_counts['think']},           
+            seg={turn_counts['segment']},                                
+            obs={turn_counts['observation']}), "                         
+      1790              f"num_bboxes={len(bboxes)}, "                    
+      1791              f"scores=(ans={answer_score:.2f},                
+            bbox={bbox_score:.2f}, fmt={format_score:.2f},               
+            seg={segment_score:.2f}), "                                  
+      1792 +            f"gt_segs={gt_segs_str},                         
+           +pred_segs={pred_segs_str}, "                                 
+      1793              f"final={final_score:.4f},                       
+            time={elapsed_time:.2f}s"                                    
+      1794          )                                                    
+      1795                                                               
+
+● 已添加 gt_segs 和 pred_segs 到日志输出。现在日志会显示：
+
+  [Sample n] video=xxx, ..., scores=(..., seg=0.00), gt_segs=[...],
+  pred_segs=[...], final=...
+
+  这样可以看到：
+  1. gt_segs 是否为空 → 说明 reference_segments 没有正确传递到 extra_info
+  2. pred_segs 是否为空 → 说明模型输出没有被正确解析出 segments
+
+  重新运行训练后检查日志即可定位问题。
+
+✻ Cooked for 40s
+
+❯ /mnt/data/home/zhengshurong/project/verl/examples/video_reasoning/run_video_r 
+easoning_dapo_h200.sh 中 bbox mertic里的nwd机制是怎么计算的                     
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● NWD (Normalized Wasserstein Distance) 机制详解：
+
+  核心公式
+
+  基于论文 "A Normalized Gaussian Wasserstein Distance for Tiny Object 
+  Detection"
+
+  NWD = exp(-normalized_dist × adaptive_constant)
+
+  其中：
+  # 1. 将 bbox 建模为 2D 高斯分布
+  #    μ = (center_x, center_y), σ = (width/2, height/2)
+
+  # 2. 计算 2D Wasserstein Distance (闭式解)
+  center_dist² = (pred_cx - gt_cx)² + (pred_cy - gt_cy)²
+  size_dist² = ((pred_w - gt_w)² + (pred_h - gt_h)²) / 4
+  wasserstein = √(center_dist² + size_dist²)
+
+  # 3. 用 GT 对角线归一化
+  normalized_dist = wasserstein / gt_diagonal
+
+  # 4. 自适应常数 (大目标严格，小目标宽松)
+  relative_size = gt_diagonal / image_diagonal  # 0~1
+  adaptive_constant = constant × (1.0 - 0.5 × relative_size)
+
+  # 5. 指数映射到 [0, 1]
+  NWD = exp(-normalized_dist × adaptive_constant)
+
+  NWD vs IOU 对比
+
+  ┌────────────────┬────────────────┬──────────────┐
+  │      特性      │      IOU       │     NWD      │
+  ├────────────────┼────────────────┼──────────────┤
+  │ 小目标位置偏移 │ 严重惩罚       │ 宽松         │
+  ├────────────────┼────────────────┼──────────────┤
+  │ 无重叠框       │ 直接 0 分      │ 仍有梯度信号 │
+  ├────────────────┼────────────────┼──────────────┤
+  │ 尺度敏感性     │ 对小目标不友好 │ 尺度不变     │
+  └────────────────┴────────────────┴──────────────┘
+
+  当前实现
+
+  代码中 metric="nwd" 实际已改用 自适应 IOU：
+  if metric == "nwd":
+      # 小目标: √IOU (宽松)
+      # 大目标: IOU² (严格)
+      return compute_adaptive_iou(iou, gt_area)
+
+  原始 compute_nwd() 函数仍存在但未被使用。
+
+  配置参数
+
+  BBOX_METRIC=${BBOX_METRIC:-iou}      # "iou" 或 "nwd"
+  NWD_CONSTANT=${NWD_CONSTANT:-2.0}    # 常数越大越宽松
+
+✻ Worked for 45s
+
+❯ /mnt/data/home/zhengshurong/project/verl/checkpoints_zsr/video-reasoning-dapo 
+/Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5- 
+bs64-ep1_dapo_holmes_genbs32_ep3_lr1e-6_bbox0.6_fmt0.5_seg1.0_strictfmttrue_klc 
+oef0.001_resp16384_filtergroupsTrue_bypassfalse_cliphi0.25_topp0.7_temp0.7_0312 
+/reward_logs/reward_20260313_134336.log 记录的pred_segs全是空的，检查一下原因   
+
+● Searched for 1 pattern (ctrl+o to expand)
+
+● 可以看到 pred_segs=[[]] - 模型有 segment turn (seg=1)，但解析出的 segments
+  是空的。让我检查 segment 解析逻辑。
+
+● Searched for 2 patterns, read 1 file (ctrl+o to expand)
+
+● Bash(head -1 "/mnt/data/home/zhengshurong/project/verl/checkpoints_zsr/video-r
+      easoning-dapo/Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstru
+      ctdata-sft-lr…)
+  ⎿  Keys: ['video_id', 'video_path', 'question', 'ground_truth', 'predicte
+     d_answer', 'answer_correct', 'score_method', 'turn_counts', 'num_turns
+     ', 'solution_str_preview', 'solution_str_full', 'solution_str_length',
+     … +4 lines (ctrl+o to expand)
+
+● Bash(head -1 "/mnt/data/home/zhengshurong/project/verl/checkpoints_zsr/video-r
+      easoning-dapo/Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstru
+      ctdata-sft-lr…)
+  ⎿  all_segments: [[]]
+     last_segment: []
+     solution_str_full[:3000]:
+     … +25 lines (ctrl+o to expand)
+
+● 找到问题了！
+
+  模型输出格式：
+  <segment>[[2.0, 10.0]]</segment>
+
+  期望格式：
+  <segment>[(2.0, 10.0)]</segment>
+
+  模型用 [start, end] (方括号) 而代码期望 (start, end) (圆括号)。
+
+  让我修复解析逻辑：
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(verl/utils/reward_score/video_reasoning_async.py)
+  ⎿  Added 3 lines, removed 3 lines
+      1418                                                               
+      1419                                                               
+      1420  def extract_segments(text: str) -> List[Tuple[float,         
+            float]]:                                                     
+      1421 -    """提取 <segment>[(start, end), ...]</segment>           
+           -中的时间段"""                                                
+      1421 +    """提取 <segment>[(start, end), ...]</segment>           
+           +或 <segment>[[start, end], ...]</segment> 中的时间段"""      
+      1422      match = re.search(r'<segment>\s*\[(.*?)\]\s*</segment>', 
+             text, re.DOTALL | re.IGNORECASE)                            
+      1423      if not match:                                            
+      1424          return []                                            
+      1425                                                               
+      1426      segments = []                                            
+      1427 -    # 匹配 (start, end) 格式                                 
+      1428 -    segment_pattern = r'\(\s*([\d.]+)\s*,\s*([\d.]+)\s*\)'   
+      1427 +    # 匹配 (start, end) 或 [start, end] 格式                 
+      1428 +    segment_pattern = r'[\(\[]\s*([\d.]+)\s*,\s*([\d.]+)\s*[ 
+           +\)\]]'                                                       
+      1429      for m in re.finditer(segment_pattern, match.group(1)):   
+      1430          try:                                                 
+      1431              start = float(m.group(1))                        
+
+● Update(verl/utils/reward_score/video_reasoning_async.py)
+  ⎿  Added 2 lines, removed 1 line
+      1460      """                                                      
+      1461      all_segments = []                                        
+      1462      pattern = r'<segment>\s*\[(.*?)\]\s*</segment>'          
+      1463 -    segment_pattern = r'\(\s*([\d.]+)\s*,\s*([\d.]+)\s*\)'   
+      1463 +    # 匹配 (start, end) 或 [start, end] 格式                 
+      1464 +    segment_pattern =                                        
+           +r'[\(\[]\s*([\d.]+)\s*,\s*([\d.]+)\s*[\)\]]'                 
+      1465                                                               
+      1466      for match in re.finditer(pattern, text, re.DOTALL |      
+            re.IGNORECASE):                                              
+      1467          segments = []                                        
+
+● 验证一下修复：
+
+● Bash(python3 -c "
+      import re…)
+  ⎿  model [[]]          : [(2.0, 10.0)]
+     expected [()]       : [(2.0, 10.0)]
+     multi [[],[]]       : [(2.0, 10.0), (15.0, 30.0)]
+     multi [(),()]       : [(2.0, 10.0), (15.0, 30.0)]
+
+● 修复正确。
+
+  根因： 模型输出 segment 格式是 <segment>[[2.0, 10.0]]</segment>（方括号
+  [start, end]），但解析正则只匹配圆括号 (start, end)，导致所有 pred_segs 为空。
+
+  修复： extract_segments() 和 extract_all_segments() 的正则从
+  \(\s*([\d.]+)\s*,\s*([\d.]+)\s*\) 改为
+  [\(\[]\s*([\d.]+)\s*,\s*([\d.]+)\s*[\)\]]，同时支持 [start, end] 和 (start, 
+  end) 两种格式。
+
+✻ Sautéed for 7m 33s
+
+❯ /mnt/data/home/zhengshurong/project/verl/examples/video_reasoning/run_video_r 
+easoning_dapo_h200_zsr_videor1.sh执行后，rollout的样本保存在哪里？              
+
+● Searched for 4 patterns (ctrl+o to expand)
+
+● 当前配置下，rollout 样本默认不保存。
+
+  配置说明
+
+  trainer.rollout_data_dir 控制 rollout 样本保存，默认为 null（禁用）。
+
+  启用方法
+
+  在训练命令中添加：
+  trainer.rollout_data_dir="./rollout_data"
+
+  保存位置
+
+  1. Rollout 样本（如果启用 rollout_data_dir）：
+    - 路径：$rollout_data_dir/ 下的 jsonl 文件
+    - 包含：inputs, outputs, scores, reward_extra_infos
+  2. Reward 日志（当前已启用）：
+    - 路径：$CHECKPOINT_DIR/reward_logs/
+    - 包含：
+        - reward_*.log - 评分日志
+      - samples/reward_samples_*.jsonl - 样本详情（当 SAVE_SAMPLES=true）
+      - bbox_vis/ - bbox 可视化
+
+  当前脚本的相关配置
+
+  # 当前已启用的
+  SAVE_SAMPLES=${SAVE_SAMPLES:-true}
+  REWARD_LOG_DIR="$CHECKPOINT_DIR/reward_logs"
+
+  # 保存位置
+  custom_reward_function.reward_kwargs.save_samples=$SAVE_SAMPLES
+  custom_reward_function.reward_kwargs.log_dir="$REWARD_LOG_DIR"
+
+  所以样本实际保存在：
+  $CHECKPOINT_DIR/reward_logs/samples/reward_samples_*.jsonl
+
+✻ Brewed for 47s
+
+❯ 在脚本中加上 trainer.rollout_data_dir 配置                                    
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Update(examples/video_reasoning/run_video_reasoning_dapo_h200_zsr_videor1.sh)
+  ⎿  Added 1 line
+      196  # 将 reward_logs 和 tensorboard_log 放到 checkpoint 目录下    
+      197  CKPT_BASE="./checkpoints_zsr/${PROJECT_NAME}/${EXPERIMENT_NAM 
+           E}"                                                           
+      198  REWARD_LOG_DIR="${CKPT_BASE}/reward_logs"                     
+      199 +ROLLOUT_DATA_DIR="${CKPT_BASE}/rollout_data"                  
+      200  TENSORBOARD_DIR="${CKPT_BASE}/tensorboard_log"                
+      201  # =========================================================== 
+           ==================                                            
+      202  # 预检查                                                      
+
+● Searched for 2 patterns, read 1 file (ctrl+o to expand)
+
+● Update(examples/video_reasoning/run_video_reasoning_dapo_h200_zsr_videor1.sh)
+  ⎿  Added 2 lines
+      282  echo "===== Step 2: Starting DAPO Training ====="             
+      283  mkdir -p "$LOG_DIR"                                           
+      284  mkdir -p "$REWARD_LOG_DIR"                                    
+      285 +mkdir -p "$ROLLOUT_DATA_DIR"                                  
+      286  mkdir -p "$TENSORBOARD_DIR"                                   
+      287  LOG_FILE="$LOG_DIR/${EXPERIMENT_NAME}.log"                    
+      288  echo "Log file: $LOG_FILE"                                    
+      289  echo "Reward logs: $REWARD_LOG_DIR"                           
+      290 +echo "Rollout data: $ROLLOUT_DATA_DIR"                        
+      291  echo "TensorBoard: $TENSORBOARD_DIR"                          
+      292                                                                
+      293  # 设置 TensorBoard 目录环境变量                               
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Update(examples/video_reasoning/run_video_reasoning_dapo_h200_zsr_videor1.sh)
+  ⎿  Added 1 line
+      415      trainer.val_before_train=$VAL_BEFORE_TRAIN \              
+      416      trainer.critic_warmup=0 \                                 
+      417      trainer.resume_mode=$RESUME_MODE \                        
+      418 +    trainer.rollout_data_dir="$ROLLOUT_DATA_DIR" \            
+      419      trainer.logger='["console", "tensorboard"]' \             
+      420      +ray_kwargs.ray_init.runtime_env.env_vars.TENSORBOARD_DIR 
+           ="$TENSORBOARD_DIR" \                                         
+      421      "$@" 2>&1 | tee -a "$LOG_FILE"                            
+
+● Searched for 1 pattern (ctrl+o to expand)
+
+● 已添加 trainer.rollout_data_dir 配置：
+
+  # 新增变量定义 (line 199)
+  ROLLOUT_DATA_DIR="${CKPT_BASE}/rollout_data"
+
+  # 新增目录创建 (line 285)
+  mkdir -p "$ROLLOUT_DATA_DIR"
+
+  # 新增输出提示 (line 290)
+  echo "Rollout data: $ROLLOUT_DATA_DIR"
+
+  # 新增训练参数 (line 418)
+  trainer.rollout_data_dir="$ROLLOUT_DATA_DIR"
+
+  保存位置：
+  ./checkpoints_zsr/${PROJECT_NAME}/${EXPERIMENT_NAME}/rollout_data/
+
+✻ Cooked for 1m 40s
+
+❯ /mnt/data/home/zhengshurong/project/verl/checkpoints_zsr/video-reasoning-dapo 
+/Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5- 
+bs64-ep1_dapo_holmes_genbs32_ep3_lr1e-6_bbox0.6_fmt0.5_seg1.0_strictfmttrue_klc 
+oef0.001_resp16384_filtergroupsTrue_bypassfalse_cliphi0.25_topp0.7_temp0.7_0312 
+/reward_logs/samples/reward_samples_20260313.jsonl 中有保存gt bbox吗            
+
+● Bash(head -1 "/mnt/data/home/zhengshurong/project/verl/checkpoints_zsr/video-r
+      easoning-dapo/Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstru
+      ctdata-sft-lr…)
+  ⎿  All keys: ['all_segments', 'answer_correct', 'bbox_details', 'bboxes',
+      'config', 'elapsed_time', 'ground_truth', 'last_segment', 'num_turns'
+     , 'predicted_answer', 'question', 'sample_id', 'score_method', 'scores
+     … +37 lines (ctrl+o to expand)
+
+● 没有保存 GT bbox。
+
+  bbox_details 中的 gt_bbox 字段全是 null（VLM 返回 "not found" 时就没有 GT
+  bbox）。当 VLM 能检测到目标时，gt_bbox 会有值（如之前日志中 gt_bbox=[0.335, 
+  0.244, 0.63, 0.76]）。
+
+  这里的 "GT bbox" 并非来自数据集标注，而是 VLM 实时检测的结果作为伪 GT——用
+  VLM（如 Qwen3-VL-30B）去检测对应帧中的目标，如果检测到了就作为 GT bbox
+  来和模型预测的 bbox 算 IoU。
+
+  数据中真正的 GT bbox 在：
+
+● Bash(python3 -c "
+      import pandas as pd…)
+  ⎿  gt_bboxes type: <class 'numpy.ndarray'>
+     gt_bboxes: []
+
+● 总结：
+
+  ┌─────────────────────────┬──────────────────────┬────────────────────────┐
+  │          字段           │         来源         │        保存情况        │
+  ├─────────────────────────┼──────────────────────┼────────────────────────┤
+  │ bbox_details[i].gt_bbox │ VLM 实时检测（伪     │ 保存（VLM              │
+  │                         │ GT）                 │ 检测到时有值）         │
+  ├─────────────────────────┼──────────────────────┼────────────────────────┤
+  │ extra_info.gt_bboxes    │ 数据集标注           │ 训练数据中为空 []      │
+  └─────────────────────────┴──────────────────────┴────────────────────────┘
+
+  当前 bbox 验证机制是用 VLM 实时检测作为参考，而非预标注的 GT bbox。
+
+✻ Cooked for 1m 16s
+
+❯ VLM 实时检测（伪 GT）的bbox有保存吗                                           
+
+● Bash(python3 -c "
+      import json…)
+  ⎿  video: 2c0SLprIohQ
+     object: woman in white saree
+     pred_bbox: [440.0, 420.0, 650.0, 880.0]
+     … +4 lines (ctrl+o to expand)
+
+● Bash(python3 -c "
+      import json…)
+  ⎿  Total bbox details: 21843
+     Has gt_bbox (VLM detected): 9883 (45.2%)
+     gt_bbox is null (not found): 11960 (54.8%)
+
+● 有保存。 在 bbox_details[i].gt_bbox 字段中：
+
+  - 45.2% (9883/21843) 的 bbox 有 VLM 检测到的伪 GT，如 gt_bbox: [0.6, 0.311, 
+  0.763, 0.87]
+  - 54.8% (11960/21843) 为 null（VLM 返回 "not found"）
+
+  每条记录的结构：
+  {
+    "bbox_info": {"object": "woman in white saree", "bbox": [440, 420, 650,
+  880], "time": 5.0},
+    "gt_bbox": [0.6, 0.311, 0.763, 0.87],   // 
+  VLM检测结果（归一化0-1），null表示未检测到
+    "vlm_response": "[710, 374, 858, 870]",  // VLM原始返回（0-1000范围）
+    "spatial_score": 0.136,
+    "temporal_score": 1.0,
+    "total_score": 0.136
+  }
+
+✻ Churned for 53s
+
+❯ /mnt/data/home/zhengshurong/project/verl/logs_zsr/Qwen3-VL-8B-Instruct-longvt 
+_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1_dapo_holmes_genbs32 
+_ep3_lr1e-6_bbox0.6_fmt0.5_seg1.0_strictfmttrue_klcoef0.001_resp16384_filtergro 
+upsTrue_bypassfalse_cliphi0.25_topp0.7_temp0.7_0312.log 分析报错                
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● 现在让我检查 reward function 返回了哪些 extra info 字段导致了 inhomogeneous
+  shape。
+
+● Read 1 file (ctrl+o to expand)
+
+● 找到问题了。
+
+  报错原因： agent_loop.py:965 中 np.array([info[key] for info in 
+  reward_extra_infos]) 对 bbox_details 和 segment_details
+  这两个字段失败，因为它们是不等长的 list of dicts（每个样本的 bbox
+  数量不同），numpy 无法将其转为齐整数组。
+
+  错误信息 The detected shape was (5,) + inhomogeneous part 表明 batch 有 5
+  个样本，每个样本的 bbox_details / segment_details 长度不同。
+
+● Update(verl/experimental/agent_loop/agent_loop.py)
+  ⎿  (No changes)
+
+❯ 你刚刚打算的改动是什么意思                                                    
+
+● 报错分析：
+
+  # agent_loop.py:965
+  non_tensor_batch[key] = np.array([info[key] for info in reward_extra_infos])
+
+  reward_extra_infos 返回的字段包括：
+  - bbox_details: 每个样本有不同数量的 bbox，如 [{...}, {...}] vs [{...}]
+  - segment_details: 每个样本有不同数量的 segment turn
+
+  当尝试 np.array([[{...}, {...}], [{...}], [{...}, {...}, {...}], ...])
+  时，因为内部列表长度不同（inhomogeneous），numpy 报错。
+
+  ---
+  我打算的修复：
+
+  for key in reward_extra_keys:
+      values = [info[key] for info in reward_extra_infos]
+      try:
+          non_tensor_batch[key] = np.array(values)
+      except ValueError:
+          # Inhomogeneous shapes - 使用 dtype=object 数组
+          arr = np.empty(len(values), dtype=object)
+          arr[:] = values
+          non_tensor_batch[key] = arr
+
+  - 先尝试正常的 np.array()（对标量字段如 score, acc 有效）
+  - 如果失败（不等长列表），改用 dtype=object 数组，每个元素存原始 Python 对象
+
+  这样 bbox_details 和 segment_details 会被存为 object 数组，每个元素是原始
+  list，不会报错。
+
+❯ 那继续之前的修改                                                              
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(verl/experimental/agent_loop/agent_loop.py)
+  ⎿  Added 8 lines, removed 1 line
+      962          reward_extra_infos =                                  
+           [input.extra_fields.get("reward_extra_info", {}) for input in 
+            inputs]                                                      
+      963          reward_extra_keys =                                   
+           list(reward_extra_infos[0].keys())                            
+      964          for key in reward_extra_keys:                         
+      965 -            non_tensor_batch[key] = np.array(                 
+          -[info[key] for info in reward_extra_infos])                   
+      965 +            values =                                          
+          +[info[key] for info in reward_extra_infos]                    
+      966 +            try:                                              
+      967 +                non_tensor_batch[key] = np.array(values)      
+      968 +            except ValueError:                                
+      969 +                # Inhomogeneous shapes (e.g., variable-length 
+          + lists like bbox_details, segment_details)                    
+      970 +                arr = np.empty(len(values), dtype=object)     
+      971 +                arr[:] = values                               
+      972 +                non_tensor_batch[key] = arr                   
+      973                                                                
+      974          # Add multi_modal_inputs to non_tensor_batch if any   
+           samples have them                                             
+      975          multi_modal_inputs_list = [input.multi_modal_inputs   
+           for input in inputs]                                          
+
+● Read 1 file (ctrl+o to expand)
+
+● 已修复。bbox_details 和 segment_details 这类不等长字段会用 dtype=object
+  数组存储，不再报错。
+
+✻ Cooked for 1m 17s
+
+❯ /mnt/data/home/zhengshurong/project/verl/logs_zsr/Qwen3-VL-8B-Instruct-longvt 
+_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1_dapo_holmes_genbs32 
+_ep3_lr1e-6_bbox0.6_fmt0.5_seg1.0_strictfmttrue_klcoef0.001_resp16384_filtergro 
+upsTrue_bypassfalse_cliphi0.25_topp0.7_temp0.7_0312.log  还是报错               
+
+● Searched for 1 pattern (ctrl+o to expand)
+
+● 问题是 DEFAULT_NWD_CONSTANT 未定义。让我检查文件顶部的常量定义：
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● DEFAULT_NWD_CONSTANT 常量缺失了。让我添加回去：
+
+● Update(verl/utils/reward_score/video_reasoning_async.py)
+  ⎿  Added 1 line
+      33  DEFAULT_SPATIAL_WEIGHT = 0.5         # 空间奖励权重 (IOU 分数) 
+      34  DEFAULT_BBOX_COORD_RANGE = 1000.0    # bbox 坐标范围 (1.0 =    
+          [0,1], 1000.0 = [0,1000])                                      
+      35  DEFAULT_BBOX_METRIC = "iou"          # bbox 评分指标: "iou"    
+          (原始) 或 "adaptive_iou" (小目标宽松)                          
+      36 +DEFAULT_NWD_CONSTANT = 2.0           # NWD                     
+         +归一化常数，控制衰减速度 (越大越宽松)                          
+      37  DEFAULT_TEMPORAL_TOLERANCE = 1       # 相邻帧容忍度 (0=禁用,   
+          1=±1帧)，对应 Qwen3-VL temporal_patch_size=2                   
+      38  DEFAULT_ANSWER_WEIGHT = 0.4          # 答案分数权重            
+      39  DEFAULT_BBOX_WEIGHT = 0.3            # bbox 分数权重           
+
+● Searched for 1 pattern (ctrl+o to expand)
+
+● 已修复。DEFAULT_NWD_CONSTANT = 2.0 已添加到常量定义区（第 36 行），在
+  compute_nwd 函数（第 371 行）使用之前定义。
+
+✻ Crunched for 1m 2s
+
+❯ /mnt/data/home/zhengshurong/project/verl/checkpoints_zsr/video-reasoning-dapo 
+/Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5- 
+bs64-ep1_dapo_holmes_genbs32_ep3_lr1e-6_bbox0.6_fmt0.5_seg1.0_strictfmttrue_klc 
+oef0.001_resp16384_filtergroupsTrue_bypassfalse_cliphi0.25_topp0.7_temp0.7_0312 
+/reward_logs/samples/reward_samples_20260313.jsonl  reward                      
+log能否按照step、group的层级保存                                                
+
+● Searched for 5 patterns, read 2 files (ctrl+o to expand)
+
+● 让我检查一下 step 和 uid 信息是如何传递到 reward function 的：
+
+● Searched for 3 patterns (ctrl+o to expand)
+
+● 目前 extra_info 中有 index 字段，但没有 step 和 uid。要实现按 step/group
+  分层保存，需要：
+
+  1. 方案 A（简单）：修改 save_reward_sample 支持按 step 分目录
+  2. 方案 B（完整）：将 step/uid 传递到 reward function
+
+  先实现方案 A - 按 step 分目录保存：
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(verl/utils/reward_score/video_reasoning_async.py)
+  ⎿  Added 12 lines
+       98  def save_reward_sample(                                       
+       99      sample_data: Dict[str, Any],                              
+      100      output_dir: str = "./reward_logs/samples",                
+      101 +    training_step: int = None,                                
+      102 +    sample_uid: str = None,                                   
+      103  ):                                                            
+      104      """                                                       
+      105      保存单个奖励计算样本到 JSONL 文件                         
+     ...
+      105      Args:                                                     
+      106          sample_data: 样本数据字典                             
+      107          output_dir: 输出目录                                  
+      108 +        training_step: 训练步数 (用于分目录保存)              
+      109 +        sample_uid: 样本唯一标识 (用于分组)                   
+      110      """                                                       
+      111      global _sample_counter                                    
+      112                                                                
+      113 +    # 按 step 分目录                                          
+      114 +    if training_step is not None:                             
+      115 +        output_dir = os.path.join(output_dir,                 
+          +f"step_{training_step}")                                      
+      116 +                                                              
+      117      os.makedirs(output_dir, exist_ok=True)                    
+      118                                                                
+      119      # 使用日期分文件                                          
+     ...
+      117      _sample_counter += 1                                      
+      118      sample_data["sample_id"] = _sample_counter                
+      119      sample_data["timestamp"] = datetime.now().isoformat()     
+      120 +    if training_step is not None:                             
+      121 +        sample_data["training_step"] = training_step          
+      122 +    if sample_uid is not None:                                
+      123 +        sample_data["sample_uid"] = sample_uid                
+      124                                                                
+      125      with open(output_file, "a", encoding="utf-8") as f:       
+      126          f.write(json.dumps(sample_data, ensure_ascii=False) + 
+            "\n")                                                        
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(verl/utils/reward_score/video_reasoning_async.py)
+  ⎿  Added 3 lines
+      1617      save_every_n: int = 1,  # 每 N 个样本保存一次            
+            (1=全部保存, 10=每10个保存1个)                               
+      1618      log_dir: str = "./reward_logs",                          
+      1619      log_every_n: int = 10,  # 每 N 个样本打印一次统计        
+      1620 +    # 训练上下文参数 (用于按 step/uid 分层保存)              
+      1621 +    training_step: int = None,  # 当前训练步数               
+      1622 +    sample_uid: str = None,  # 样本唯一标识 (group id)       
+      1623      **kwargs,                                                
+      1624  ) -> float:                                                  
+      1625      """                                                      
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Update(verl/utils/reward_score/video_reasoning_async.py)
+  ⎿  Added 6 lines, removed 1 line
+      1858              },                                               
+      1859              "elapsed_time": elapsed_time,                    
+      1860          }                                                    
+      1861 -        save_reward_sample(sample_data,                      
+           -output_dir=os.path.join(log_dir, "samples"))                 
+      1861 +        save_reward_sample(                                  
+      1862 +            sample_data,                                     
+      1863 +            output_dir=os.path.join(log_dir, "samples"),     
+      1864 +            training_step=training_step,                     
+      1865 +            sample_uid=sample_uid,                           
+      1866 +        )                                                    
+      1867                                                               
+      1868      # 返回字典格式，支持 FILTER_GROUPS_METRIC=acc 或 score   
+      1869      # 所有返回的 key 都会被记录到 TensorBoard                
+
+● 现在需要从 extra_info 中获取 step 和 uid。让我检查并添加这个逻辑：
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(verl/utils/reward_score/video_reasoning_async.py)
+  ⎿  Added 8 lines
+      1670      question = extra_info.get("question", "")                
+      1671      video_id = extra_info.get("video_id", "")                
+      1672                                                               
+      1673 +    # 从 extra_info 获取训练上下文 (如果通过 kwargs          
+           +传入则优先使用 kwargs)                                       
+      1674 +    if training_step is None:                                
+      1675 +        training_step = extra_info.get("training_step",      
+           +None)                                                        
+      1676 +    if sample_uid is None:                                   
+      1677 +        sample_uid = extra_info.get("uid",                   
+           +extra_info.get("index", None))                               
+      1678 +        if sample_uid is not None:                           
+      1679 +            sample_uid = str(sample_uid)                     
+      1680 +                                                             
+      1681      # 1. 提取预测答案                                        
+      1682      predicted_answer = extract_answer(solution_str)          
+      1683                                                               
+
+● 现在需要在训练循环中将 training_step 添加到 extra_info。让我检查在哪里添加：
+
+● Searched for 3 patterns, read 1 file (ctrl+o to expand)
+
+● Update(verl/trainer/ppo/ray_trainer.py)
+  ⎿  Added 6 lines
+      735              If reward_for_val=False and sum_reward=True:      
+           summed reward_tensor (1D tensor)                              
+      736              Otherwise: tuple of (reward_tensor,               
+           reward_extra_infos_dict)                                      
+      737          """                                                   
+      738 +        # Inject training_step into extra_info for reward     
+          +logging (step-based organization)                             
+      739 +        if "extra_info" in batch.non_tensor_batch:            
+      740 +            for i, extra_info in                              
+          +enumerate(batch.non_tensor_batch["extra_info"]):              
+      741 +                if extra_info is not None and                 
+          +isinstance(extra_info, dict):                                 
+      742 +                    extra_info["training_step"] =             
+          +self.global_steps                                             
+      743 +                                                              
+      744          # When rm_scores already exists, extract it directly  
+           (format conversion only)                                      
+      745          if "rm_scores" in batch.batch.keys():                 
+      746              reward_tensor = batch.batch["rm_scores"]          
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● 已完成修改。现在 reward samples 会按 step 分层保存：
+
+  修改内容：
+
+  1. video_reasoning_async.py - save_reward_sample 函数：
+    - 新增 training_step 和 sample_uid 参数
+    - 按 step 分目录：samples/step_{step}/reward_samples_{date}.jsonl
+    - 每条记录包含 training_step 和 sample_uid 字段
+  2. video_reasoning_async.py - compute_score 函数：
+    - 新增 training_step 和 sample_uid 参数
+    - 从 extra_info 中提取（优先使用 kwargs）
+  3. ray_trainer.py - _compute_or_extract_reward 方法：
+    - 将 global_steps 注入到每个样本的 extra_info["training_step"]
+
+  保存结构：
+  reward_logs/
+  └── samples/
+      ├── step_0/
+      │   └── reward_samples_20260313.jsonl
+      ├── step_1/
+      │   └── reward_samples_20260313.jsonl
+      └── step_2/
+          └── reward_samples_20260313.jsonl
+
+  每条记录新增字段：
+  {
+    "training_step": 5,
+    "sample_uid": "abc123",
+    ...
+  }
+
+✻ Brewed for 5m 21s
+
+❯ /mnt/data/home/zhengshurong/project/verl/logs_zsr/Qwen3-VL-8B-Instruct-longvt 
+_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1_dapo_holmes_genbs32 
+_ep3_lr1e-6_bbox0.6_fmt0.5_seg1.0_strictfmttrue_klcoef0.001_resp16384_filtergro 
+upsTrue_bypassfalse_cliphi0.25_topp0.7_temp0.7_0312.log  分析报错               
+
+● Searched for 1 pattern (ctrl+o to expand)
+
+● 问题是 bbox_details 和 segment_details 字段（dict 列表）被传入了 np.mean()
+  计算。
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(verl/trainer/ppo/metric_utils.py)
+  ⎿  Added 4 lines
+      617                  if not var_vals or isinstance(var_vals[0],    
+           str):                                                         
+      618                      continue                                  
+      619                                                                
+      620 +                # skip non-numeric types (e.g., bbox_details, 
+          + segment_details which are lists of dicts)                    
+      621 +                if isinstance(var_vals[0], (dict, list)):     
+      622 +                    continue                                  
+      623 +                                                              
+      624                  # compute mean and std                        
+      625                  n_resps = len(var_vals)                       
+      626                  metric = {f"mean@{n_resps}":                  
+           float(np_mean(var_vals))}                                     
+
+● 已修复。在 metric_utils.py:617 添加了对 dict 和 list 类型的跳过检查：
+
+  # skip non-numeric types (e.g., bbox_details, segment_details which are lists 
+  of dicts)
+  if isinstance(var_vals[0], (dict, list)):
+      continue
+
+  这样 bbox_details 和 segment_details 这类非数值字段不会被传入 np.mean() 计算。
+
+✻ Cogitated for 45s
+
+❯ 分析一下/mnt/data/home/zhengshurong/project/verl/verl/utils/dataset/rl_datase 
+t.py中__getitem__里的row_dict["extra_info"]在之后的训练过程中是怎么流动的，哪些 
+地方会用到                                                                      
+
+● Searched for 3 patterns, read 2 files (ctrl+o to expand)
+
+● extra_info 数据流分析
+
+  1. 数据源 - rl_dataset.py (__getitem__)
+
+  # 初始化 extra_info
+  row_dict["extra_info"] = dict()
+
+  # 合并 reference_segments
+  row_dict["extra_info"]["reference_segments"] = [...]
+
+  # 提取常用字段到顶层
+  index = row_dict["extra_info"].get("index", 0)
+  tools_kwargs = row_dict["extra_info"].get("tools_kwargs", {})
+
+  extra_info 包含的字段（来自 parquet 数据）：
+  - video_path, video_id, question
+  - video_duration, correct_answer
+  - index, tools_kwargs, need_tools_kwargs
+  - reference_segments（由我们添加）
+  - gt_bboxes（如果有）
+
+  ---
+  2. DataLoader → DataProto
+
+  row_dict["extra_info"] → batch.non_tensor_batch["extra_info"]
+
+  DataProto 将 extra_info 作为 non_tensor_batch 的一部分传递。
+
+  ---
+  3. 训练循环中的使用点
+
+  3.1 ray_trainer.py - _compute_or_extract_reward
+
+  # 注入 training_step (我们添加的)
+  if "extra_info" in batch.non_tensor_batch:
+      for extra_info in batch.non_tensor_batch["extra_info"]:
+          extra_info["training_step"] = self.global_steps
+
+  3.2 ray_trainer.py - _get_gen_batch
+
+  # 传递给 rollout 生成
+  reward_model_keys = {"data_source", "reward_model", "extra_info", "uid"}
+
+  ---
+  4. Reward Manager 中的使用
+
+  4.1 dapo.py / naive.py / batch.py
+
+  extra_info = data_item.non_tensor_batch.get("extra_info", {})
+  extra_info["rollout_reward_scores"] = rollout_reward_scores
+
+  result = self.compute_score(
+      data_source=data_source,
+      solution_str=response_str,
+      ground_truth=ground_truth,
+      extra_info=extra_info,  # ← 传给 reward function
+  )
+
+  4.2 prime.py
+
+  extra_info = data.non_tensor_batch.get("extra_info", None)
+  scores = run_reward_scoring(..., extra_info=extra_info, ...)
+
+  ---
+  5. Reward Function 中的使用 (video_reasoning_async.py)
+
+  async def compute_score(..., extra_info: dict = None, ...):
+      extra_info = extra_info or {}
+
+      # 获取视频信息
+      video_path = extra_info.get("video_path", "")
+      question = extra_info.get("question", "")
+      video_id = extra_info.get("video_id", "")
+
+      # 获取训练上下文
+      training_step = extra_info.get("training_step", None)
+      sample_uid = extra_info.get("uid", extra_info.get("index", None))
+
+      # 获取 GT segments
+      gt_segments = extra_info.get("reference_segments", [])
+
+  ---
+  6. Agent Loop 中的使用 (agent_loop.py)
+
+  # extra_fields 用于传递额外信息
+  output.extra_fields["reward_extra_info"] = result["reward_extra_info"]
+
+  # 汇总到 non_tensor_batch
+  reward_extra_infos = [input.extra_fields.get("reward_extra_info", {}) for
+  input in inputs]
+
+  ---
+  数据流图
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  Parquet Data                                                   │
+  │  ├── extra_info: {video_path, question, index, tools_kwargs}   │
+  │  └── reference_segments: [[69, 85], [90, 110]]                 │
+  └───────────────────────────┬─────────────────────────────────────┘
+                              ▼
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  rl_dataset.py __getitem__                                      │
+  │  └── 合并 reference_segments → extra_info["reference_segments"] │
+  └───────────────────────────┬─────────────────────────────────────┘
+                              ▼
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  DataProto.non_tensor_batch["extra_info"]                       │
+  └───────────────────────────┬─────────────────────────────────────┘
+                              ▼
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  ray_trainer._compute_or_extract_reward                         │
+  │  └── 注入 extra_info["training_step"] = global_steps           │
+  └───────────────────────────┬─────────────────────────────────────┘
+                              ▼
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  Reward Manager (dapo.py)                                       │
+  │  └── compute_score(extra_info=extra_info)                       │
+  └───────────────────────────┬─────────────────────────────────────┘
+                              ▼
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  video_reasoning_async.py compute_score                         │
+  │  ├── video_path = extra_info.get("video_path")                  │
+  │  ├── gt_segments = extra_info.get("reference_segments")         │
+  │  └── training_step = extra_info.get("training_step")            │
+  └─────────────────────────────────────────────────────────────────┘
+
+✻ Crunched for 1m 57s
+
+❯ 在之前分析报错时， ● 报错分析：                                               
+                                                                                
+  # agent_loop.py:965                                                           
+  non_tensor_batch[key] = np.array([info[key] for info in reward_extra_infos])  
+                                                                                
+  reward_extra_infos 返回的字段包括：                                           
+  - bbox_details: 每个样本有不同数量的 bbox，如 [{...}, {...}] vs [{...}]       
+  - segment_details: 每个样本有不同数量的 segment turn                          
+                                                                                
+  当尝试 np.array([[{...}, {...}], [{...}], [{...}, {...}, {...}], ...])        
+时，因为内部列表长度不同（inhomogeneous），numpy 报错。                         
+这里为什么新加的segments信息会传到reward_extra_info                             
+
+● 因为 compute_score 函数返回的 所有字段 都会被传入 reward_extra_info。
+
+  让我追踪这个流程：
+
+  1. video_reasoning_async.py - compute_score 返回值
+
+  return {
+      "score": final_score,
+      "acc": answer_score == 1.0,
+      "format": format_score == 1.0,
+      "answer_score": answer_score,
+      "format_score": format_score,
+      "bbox_score": bbox_score,
+      "segment_score": segment_score,
+      # ↓ 这两个是 list of dicts，长度不固定
+      "bbox_details": bbox_details,      # [{...}, {...}] 
+      "segment_details": segment_details, # [{...}]
+  }
+
+  2. dapo.py - Reward Manager 处理返回值
+
+  result = self.compute_score(
+      data_source=data_source,
+      solution_str=response_str,
+      ground_truth=ground_truth,
+      extra_info=extra_info,
+  )
+
+  if isinstance(result, dict):
+      score = result["score"]
+      # ↓ 遍历 result 的所有 key，全部加入 reward_extra_info
+      for key, value in result.items():
+          reward_extra_info[key].append(value)
+
+  所有字段都被加入，包括 bbox_details 和 segment_details。
+
+  3. agent_loop.py - 转换为 numpy 数组
+
+  reward_extra_infos = [input.extra_fields.get("reward_extra_info", {}) for
+  input in inputs]
+  for key in reward_extra_keys:
+      # ↓ 尝试将所有字段转为 numpy 数组
+      non_tensor_batch[key] = np.array([info[key] for info in
+  reward_extra_infos])
+
+  问题：bbox_details 和 segment_details 是变长列表，无法直接转为齐整的 numpy
+  数组。
+
+  ---
+  解决方案选择
+
+  ┌───────────┬──────────────────────────────────────────────────────────────┐
+  │   方案    │                             说明                             │
+  ├───────────┼──────────────────────────────────────────────────────────────┤
+  │ ✅ 已采用 │ 在 agent_loop.py 中用 try/except 处理，失败时用 dtype=object │
+  ├───────────┼──────────────────────────────────────────────────────────────┤
+  │ 可选      │ 在 compute_score 返回值中移除这些字段（但会丢失信息）        │
+  ├───────────┼──────────────────────────────────────────────────────────────┤
+  │ 可选      │ 在 dapo.py 中过滤掉非标量字段                                │
+  └───────────┴──────────────────────────────────────────────────────────────┘
+
+  当前的修复（agent_loop.py）是最通用的，不会丢失信息：
+
+  for key in reward_extra_keys:
+      values = [info[key] for info in reward_extra_infos]
+      try:
+          non_tensor_batch[key] = np.array(values)
+      except ValueError:
+          # Inhomogeneous shapes - 用 object 数组存储
+          arr = np.empty(len(values), dtype=object)
+          arr[:] = values
+          non_tensor_batch[key] = arr
+
+✻ Churned for 31s
+
+❯ /mnt/data/home/zhengshurong/project/verl/logs_zsr/Qwen3-VL-8B-Instruct-longvt 
+_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1_dapo_holmes_genbs32 
+_ep3_lr1e-6_bbox0.6_fmt0.5_seg1.0_strictfmttrue_klcoef0.001_resp16384_filtergro 
+upsTrue_bypassfalse_cliphi0.25_topp0.7_temp0.7_0312.log  分析报错               
+
+● Searched for 1 pattern (ctrl+o to expand)
+
+● 问题出在 DataProto.concat 合并 non_tensor_batch 时，不同数组的维度不一致。
+
+● Read 1 file (ctrl+o to expand)
+
+● 问题原因：
+  1. agent_loop.py 中用 dtype=object 创建的数组是 1D（如 shape=(5,)）
+  2. 普通数值数组可能是 2D（如 shape=(5, n)）
+  3. np.concatenate(val, axis=0) 要求所有数组维度一致
+
+  需要在 protocol.py 的 concat 中处理这种情况：
+
+● Update(verl/protocol.py)
+  ⎿  Added 13 lines, removed 1 line
+      942                                                                
+      943          non_tensor_batch =                                    
+           list_of_dict_to_dict_of_list(list_of_dict=[d.non_tensor_batch 
+            for d in data])                                              
+      944          for key, val in non_tensor_batch.items():             
+      945 -            non_tensor_batch[key] = np.concatenate(val,       
+          -axis=0)                                                       
+      945 +            # Handle arrays with different dimensions (e.g.,  
+          +object arrays from inhomogeneous data)                        
+      946 +            try:                                              
+      947 +                non_tensor_batch[key] = np.concatenate(val,   
+          +axis=0)                                                       
+      948 +            except ValueError:                                
+      949 +                # Fallback: concatenate as 1D object array    
+      950 +                total_len = sum(len(v) for v in val)          
+      951 +                result = np.empty(total_len, dtype=object)    
+      952 +                idx = 0                                       
+      953 +                for v in val:                                 
+      954 +                    for item in v:                            
+      955 +                        result[idx] = item                    
+      956 +                        idx += 1                              
+      957 +                non_tensor_batch[key] = result                
+      958                                                                
+      959          # Merge meta_info with special handling for metrics   
+      960          merged_meta_info = {}                                 
+
+● 已修复。在 protocol.py 的 concat 方法中添加了对不同维度数组的处理：
+
+  try:
+      non_tensor_batch[key] = np.concatenate(val, axis=0)
+  except ValueError:
+      # Fallback: 合并为 1D object 数组
+      total_len = sum(len(v) for v in val)
+      result = np.empty(total_len, dtype=object)
+      idx = 0
+      for v in val:
+          for item in v:
+              result[idx] = item
+              idx += 1
+      non_tensor_batch[key] = result
+
+  这样当遇到维度不一致的数组（如 bbox_details、segment_details）时，会自动合并为
+   1D object 数组。
+
+✻ Cogitated for 1m 4s

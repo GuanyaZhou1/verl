@@ -161,6 +161,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                 new_batch: DataProto = DataProto.from_single_dict(batch_dict)
                 num_gen_batches += 1
                 gen_batch = self._get_gen_batch(new_batch)
+                gen_batch.meta_info["global_steps"] = self.global_steps
                 gen_batch_output = gen_batch.repeat(
                     repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True
                 )
