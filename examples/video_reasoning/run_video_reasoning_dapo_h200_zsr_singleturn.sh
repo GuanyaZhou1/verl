@@ -68,7 +68,7 @@ MODEL_PATH="${MODEL_PATH:-/mnt/data/home/zhengshurong/hf_cache/Qwen/Qwen3-VL-8B-
 # MODEL_PATH="${MODEL_PATH:-/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-stgr-turn_llm_freeze25_freeze_mlp-lr1e-5-epo5}"
 # MODEL_PATH="/mnt/data/home/zhengshurong/project/Qwen3-VL/qwen-vl-finetune/checkpoints/video/Qwen3-VL-8B-Instruct-longvtdata-stgrdata-selfconstructdata-sft-lr1e-5-bs128-ep1/checkpoint-3003"
 # MODEL_PATH="/mnt/data/home/zhengshurong/project/Qwen3-VL/qwen-vl-finetune/checkpoints/video/Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1"
-DATA_DIR="${DATA_DIR:-./long_video_data_singleturn/video_holmes}"
+DATA_DIR="${DATA_DIR:-./long_video_data_singleturn/longvt_selfqa}"
 CACHE_DIR="${CACHE_DIR:-./.cache}"
 CONFIG_PATH="$(pwd)/examples/video_reasoning/config"
 LOG_DIR="./logs_zsr"
@@ -76,7 +76,7 @@ LOG_DIR="./logs_zsr"
 # =============================================================================
 # 训练参数 (支持环境变量覆盖)
 # =============================================================================
-TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-16}
+TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-32}
 GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-32}     # DAPO: 生成批次，开启 filter 时需要增大
 MAX_PROMPT_LENGTH=${MAX_PROMPT_LENGTH:-36000}
 MAX_RESPONSE_LENGTH=${MAX_RESPONSE_LENGTH:-16384}
@@ -85,7 +85,7 @@ LEARNING_RATE=${LEARNING_RATE:-1e-6}
 TOTAL_EPOCHS=${TOTAL_EPOCHS:-3}
 
 N_ROLLOUTS=${N_ROLLOUTS:-8}              # 每个 prompt 生成的 response 数
-AGENT_NUM_WORKERS=${AGENT_NUM_WORKERS:-16}
+AGENT_NUM_WORKERS=${AGENT_NUM_WORKERS:-4}
 
 N_GPUS=${N_GPUS:-8}
 NNODES=${NNODES:-1}
@@ -104,7 +104,7 @@ NORM_ADV_BY_STD=False                      # 归一化 advantage，
 
 USE_KL_IN_REWARD=False
 USE_KL_LOSS=True
-KL_LOSS_COEF=${KL_LOSS_COEF:-0.1}
+KL_LOSS_COEF=${KL_LOSS_COEF:-0.001}
 KL_LOSS_TYPE=low_var_kl
 
 BY_PASS_ROLLOUT_CORRECTION=false
@@ -136,7 +136,7 @@ CACHE_NUM_WORKERS=${CACHE_NUM_WORKERS:-64}  # 视频缓存并行数
 
 # 初始视频分辨率（低分辨率概览）
 INITIAL_VIDEO_FPS=1
-INITIAL_VIDEO_MAX_FRAMES=512
+INITIAL_VIDEO_MAX_FRAMES=128
 INITIAL_VIDEO_MIN_PIXELS=784             # 28*28
 INITIAL_VIDEO_MAX_PIXELS=12544           # ~112x112
 
@@ -188,11 +188,16 @@ VAL_BEFORE_TRAIN=True
 RESUME_MODE=disable                      # disable / resume_path / auto
 
 # =============================================================================
+# Agent Loop 类型
+# =============================================================================
+AGENT_LOOP_TYPE=${AGENT_LOOP_TYPE:-single_turn_agent}
+
+# =============================================================================
 # 实验名称
 # =============================================================================
 TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
 PROJECT_NAME="video-reasoning-dapo"
-EXPERIMENT_NAME="Qwen3-VL-8B-Instruct_dapo_holmes_singleturn_genbs${GEN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_ans${ANSWER_WEIGHT}_bbox${BBOX_WEIGHT}_fmt${FORMAT_WEIGHT}_seg${SEGMENT_WEIGHT}_strictfmt${USE_STRICT_FORMAT}_klcoef${KL_LOSS_COEF}_resp${MAX_RESPONSE_LENGTH}_filtergroups${ENABLE_FILTER_GROUPS}_bypass${BY_PASS_ROLLOUT_CORRECTION}_cliphi${CLIP_RATIO_HIGH}_topp${TOP_P}_temp${TEMPERATURE}_0312"
+EXPERIMENT_NAME="Qwen3-VL-8B-Instruct_dapo_longvtrl_singleturn_agent${AGENT_LOOP_TYPE}_genbs${GEN_BATCH_SIZE}_trainbs${TRAIN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_ans${ANSWER_WEIGHT}_bbox${BBOX_WEIGHT}_fmt${FORMAT_WEIGHT}_seg${SEGMENT_WEIGHT}_klcoef${KL_LOSS_COEF}_filtergroups${ENABLE_FILTER_GROUPS}_bypass${BY_PASS_ROLLOUT_CORRECTION}_cliphi${CLIP_RATIO_HIGH}_topp${TOP_P}_temp${TEMPERATURE}_mf${INITIAL_VIDEO_MAX_FRAMES}_0318"
 # EXPERIMENT_NAME="Qwen3_8B_longvt_tvg-openo3video_stgr-selfconstructdata_dapo_long_video_data_genbs32_ep1_lr1e_6_bbox0_0_normadvbystdfalse_${TIMESTAMP}"
 
 # 将 reward_logs 和 tensorboard_log 放到 checkpoint 目录下
@@ -331,13 +336,13 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.rollout.top_p=$TOP_P \
     actor_rollout_ref.rollout.temperature=$TEMPERATURE \
     +actor_rollout_ref.rollout.enable_sleep_mode=False \
-    +actor_rollout_ref.rollout.repetition_penalty=1.1 \
+    +actor_rollout_ref.rollout.repetition_penalty=1.0 \
     +actor_rollout_ref.rollout.max_tokens_per_turn=2048 \
     actor_rollout_ref.rollout.n=$N_ROLLOUTS \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.max_model_len=128000 \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=4 \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=2 \
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=True \
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=104768 \
     actor_rollout_ref.rollout.calculate_log_probs=true \
@@ -364,7 +369,7 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.rollout.multi_turn.watermark_config.position=$WATERMARK_POSITION \
     actor_rollout_ref.rollout.multi_turn.watermark_config.font_size=$WATERMARK_FONT_SIZE \
     actor_rollout_ref.rollout.multi_turn.watermark_config.ratio=$WATERMARK_RATIO \
-    actor_rollout_ref.rollout.agent.default_agent_loop=video_reasoning \
+    actor_rollout_ref.rollout.agent.default_agent_loop=${AGENT_LOOP_TYPE} \
     actor_rollout_ref.rollout.agent.num_workers=$AGENT_NUM_WORKERS \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=2 \
     actor_rollout_ref.ref.log_prob_use_dynamic_bsz=True \

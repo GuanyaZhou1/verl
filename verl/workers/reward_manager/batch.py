@@ -53,11 +53,17 @@ class BatchRewardManager(AbstractRewardManager):
         valid_response_lengths = attention_mask[:, prompt_len:].sum(dim=-1)
 
         responses_str = []
+        prompts_str = []
         for i in range(len(data)):
             valid_len = valid_response_lengths[i]
             valid_response_ids = response_ids[i][:valid_len]
             response_str = self.tokenizer.decode(valid_response_ids, skip_special_tokens=True)
             responses_str.append(response_str)
+            # 解码 prompt_str
+            valid_prompt_length = attention_mask[i][:prompt_len].sum()
+            valid_prompt_ids = prompt_ids[i][-valid_prompt_length:]
+            prompt_str = self.tokenizer.decode(valid_prompt_ids, skip_special_tokens=True)
+            prompts_str.append(prompt_str)
 
         ground_truths = [item.non_tensor_batch["reward_model"].get("ground_truth", None) for item in data]
         data_sources = data.non_tensor_batch[self.reward_fn_key]
@@ -66,6 +72,8 @@ class BatchRewardManager(AbstractRewardManager):
 
         for i in range(len(data)):
             extras[i]["rollout_reward_scores"] = rollout_reward_scores[i]
+            # 保存原始输入文本信息到 extra_info，用于 reward_logs 保存
+            extras[i]["prompt_str"] = prompts_str[i]
 
         scores = self.compute_score(
             data_sources=data_sources,

@@ -327,7 +327,10 @@ def compute_advantage(
             normalized_advs = {}
             for name, rewards in reward_components.items():
                 mean_g, std_g, _ = group_mean_std(rewards, g, eps=epsilon, device=device)
-                A_k = (rewards - mean_g[g]) / (std_g[g] + epsilon)
+                if norm_adv_by_std_in_grpo:
+                    A_k = (rewards - mean_g[g]) / (std_g[g] + epsilon)
+                else:
+                    A_k = rewards - mean_g[g]
                 normalized_advs[name] = A_k
 
             # Extract global advantages (rollout-level)
@@ -352,6 +355,7 @@ def compute_advantage(
                 segment_details_list=segment_details_list,
                 group_idx=g_np,
                 epsilon=epsilon,
+                norm_adv_by_std=norm_adv_by_std_in_grpo,
             )
 
             # =================================================================
@@ -463,6 +467,7 @@ def compute_advantage(
                 reward_components=reward_components,
                 reward_weights=reward_weights,
                 enable_batch_norm=gdpo_config.get("enable_batch_norm", True),
+                norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
                 config=config,
                 return_component_advs=True,
             )

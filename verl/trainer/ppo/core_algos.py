@@ -380,6 +380,7 @@ def compute_gdpo_outcome_advantage(
     reward_weights: dict[str, float] = None,
     epsilon: float = 1e-6,
     enable_batch_norm: bool = True,
+    norm_adv_by_std_in_grpo: bool = True,
     config: Optional[AlgoConfig] = None,
     return_component_advs: bool = False,
     **kwargs,
@@ -396,6 +397,7 @@ def compute_gdpo_outcome_advantage(
 
     Steps:
     1. For each reward component k: A_k = (r_k - mean_g) / std_g  (group-wise normalization)
+       If norm_adv_by_std_in_grpo=False: A_k = r_k - mean_g  (only subtract mean)
     2. A_sum = sum(w_k * A_k)  (weighted sum of normalized advantages)
     3. Â = (A_sum - mean_batch) / std_batch  (batch-wise normalization for stability)
 
@@ -407,6 +409,7 @@ def compute_gdpo_outcome_advantage(
         reward_weights: dict mapping reward names to float weights
         epsilon: float for numerical stability
         enable_batch_norm: whether to apply batch-wise normalization (recommended)
+        norm_adv_by_std_in_grpo: whether to divide by std in group normalization (default True)
         config: algorithm config (can contain gdpo settings)
         return_component_advs: if True, also return per-component normalized advantages
 
@@ -423,7 +426,10 @@ def compute_gdpo_outcome_advantage(
         if reward_components is None or len(reward_components) == 0:
             scores = token_level_rewards.sum(dim=-1)
             mean_g, std_g, _ = group_mean_std(scores, g, eps=epsilon, device=device)
-            A_sum = (scores - mean_g[g]) / (std_g[g] + epsilon)
+            if norm_adv_by_std_in_grpo:
+                A_sum = (scores - mean_g[g]) / (std_g[g] + epsilon)
+            else:
+                A_sum = scores - mean_g[g]
         else:
             # Step 1: Group-wise normalize each reward component independently
             normalized_advantages = {}
@@ -436,9 +442,12 @@ def compute_gdpo_outcome_advantage(
                 else:
                     rewards = rewards.to(device=device, dtype=torch.float32)
 
-                # Group-wise normalization: (r - mean_g) / std_g
+                # Group-wise normalization: (r - mean_g) / std_g or (r - mean_g)
                 mean_g, std_g, _ = group_mean_std(rewards, g, eps=epsilon, device=device)
-                A_k = (rewards - mean_g[g]) / (std_g[g] + epsilon)
+                if norm_adv_by_std_in_grpo:
+                    A_k = (rewards - mean_g[g]) / (std_g[g] + epsilon)
+                else:
+                    A_k = rewards - mean_g[g]
                 normalized_advantages[reward_name] = A_k
 
             # Step 2: Weighted sum of normalized advantages
@@ -470,6 +479,7 @@ def compute_turn_level_group_norm(
     segment_details_list: List[List[Dict]],
     group_idx: np.ndarray,
     epsilon: float = 1e-6,
+    norm_adv_by_std: bool = True,
 ) -> Tuple[List[Dict[int, float]], List[Dict[int, float]]]:
     """
     Compute turn-level group normalization for bbox and segment scores.
@@ -489,6 +499,7 @@ def compute_turn_level_group_norm(
             {"score": float, "turn_idx": int, ...}
         group_idx: (bs,) array mapping each sample to its group ID
         epsilon: Small value for numerical stability
+        norm_adv_by_std: Whether to divide by std in normalization (default True)
 
     Returns:
         bbox_advs_by_turn: Per-sample dict mapping turn_idx -> normalized turn-level bbox advantage
@@ -539,7 +550,10 @@ def compute_turn_level_group_norm(
         if std < epsilon:
             std = epsilon
         for (sample_idx, turn_idx, score) in scores_list:
-            normalized = (score - mean) / std
+            if norm_adv_by_std:
+                normalized = (score - mean) / std
+            else:
+                normalized = score - mean
             bbox_turn_normalized[(sample_idx, turn_idx)] = normalized
 
     # =========================================================================
@@ -581,7 +595,10 @@ def compute_turn_level_group_norm(
         if std < epsilon:
             std = epsilon
         for (sample_idx, turn_idx, score) in scores_list:
-            normalized = (score - mean) / std
+            if norm_adv_by_std:
+                normalized = (score - mean) / std
+            else:
+                normalized = score - mean
             segment_turn_normalized[(sample_idx, turn_idx)] = normalized
 
     # =========================================================================

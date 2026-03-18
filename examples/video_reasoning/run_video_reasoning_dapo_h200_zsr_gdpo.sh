@@ -91,7 +91,7 @@ NNODES=${NNODES:-1}
 # =============================================================================
 # DAPO 算法参数 (支持环境变量覆盖)
 # =============================================================================
-ENABLE_FILTER_GROUPS=${ENABLE_FILTER_GROUPS:-True}   # 过滤组内全对/全错的样本
+ENABLE_FILTER_GROUPS=${ENABLE_FILTER_GROUPS:-False}   # 过滤组内全对/全错的样本
 FILTER_GROUPS_METRIC=${FILTER_GROUPS_METRIC:-score}   # 用总分做组过滤
 MAX_NUM_GEN_BATCHES=${MAX_NUM_GEN_BATCHES:-20}         # 最多重采样轮数
 
@@ -118,7 +118,7 @@ TEMPERATURE=${TEMPERATURE:-0.7}                       # 采样温度
 #   - gdpo: Group reward-Decoupled normalization Policy Optimization
 #           每个 reward component 独立归一化，避免 advantage collapse
 # 使用 bbox/segment 的 turn 级别 group norm 时，必须设为 gdpo。
-ADV_ESTIMATOR=${ADV_ESTIMATOR:-gdpo}
+ADV_ESTIMATOR=${ADV_ESTIMATOR:-grpo}
 
 # GDPO reward component 权重（仅 adv_estimator=gdpo 时生效）
 # 设为 0 可排除该 component
@@ -134,7 +134,7 @@ GDPO_ENABLE_BATCH_NORM=${GDPO_ENABLE_BATCH_NORM:-true}  # 批次归一化（推�
 #   - per_turn: 轮内广播，bbox/segment 使用 turn 级别 group norm 后的 advantage 分配到对应轮
 #   - per_turn_gae: 轮内 GAE 衰减传播，同样使用 turn 级别 group norm 的 bbox/segment
 # 启用 bbox+segment turn 级 group norm 时，请设为 per_turn 或 per_turn_gae。
-TOKEN_PLACEMENT_METHOD=${TOKEN_PLACEMENT_METHOD:-per_turn}
+TOKEN_PLACEMENT_METHOD=${TOKEN_PLACEMENT_METHOD:-broadcast}
 
 # 全局奖励（acc, format）的传播方式
 #   - broadcast: 平均分配到所有 token（推荐，稳定）
@@ -193,8 +193,8 @@ VLM_API_KEY="123456"
 
 USE_VLM_SCORING=true
 USE_BBOX_VERIFICATION=true
-ANSWER_WEIGHT=${ANSWER_WEIGHT:-0.0}
-BBOX_WEIGHT=${BBOX_WEIGHT:-0.0}
+ANSWER_WEIGHT=${ANSWER_WEIGHT:-1.0}
+BBOX_WEIGHT=${BBOX_WEIGHT:-0.5}
 FORMAT_WEIGHT=${FORMAT_WEIGHT:-0.5}          # 格式奖励权重 (0 = 不使用)
 SEGMENT_WEIGHT=${SEGMENT_WEIGHT:-1.0}        # segment 时间段匹配奖励权重 (0 = 不使用)
 USE_STRICT_FORMAT=${USE_STRICT_FORMAT:-true}  # 是否使用严格的 segment 格式检查
@@ -223,10 +223,11 @@ PROJECT_NAME="video-reasoning-dapo"
 
 if [ "$ADV_ESTIMATOR" = "gdpo" ]; then
     # GDPO 模式：使用 GDPO 和 Token Placement 参数命名
-    EXPERIMENT_NAME="Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1_gdpo_longvtrl_genbs${GEN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_gdpo-ans${GDPO_ANSWER_WEIGHT}_fmt${GDPO_FORMAT_WEIGHT}_bbox${GDPO_BBOX_WEIGHT}_seg${GDPO_SEGMENT_WEIGHT}_tp-${TOKEN_PLACEMENT_METHOD}_tpans${TP_ANSWER_WEIGHT}_tpfmt${TP_FORMAT_WEIGHT}_tpbbox${TP_BBOX_WEIGHT}_tpseg${TP_SEGMENT_WEIGHT}_klcoef${KL_LOSS_COEF}_resp${MAX_RESPONSE_LENGTH}_filtergroups${ENABLE_FILTER_GROUPS}_cliphi${CLIP_RATIO_HIGH}_0316"
+    EXPERIMENT_NAME="Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1_gdpo_longvtrl_genbs${GEN_BATCH_SIZE}_trainbs${TRAIN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_gdpo-ans${GDPO_ANSWER_WEIGHT}_fmt${GDPO_FORMAT_WEIGHT}_bbox${GDPO_BBOX_WEIGHT}_seg${GDPO_SEGMENT_WEIGHT}_tp-${TOKEN_PLACEMENT_METHOD}_tpans${TP_ANSWER_WEIGHT}_tpfmt${TP_FORMAT_WEIGHT}_tpbbox${TP_BBOX_WEIGHT}_tpseg${TP_SEGMENT_WEIGHT}_klcoef${KL_LOSS_COEF}_resp${MAX_RESPONSE_LENGTH}_filtergroups${ENABLE_FILTER_GROUPS}_bypass${BY_PASS_ROLLOUT_CORRECTION}_cliphi${CLIP_RATIO_HIGH}_topp${TOP_P}_temp${TEMPERATURE}_0318"
+    PROJECT_NAME="video-reasoning-gdpo"
 else
     # GRPO 模式：使用原有命名
-    EXPERIMENT_NAME="Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1_dapo_longvtrl_genbs${GEN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_ans${ANSWER_WEIGHT}_bbox${BBOX_WEIGHT}_fmt${FORMAT_WEIGHT}_seg${SEGMENT_WEIGHT}_strictfmt${USE_STRICT_FORMAT}_klcoef${KL_LOSS_COEF}_resp${MAX_RESPONSE_LENGTH}_filtergroups${ENABLE_FILTER_GROUPS}_bypass${BY_PASS_ROLLOUT_CORRECTION}_cliphi${CLIP_RATIO_HIGH}_topp${TOP_P}_temp${TEMPERATURE}_0312"
+    EXPERIMENT_NAME="Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1_dapo_longvtrl_genbs${GEN_BATCH_SIZE}_trainbs${TRAIN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_ans${ANSWER_WEIGHT}_bbox${BBOX_WEIGHT}_fmt${FORMAT_WEIGHT}_seg${SEGMENT_WEIGHT}_klcoef${KL_LOSS_COEF}_filtergroups${ENABLE_FILTER_GROUPS}_bypass${BY_PASS_ROLLOUT_CORRECTION}_cliphi${CLIP_RATIO_HIGH}_topp${TOP_P}_temp${TEMPERATURE}_0318"
 fi
 
 # 将 reward_logs 和 tensorboard_log 放到 checkpoint 目录下
@@ -365,7 +366,7 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.rollout.top_p=$TOP_P \
     actor_rollout_ref.rollout.temperature=$TEMPERATURE \
     +actor_rollout_ref.rollout.enable_sleep_mode=False \
-    +actor_rollout_ref.rollout.repetition_penalty=1.1 \
+    +actor_rollout_ref.rollout.repetition_penalty=1.0 \
     +actor_rollout_ref.rollout.max_tokens_per_turn=2048 \
     actor_rollout_ref.rollout.n=$N_ROLLOUTS \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
@@ -452,7 +453,6 @@ python3 -m recipe.dapo.main_dapo \
     trainer.val_before_train=$VAL_BEFORE_TRAIN \
     trainer.critic_warmup=0 \
     trainer.resume_mode=$RESUME_MODE \
-    trainer.rollout_data_dir="$ROLLOUT_DATA_DIR" \
     trainer.logger='["console", "tensorboard"]' \
     +ray_kwargs.ray_init.runtime_env.env_vars.TENSORBOARD_DIR="$TENSORBOARD_DIR" \
     "$@" 2>&1 | tee -a "$LOG_FILE"

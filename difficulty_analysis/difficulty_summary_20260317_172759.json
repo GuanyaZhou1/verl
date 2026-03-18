@@ -1,0 +1,27 @@
+{
+  "timestamp": "20260317_172759",
+  "total_questions": 1,
+  "difficulty_distribution": {
+    "easy": 0,
+    "medium": 0,
+    "hard": 1
+  },
+  "statistics": {
+    "overall": {
+      "avg_accuracy": 0.0,
+      "avg_score": 0.0,
+      "all_correct_count": 0,
+      "all_wrong_count": 1,
+      "avg_turns": 2.0
+    },
+    "hard": {
+      "count": 1,
+      "avg_accuracy": 0.0,
+      "avg_score": 0.0,
+      "avg_format_score": 0.0,
+      "avg_bbox_score": 0.0,
+      "avg_segment_score": 0.0,
+      "avg_turns": 2.0
+    }
+  }
+}

@@ -77,11 +77,11 @@ GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-32}                        # DAPO: 生成批次
 MAX_PROMPT_LENGTH=${MAX_PROMPT_LENGTH:-36000}
 MAX_RESPONSE_LENGTH=${MAX_RESPONSE_LENGTH:-8192}
 
-LEARNING_RATE=${LEARNING_RATE:-1e-6}
+LEARNING_RATE=${LEARNING_RATE:-2e-6}
 TOTAL_EPOCHS=${TOTAL_EPOCHS:-3}
 
 N_ROLLOUTS=${N_ROLLOUTS:-8}                             # 每个 prompt 生成的 response 数
-AGENT_NUM_WORKERS=${AGENT_NUM_WORKERS:-16}                      # AgentLoopWorker 数量
+AGENT_NUM_WORKERS=${AGENT_NUM_WORKERS:-4}                      # AgentLoopWorker 数量
 
 N_GPUS=${N_GPUS:-8}
 NNODES=${NNODES:-1}
@@ -90,23 +90,23 @@ NNODES=${NNODES:-1}
 # DAPO 算法参数（支持环境变量覆盖，便于自动化实验）
 # =============================================================================
 ENABLE_FILTER_GROUPS=${ENABLE_FILTER_GROUPS:-false}   # 过滤组内全对/全错的样本
-FILTER_GROUPS_METRIC=${FILTER_GROUPS_METRIC:-score}   # 用总分做组过滤
+FILTER_GROUPS_METRIC=${FILTER_GROUPS_METRIC:-acc}   # 用总分做组过滤
 MAX_NUM_GEN_BATCHES=${MAX_NUM_GEN_BATCHES:-5}         # 最多重采样轮数
 
 CLIP_RATIO_LOW=${CLIP_RATIO_LOW:-0.2}                 # Clip-Higher: 非对称 clip ratio
-CLIP_RATIO_HIGH=${CLIP_RATIO_HIGH:-0.25}              # > low，鼓励正向更新
+CLIP_RATIO_HIGH=${CLIP_RATIO_HIGH:-0.28}              # > low，鼓励正向更新
 
-NORM_ADV_BY_STD=${NORM_ADV_BY_STD:-false}             # 归一化 advantage
+NORM_ADV_BY_STD=${NORM_ADV_BY_STD:-true}             # 归一化 advantage
 
 USE_KL_IN_REWARD=false
-USE_KL_LOSS=true
-KL_LOSS_COEF=${KL_LOSS_COEF:-0.3}                     # KL 约束系数
+USE_KL_LOSS=false
+KL_LOSS_COEF=${KL_LOSS_COEF:-0.0}                     # KL 约束系数
 KL_LOSS_TYPE=low_var_kl
 
 BY_PASS_ROLLOUT_CORRECTION=false
-ENTROPY_COEFF=${ENTROPY_COEFF:-0.0}                   # Entropy 系数
-TOP_P=${TOP_P:-0.7}                                   # Top-p 采样
-TEMPERATURE=${TEMPERATURE:-0.7}                       # 采样温度
+ENTROPY_COEFF=${ENTROPY_COEFF:-0.001}                   # Entropy 系数
+TOP_P=${TOP_P:-1.0}                                   # Top-p 采样
+TEMPERATURE=${TEMPERATURE:-1.0}                       # 采样温度
 
 # =============================================================================
 # GDPO & Token Placement 配置（多轮 CoT 细粒度奖励分配）
@@ -121,9 +121,9 @@ ADV_ESTIMATOR=${ADV_ESTIMATOR:-gdpo}
 # GDPO reward component 权重（仅 adv_estimator=gdpo 时生效）
 # 设为 0 可排除该 component
 GDPO_ANSWER_WEIGHT=${GDPO_ANSWER_WEIGHT:-1.0}         # 答案正确性权重
-GDPO_FORMAT_WEIGHT=${GDPO_FORMAT_WEIGHT:-0.2}         # 格式正确性权重
-GDPO_BBOX_WEIGHT=${GDPO_BBOX_WEIGHT:-0.4}             # BBox 验证权重
-GDPO_SEGMENT_WEIGHT=${GDPO_SEGMENT_WEIGHT:-1.0}       # Segment 定位权重
+GDPO_FORMAT_WEIGHT=${GDPO_FORMAT_WEIGHT:-0.4}         # 格式正确性权重
+GDPO_BBOX_WEIGHT=${GDPO_BBOX_WEIGHT:-0.6}             # BBox 验证权重
+GDPO_SEGMENT_WEIGHT=${GDPO_SEGMENT_WEIGHT:-0.4}       # Segment 定位权重
 GDPO_ENABLE_BATCH_NORM=${GDPO_ENABLE_BATCH_NORM:-true}  # 批次归一化（推荐开启）
 
 # Token Placement 方法（控制奖励如何分配到 token，仅 adv_estimator=gdpo 时生效）
@@ -145,8 +145,8 @@ TP_ENABLE_BATCH_NORM=${TP_ENABLE_BATCH_NORM:-true}
 # Token Placement 各 component 权重（用于组合 advantage）
 TP_ANSWER_WEIGHT=${TP_ANSWER_WEIGHT:-1.0}
 TP_FORMAT_WEIGHT=${TP_FORMAT_WEIGHT:-0.5}
-TP_BBOX_WEIGHT=${TP_BBOX_WEIGHT:-1.0}
-TP_SEGMENT_WEIGHT=${TP_SEGMENT_WEIGHT:-1.0}
+TP_BBOX_WEIGHT=${TP_BBOX_WEIGHT:-0.5}
+TP_SEGMENT_WEIGHT=${TP_SEGMENT_WEIGHT:-0.5}
 
 # GAE 参数（per_turn_gae 或 global_mode=gae 时使用）
 TP_GAMMA=${TP_GAMMA:-0.99}                            # 衰减因子
@@ -161,15 +161,15 @@ USE_CACHED_INITIAL_VIDEO=True            # 使用缓存帧而非原始视频，�
 
 # 初始视频分辨率（低分辨率概览）
 INITIAL_VIDEO_FPS=1
-INITIAL_VIDEO_MAX_FRAMES=512
+INITIAL_VIDEO_MAX_FRAMES=256
 INITIAL_VIDEO_MIN_PIXELS=784             # 28*28
 INITIAL_VIDEO_MAX_PIXELS=12544           # ~112x112
 
 # Segment 视频分辨率（高分辨率细节）
 SEGMENT_VIDEO_FPS=1
-SEGMENT_VIDEO_MAX_FRAMES=32
+SEGMENT_VIDEO_MAX_FRAMES=16
 SEGMENT_VIDEO_MIN_PIXELS=784             # 28*28
-SEGMENT_VIDEO_MAX_PIXELS=50176           # ~224x224
+SEGMENT_VIDEO_MAX_PIXELS=50176           # ~224x224 
 
 # =============================================================================
 # 时间戳水印参数（可选功能）
@@ -192,18 +192,19 @@ VLM_API_KEY="123456"
 USE_VLM_SCORING=true
 USE_BBOX_VERIFICATION=true
 ANSWER_WEIGHT=${ANSWER_WEIGHT:-1.0}
-BBOX_WEIGHT=${BBOX_WEIGHT:-0.3}    # bbox验证权重（降低可减少噪声）
+BBOX_WEIGHT=${BBOX_WEIGHT:-0.5}    # bbox验证权重（降低可减少噪声）
 BBOX_COORD_RANGE=1.0                     # bbox 坐标范围 [0, 1]
 
 # BBox 评分指标选择
-BBOX_METRIC=${BBOX_METRIC:-adaptive_iou}          # "iou" 原始指标, "adaptive_iou" 小目标宽松 (别名 "nwd")
+BBOX_METRIC=${BBOX_METRIC:-iou}          # "iou" 原始指标, "adaptive_iou" 小目标宽松 (别名 "nwd")
 TEMPORAL_TOLERANCE=${TEMPORAL_TOLERANCE:-1}  # 相邻帧容忍度 (0=禁用, 1=±1帧)，对应 Qwen3-VL temporal_patch_size=2
+BBOX_PER_TURN=${BBOX_PER_TURN:-2}  # 每个 think turn 期望输出的 bbox 数量
 
 SAVE_BBOX_VISUALIZATION=true
 BBOX_VIS_SAMPLE_RATE=0.001
 # REWARD_LOG_DIR 在 EXPERIMENT_NAME 后设置
 #EXPERIMENT_NAME="Qwen3_8B_dapo_kl${KL_LOSS_COEF}_bbox${BBOX_WEIGHT}_topp${TOP_P:-1.0}_lr${LEARNING_RATE}_0314_GAE_perturn"
-EXPERIMENT_NAME="Qwen3_8B_dapo_kl0.3_bbox0.3_topp0.7_lr1e-6__0314_GAE_perturn"
+EXPERIMENT_NAME="Qwen3_8B_dapo_kl0.001_bbox0.6_topp1.0_lr2e-6_entropy0.001_0318_GAE_perturn_coverage_0.5_stdtrue_128_16"
 SAVE_SAMPLES=true
 SAVE_EVERY_N=10
 LOG_EVERY_N=10
@@ -297,7 +298,7 @@ echo "Reward:"
 echo "  VLM scoring:   $USE_VLM_SCORING ($VLM_ENDPOINT)"
 echo "  BBox verify:   $USE_BBOX_VERIFICATION"
 echo "  Weights:       answer=$ANSWER_WEIGHT, bbox=$BBOX_WEIGHT"
-echo "  BBox metric:   $BBOX_METRIC (temporal_tolerance=$TEMPORAL_TOLERANCE)"
+echo "  BBox metric:   $BBOX_METRIC (temporal_tolerance=$TEMPORAL_TOLERANCE, bbox_per_turn=$BBOX_PER_TURN)"
 echo "================================="
 echo ""
 
@@ -371,13 +372,12 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.rollout.top_p=$TOP_P \
     actor_rollout_ref.rollout.temperature=$TEMPERATURE \
     +actor_rollout_ref.rollout.enable_sleep_mode=False \
-    +actor_rollout_ref.rollout.repetition_penalty=1.1 \
     +actor_rollout_ref.rollout.max_tokens_per_turn=2048 \
     actor_rollout_ref.rollout.n=$N_ROLLOUTS \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.max_model_len=128000 \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=1 \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=2 \
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=True \
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=104768 \
     actor_rollout_ref.rollout.calculate_log_probs=true \
@@ -406,7 +406,7 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.rollout.multi_turn.watermark_config.ratio=$WATERMARK_RATIO \
     actor_rollout_ref.rollout.agent.default_agent_loop=video_reasoning \
     actor_rollout_ref.rollout.agent.num_workers=$AGENT_NUM_WORKERS \
-    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1 \
+    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=2 \
     actor_rollout_ref.ref.log_prob_use_dynamic_bsz=True \
     actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=104768 \
     actor_rollout_ref.ref.ulysses_sequence_parallel_size=4 \
@@ -449,6 +449,7 @@ python3 -m recipe.dapo.main_dapo \
     custom_reward_function.reward_kwargs.bbox_coord_range=$BBOX_COORD_RANGE \
     +custom_reward_function.reward_kwargs.bbox_metric=$BBOX_METRIC \
     +custom_reward_function.reward_kwargs.temporal_tolerance=$TEMPORAL_TOLERANCE \
+    +custom_reward_function.reward_kwargs.bbox_per_turn=$BBOX_PER_TURN \
     custom_reward_function.reward_kwargs.cache_dir="$CACHE_DIR" \
     custom_reward_function.reward_kwargs.cache_fps=$CACHE_FPS \
     custom_reward_function.reward_kwargs.cache_max_frames=$CACHE_MAX_FRAMES \
@@ -472,7 +473,7 @@ python3 -m recipe.dapo.main_dapo \
     trainer.logger='["console", "tensorboard"]' \
     +ray_kwargs.ray_init.runtime_env.env_vars.TENSORBOARD_DIR="$TENSORBOARD_DIR" \
     "$@" 2>&1 | tee -a "$LOG_FILE"
-
+#     +actor_rollout_ref.rollout.repetition_penalty=1.1 \
 # trainer.resume_from_path=/data_gpu/songlin/rl/verl/checkpoints/video-reasoning-grpo/video_reasoning_grpo_20260131-085501/global_step_200
 
 echo ""

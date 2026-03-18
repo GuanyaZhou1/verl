@@ -883,6 +883,29 @@ class AgentLoopWorker:
         image_grid_thw = multi_modal_inputs.get("image_grid_thw")
         video_grid_thw = multi_modal_inputs.get("video_grid_thw")
 
+        # Fix: Ensure vision start tokens are not at the very end of the sequence.
+        # Qwen3-VL's get_rope_index expects at least one token after each vision start marker.
+        # If a vision start token is at the last position, replace it with pad token.
+        input_ids = input_ids.clone()  # avoid in-place modification
+        seq_len = input_ids.shape[1]
+        if seq_len > 0:
+            # Get vision start token id (Qwen2-VL/Qwen3-VL uses 151652 for <|vision_start|>)
+            vision_start_token_id = getattr(self.processor, "vision_start_token_id", None)
+            if vision_start_token_id is None:
+                # Fallback: try to get from tokenizer
+                vision_start_token = "<|vision_start|>"
+                vision_start_token_id = self.tokenizer.convert_tokens_to_ids(vision_start_token)
+
+            pad_token_id = getattr(self.tokenizer, "pad_token_id", 0) or 0
+
+            # Check if the last token is a vision start token
+            if input_ids[0, -1].item() == vision_start_token_id:
+                logger.warning(
+                    f"Vision start token found at last position (seq_len={seq_len}), "
+                    f"replacing with pad token to prevent get_rope_index IndexError."
+                )
+                input_ids[0, -1] = pad_token_id
+
         # Model's get_rope_index has been dynamically bind to the processor.
         vision_position_ids, _ = self.processor.get_rope_index(
             input_ids=input_ids,
@@ -1012,6 +1035,10 @@ class AgentLoopWorker:
             temp_arr = np.empty(len(inputs), dtype=object)
             temp_arr[:] = [input.extra_fields.get(key) for input in inputs]
             extra_fields[key] = temp_arr
+
+        # Ensure __skip_sample__ is always present for consistent concat across workers
+        if "__skip_sample__" not in extra_fields:
+            extra_fields["__skip_sample__"] = np.array([False] * len(inputs), dtype=object)
 
         non_tensor_batch.update(extra_fields)
 

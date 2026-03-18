@@ -90,6 +90,9 @@ class DAPORewardManager(AbstractRewardManager):
 
             extra_info = data_item.non_tensor_batch.get("extra_info", {})
 
+            # 保存原始输入文本信息到 extra_info，用于 reward_logs 保存
+            extra_info["prompt_str"] = prompt_str
+
             rollout_reward_scores = data_item.non_tensor_batch.get("reward_scores", {})
 
             extra_info["rollout_reward_scores"] = rollout_reward_scores

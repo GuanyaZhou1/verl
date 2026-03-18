@@ -40,6 +40,66 @@ DEFAULT_BBOX_WEIGHT = 0.3            # bbox 分数权重
 DEFAULT_VLM_WEIGHT = 0.3             # VLM 打分权重
 DEFAULT_FORMAT_WEIGHT = 0.0          # 格式分数权重 (0 = 不使用, 设为正值启用)
 DEFAULT_SEGMENT_WEIGHT = 0.0         # segment 分数权重 (0 = 不使用, 设为正值启用)
+DEFAULT_MIN_COVERAGE_FACTOR = 0.5    # coverage 惩罚下限 (0.5 = 不输出bbox时保留50%分数, 1.0 = 无惩罚) [已废弃，保留兼容]
+DEFAULT_BBOX_PER_TURN = 2            # 每个 think turn 期望输出的 bbox 数量（用于计算期望总数）
+
+# VLM 重试配置
+DEFAULT_VLM_MAX_RETRIES = 3          # VLM 调用最大重试次数
+DEFAULT_VLM_RETRY_DELAY = 1.0        # 初始重试延迟（秒）
+DEFAULT_VLM_BACKOFF_FACTOR = 2.0     # 指数退避因子
+
+
+# ============== VLM 重试辅助函数 ==============
+
+async def _call_vlm_with_retry(
+    url: str,
+    payload: dict,
+    headers: dict,
+    timeout: aiohttp.ClientTimeout,
+    max_retries: int = DEFAULT_VLM_MAX_RETRIES,
+    retry_delay: float = DEFAULT_VLM_RETRY_DELAY,
+    backoff_factor: float = DEFAULT_VLM_BACKOFF_FACTOR,
+) -> Tuple[Optional[dict], Optional[str]]:
+    """
+    带重试的 VLM 调用
+
+    Args:
+        url: VLM API URL
+        payload: 请求 payload
+        headers: 请求 headers
+        timeout: aiohttp 超时配置
+        max_retries: 最大重试次数
+        retry_delay: 初始重试延迟（秒）
+        backoff_factor: 指数退避因子
+
+    Returns:
+        (response_json, error_message) - 成功时 error_message 为 None
+    """
+    logger = logging.getLogger("video_reward")
+    last_error = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(url, json=payload, headers=headers) as resp:
+                    if resp.status == 200:
+                        return await resp.json(), None
+                    elif resp.status in (429, 503, 502, 504):  # 可重试的 HTTP 错误
+                        last_error = f"HTTP {resp.status}"
+                    else:
+                        error_text = await resp.text()
+                        # 非可重试错误，直接返回
+                        return None, f"HTTP error {resp.status}: {error_text[:100]}"
+        except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as e:
+            last_error = str(e)
+
+        # 如果还有重试机会，等待后重试
+        if attempt < max_retries:
+            delay = retry_delay * (backoff_factor ** attempt)
+            logger.debug(f"VLM call failed (attempt {attempt+1}/{max_retries+1}), retrying in {delay:.1f}s: {last_error}")
+            await asyncio.sleep(delay)
+
+    return None, f"Error after {max_retries+1} attempts: {last_error}"
 
 
 # ============== 日志和样本保存 ==============
@@ -240,6 +300,40 @@ def extract_bboxes(text: str, include_positions: bool = False) -> List[Dict[str,
             except ValueError:
                 continue
     return bboxes
+
+
+def count_partial_bbox_attempts(text: str) -> int:
+    """
+    统计模型输出中的"部分 bbox"尝试次数
+
+    部分 bbox = <obj>name</obj>at<t>time</t>，缺少 <box>[coords]</box>
+
+    这用于检测模型是否在"作弊"：输出 obj 和 time 但跳过 box
+
+    Returns:
+        不完整 bbox 的数量 (有 <obj> 和 at<t> 但没有 <box>)
+    """
+    # 匹配完整的 bbox 模式
+    full_pattern = r'<obj>(.*?)</obj><box>\[([\d.,\s]+)\]</box>at<t>([\d.]+)</t>'
+    full_matches = set(re.findall(full_pattern, text, re.IGNORECASE))
+
+    # 匹配部分模式: <obj>...</obj>at<t>...</t> (中间没有 <box>)
+    # 注意：这个模式会匹配完整的和不完整的，我们需要排除完整的
+    partial_pattern = r'<obj>(.*?)</obj>at<t>([\d.]+)</t>'
+    partial_matches = re.findall(partial_pattern, text, re.IGNORECASE)
+
+    # 统计部分匹配中有多少是真正不完整的（没有 box）
+    incomplete_count = 0
+    for obj_name, time_str in partial_matches:
+        # 检查是否存在完整匹配
+        is_complete = any(
+            obj_name.strip() == full_obj.strip() and time_str == full_time
+            for full_obj, _, full_time in full_matches
+        )
+        if not is_complete:
+            incomplete_count += 1
+
+    return incomplete_count
 
 
 # ============== 帧加载和绘制 ==============
@@ -559,6 +653,9 @@ async def get_gt_bbox_from_vlm(
     vlm_endpoint: str,
     vlm_model_name: str,
     vlm_api_key: str = "",
+    max_retries: int = DEFAULT_VLM_MAX_RETRIES,
+    retry_delay: float = DEFAULT_VLM_RETRY_DELAY,
+    backoff_factor: float = DEFAULT_VLM_BACKOFF_FACTOR,
 ) -> Tuple[Optional[List[float]], str]:
     """
     调用 VLM 获取 GT bbox（使用 <reasoning>/<bbox> 格式，[0,1000] 坐标范围）
@@ -570,6 +667,9 @@ async def get_gt_bbox_from_vlm(
         vlm_endpoint: VLM 服务地址
         vlm_model_name: VLM 模型名称
         vlm_api_key: VLM API Key
+        max_retries: 最大重试次数
+        retry_delay: 初始重试延迟（秒）
+        backoff_factor: 指数退避因子
 
     Returns:
         (gt_bbox, raw_response): GT bbox [x1,y1,x2,y2] 归一化到 [0,1]，以及原始响应
@@ -605,33 +705,41 @@ async def get_gt_bbox_from_vlm(
             headers["Authorization"] = f"Bearer {vlm_api_key}"
 
         timeout = aiohttp.ClientTimeout(total=120)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            url = f"http://{vlm_endpoint}/v1/chat/completions"
-            async with session.post(url, json=payload, headers=headers) as resp:
-                if resp.status == 200:
-                    result = await resp.json()
-                    response_text = result["choices"][0]["message"]["content"].strip()
+        url = f"http://{vlm_endpoint}/v1/chat/completions"
 
-                    # 使用多层解析器解析响应
-                    gt_bbox = _parse_vlm_bbox_response(response_text)
+        # 使用带重试的 VLM 调用
+        result, error = await _call_vlm_with_retry(
+            url=url,
+            payload=payload,
+            headers=headers,
+            timeout=timeout,
+            max_retries=max_retries,
+            retry_delay=retry_delay,
+            backoff_factor=backoff_factor,
+        )
 
-                    if gt_bbox is not None:
-                        # VLM 输出是 [0,1000] 范围，归一化到 [0,1]
-                        gt_bbox = [c / 1000.0 for c in gt_bbox]
-                        # 裁剪到 [0,1]
-                        gt_bbox = [min(1.0, max(0.0, c)) for c in gt_bbox]
-                        # 验证有效性
-                        if gt_bbox[0] < gt_bbox[2] and gt_bbox[1] < gt_bbox[3]:
-                            return gt_bbox, response_text
-                        else:
-                            logger.debug(f"Invalid GT bbox after normalization: {gt_bbox}")
-                            return None, response_text
+        if error:
+            logger.warning(f"VLM detect failed: {error}")
+            return None, error
 
-                    return None, response_text
-                else:
-                    error_text = await resp.text()
-                    logger.warning(f"VLM detect HTTP error {resp.status}: {error_text[:100]}")
-                    return None, f"HTTP error {resp.status}"
+        response_text = result["choices"][0]["message"]["content"].strip()
+
+        # 使用多层解析器解析响应
+        gt_bbox = _parse_vlm_bbox_response(response_text)
+
+        if gt_bbox is not None:
+            # VLM 输出是 [0,1000] 范围，归一化到 [0,1]
+            gt_bbox = [c / 1000.0 for c in gt_bbox]
+            # 裁剪到 [0,1]
+            gt_bbox = [min(1.0, max(0.0, c)) for c in gt_bbox]
+            # 验证有效性
+            if gt_bbox[0] < gt_bbox[2] and gt_bbox[1] < gt_bbox[3]:
+                return gt_bbox, response_text
+            else:
+                logger.debug(f"Invalid GT bbox after normalization: {gt_bbox}")
+                return None, response_text
+
+        return None, response_text
 
     except Exception as e:
         logger.warning(f"VLM detect exception: {str(e)}")
@@ -1205,6 +1313,9 @@ async def score_answer_with_vlm(
     vlm_endpoint: str,
     vlm_model_name: str,
     vlm_api_key: str = "",
+    max_retries: int = DEFAULT_VLM_MAX_RETRIES,
+    retry_delay: float = DEFAULT_VLM_RETRY_DELAY,
+    backoff_factor: float = DEFAULT_VLM_BACKOFF_FACTOR,
 ) -> Tuple[float, str]:
     """
     使用 VLM 判断答案是否正确（二元分类：正确=1.0，错误=0.0）
@@ -1230,26 +1341,35 @@ async def score_answer_with_vlm(
 
     try:
         timeout = aiohttp.ClientTimeout(total=60)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            url = f"http://{vlm_endpoint}/v1/chat/completions"
-            async with session.post(url, json=payload, headers=headers) as resp:
-                if resp.status == 200:
-                    result = await resp.json()
-                    response_text = result["choices"][0]["message"]["content"]
+        url = f"http://{vlm_endpoint}/v1/chat/completions"
 
-                    score_match = re.search(r'(\d+(?:\.\d+)?)', response_text)
-                    if score_match:
-                        raw_score = float(score_match.group(1))
-                        # 二元分类：>=5 视为正确(1.0)，<5 视为错误(0.0)
-                        score = 1.0 if raw_score >= 5 else 0.0
-                        logger.debug(f"VLM answer score: {score:.0f} (raw={raw_score}), response: {response_text[:50]}")
-                        return score, response_text
-                    # 解析失败返回 0（错误）
-                    return 0.0, response_text
-                else:
-                    error_text = await resp.text()
-                    logger.warning(f"VLM score HTTP error {resp.status}: {error_text[:100]}")
-                    return 0.0, f"HTTP error {resp.status}: {error_text[:200]}"
+        # 使用带重试的 VLM 调用
+        result, error = await _call_vlm_with_retry(
+            url=url,
+            payload=payload,
+            headers=headers,
+            timeout=timeout,
+            max_retries=max_retries,
+            retry_delay=retry_delay,
+            backoff_factor=backoff_factor,
+        )
+
+        if error:
+            logger.warning(f"VLM score failed: {error}")
+            return 0.0, error
+
+        response_text = result["choices"][0]["message"]["content"]
+
+        score_match = re.search(r'(\d+(?:\.\d+)?)', response_text)
+        if score_match:
+            raw_score = float(score_match.group(1))
+            # 二元分类：>=5 视为正确(1.0)，<5 视为错误(0.0)
+            score = 1.0 if raw_score >= 5 else 0.0
+            logger.debug(f"VLM answer score: {score:.0f} (raw={raw_score}), response: {response_text[:50]}")
+            return score, response_text
+        # 解析失败返回 0（错误）
+        return 0.0, response_text
+
     except Exception as e:
         logger.warning(f"VLM score exception: {str(e)}")
         return 0.0, f"Error: {str(e)}"
@@ -1699,6 +1819,10 @@ async def compute_score(
     # BBox metric selection
     bbox_metric: str = DEFAULT_BBOX_METRIC,          # "iou" 原始指标，"adaptive_iou" 小目标宽松 (别名 "nwd")
     temporal_tolerance: int = DEFAULT_TEMPORAL_TOLERANCE,  # 相邻帧容忍度 (0=禁用, 1=±1帧)
+    # BBox 期望数量参数
+    bbox_per_turn: int = DEFAULT_BBOX_PER_TURN,      # 每个 think turn 期望输出的 bbox 数量
+    # Coverage 惩罚参数 (GRPO) [已废弃，保留兼容]
+    min_coverage_factor: float = DEFAULT_MIN_COVERAGE_FACTOR,  # 不输出bbox时保留的最低分数比例 (已废弃)
     # 日志相关参数
     enable_logging: bool = True,
     save_samples: bool = True,
@@ -1788,13 +1912,26 @@ async def compute_score(
     current_count = _reward_stats[stats_key]["total_calls"] + 1  # 预测下一个计数
     should_save_sample = save_samples and (current_count % save_every_n == 0)
 
-    # 5. BBox 验证分数 (VLM, 异步) - 直接用 IOU 作为 bbox_score
+    # 5. BBox 验证分数 (VLM, 异步)
+    # bbox_score 融合了质量和数量：未输出或格式错误的 bbox 视为 0 分参与平均
     bbox_score = 0.0
-    bbox_temporal_score = 0.0
-    bbox_spatial_score = 0.0
-    bbox_coverage = 1.0  # 覆盖率，默认为 1.0
     bbox_details = []
     bbox_verified = False
+    bbox_coverage = 1.0  # 保留用于日志，但不再用于惩罚 answer_score
+
+    # 计算期望的 bbox 数量
+    # 期望数 = max(基于 think turn 的期望, 模型尝试输出的数量)
+    num_think_turns = turn_counts.get("think", 0)
+    base_expected = max(num_think_turns - 1, 0) * bbox_per_turn  # 每个 turn 期望 bbox_per_turn 个
+
+    # 统计模型尝试输出的 bbox 数量（包括完整和不完整的）
+    complete_bbox_count = len(bboxes)  # 完整格式的 bbox
+    partial_bbox_count = count_partial_bbox_attempts(solution_str)  # 不完整格式（<obj>at<t> 缺少 <box>）
+    total_attempts = complete_bbox_count + partial_bbox_count
+
+    # 期望数量 = max(基于 turn 的期望, 模型尝试的数量)
+    # 这样可以惩罚"作弊"行为：输出很多 <obj>at<t> 但没有 <box>
+    expected_bbox_count = max(base_expected, total_attempts)
 
     if use_bbox_verification and vlm_endpoint and bboxes and video_path:
         # 如果这个样本会被保存到 JSONL，则保存所有 bbox 的可视化 (sample_rate=1.0)
@@ -1802,7 +1939,7 @@ async def compute_score(
         effective_save_vis = save_bbox_visualization and should_save_sample
         effective_sample_rate = 1.0 if should_save_sample else bbox_vis_sample_rate
 
-        bbox_score, bbox_temporal_score, bbox_spatial_score, bbox_details = await verify_bboxes_with_vlm(
+        raw_bbox_score, _, _, bbox_details = await verify_bboxes_with_vlm(
             bboxes=bboxes,
             video_path=video_path,
             solution_str=solution_str,
@@ -1824,13 +1961,28 @@ async def compute_score(
         )
         bbox_verified = len(bbox_details) > 0
 
-        # 覆盖率惩罚：期望每个 think turn 至少输出一个 bbox
-        # bbox 是在 <think> 中输出的，所以用 think 数量作为期望值
-        num_think_turns = turn_counts.get("think", 0)
-        expected_bbox_count = max(num_think_turns, 1)  # 至少期望 1 个
-        actual_bbox_count = len(bbox_details)
-        bbox_coverage = min(actual_bbox_count / expected_bbox_count, 1.0)
-        bbox_score = bbox_score * bbox_coverage
+        # 计算融合了数量惩罚的 bbox_score
+        # 每个验证通过的 bbox 的分数 + 未输出/格式错误的 bbox 视为 0 分
+        if expected_bbox_count > 0:
+            # 获取每个 bbox 的 total_score
+            actual_scores = [d.get("total_score", 0.0) for d in bbox_details]
+            # 补零：未输出或格式错误的 bbox 视为 0 分
+            num_missing = expected_bbox_count - len(actual_scores)
+            if num_missing > 0:
+                actual_scores.extend([0.0] * num_missing)
+            # 平均分数
+            bbox_score = sum(actual_scores) / expected_bbox_count
+            # 计算 coverage 用于日志
+            bbox_coverage = min(len(bbox_details) / expected_bbox_count, 1.0)
+        else:
+            # 不期望输出 bbox
+            bbox_score = 0.0
+            bbox_coverage = 1.0
+    elif expected_bbox_count > 0:
+        # 期望输出 bbox 但没有启用验证，或没有输出任何完整 bbox
+        # 所有期望的 bbox 都视为 0 分
+        bbox_score = 0.0
+        bbox_coverage = 0.0
 
     # 6. 答案正确性评分
     # 优先使用 VLM 判断（支持开放题和选择题）
@@ -1865,6 +2017,7 @@ async def compute_score(
         segment_score, segment_iou, segment_iop, segment_iog = compute_segment_score(all_segments, gt_segments)
 
     # 7. 计算最终分数
+    # bbox_score 已经融合了数量惩罚（未输出的 bbox 视为 0 分），不再需要 coverage_factor
     if use_bbox_verification:
         # 答案分数 + BBox 分数 + 格式分数 + Segment 分数
         final_score = (answer_weight * answer_score + bbox_weight * bbox_score +
@@ -1917,10 +2070,14 @@ async def compute_score(
 
     # 保存样本 (使用预先计算的 should_save_sample，确保与可视化保存同步)
     if should_save_sample:
+        # 获取原始输入文本 (prompt_str)
+        prompt_str = extra_info.get("prompt_str", "")
+
         sample_data = {
             "video_id": video_id,
             "video_path": video_path,
             "question": question[:500] if question else "",
+            "input_text": prompt_str,  # 原始输入的完整文本
             "ground_truth": ground_truth,
             "predicted_answer": predicted_answer,
             "answer_correct": answer_score == 1.0,  # 二元分类
@@ -1948,9 +2105,10 @@ async def compute_score(
                 "segment_iou": segment_iou,
                 "segment_iop": segment_iop,
                 "segment_iog": segment_iog,
-                "bbox_temporal_score": bbox_temporal_score,
-                "bbox_spatial_score": bbox_spatial_score,
                 "bbox_coverage": bbox_coverage,
+                "expected_bbox_count": expected_bbox_count,
+                "actual_bbox_count": len(bbox_details),
+                "partial_bbox_count": partial_bbox_count,
                 "final_score": final_score,
             },
             "vlm_explanation": vlm_explanation[:200] if vlm_explanation else "",
@@ -2029,11 +2187,10 @@ async def compute_score(
         # 各组件的原始分数 (用于 TensorBoard 分析和 GDPO)
         "answer_score": answer_score,
         "format_score": format_score,
-        "bbox_score": bbox_score,
-        "segment_score": segment_score,  # 用于 GDPO 独立归一化
-        "bbox_temporal_score": bbox_temporal_score,
-        "bbox_spatial_score": bbox_spatial_score,
-        "bbox_coverage": bbox_coverage,  # 覆盖率：实际bbox数/期望bbox数
+        "bbox_score": bbox_score,  # 已融合数量惩罚：未输出的 bbox 视为 0 分参与平均
+        "segment_score": segment_score,
+        # 日志信息（不参与 GDPO 计算）
+        "bbox_coverage": bbox_coverage,  # 覆盖率：实际bbox数/期望bbox数 (仅用于日志)
         # Token placement 详细信息
         "bbox_details": bbox_details,  # 每个 bbox 的详细信息 (含 score, char_pos, turn_idx)
         "segment_details": segment_details,  # 每轮的 segment 信息 (含 score)

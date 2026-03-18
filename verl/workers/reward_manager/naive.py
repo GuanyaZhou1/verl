@@ -81,6 +81,8 @@ class NaiveRewardManager(AbstractRewardManager):
             rollout_reward_scores = data_item.non_tensor_batch.get("reward_scores", {})
             extra_info["num_turns"] = num_turns
             extra_info["rollout_reward_scores"] = rollout_reward_scores
+            # 保存原始输入文本信息到 extra_info，用于 reward_logs 保存
+            extra_info["prompt_str"] = prompt_str
 
             score = self.compute_score(
                 data_source=data_source,

@@ -73,9 +73,10 @@ INPUT_JSON="$LONGVIDEO_REASON_JSON"
 # 视频文件目录
 VIDEO_BASE_PATH="$LONGVIDEO_REASON_DIR"
 # 输出目录 (根据 prompt 版本调整)
+# 注意：这里强制覆盖 env.sh 中的设置，确保 singleturn 数据保存到正确目录
 if [ "$PROMPT_VERSION" = "singleturn" ]; then
     OUTPUT_DIR="./long_video_data_singleturn/longvideo_reason"
-    VIDEOR1_OUTPUT_DIR="${VIDEOR1_OUTPUT_DIR:-./long_video_data_singleturn/videor1}"
+    VIDEOR1_OUTPUT_DIR="./long_video_data_singleturn/videor1"
 else
     OUTPUT_DIR="./long_video_data/longvideo_reason"
     VIDEOR1_OUTPUT_DIR="${VIDEOR1_OUTPUT_DIR:-./long_video_data/videor1}"
