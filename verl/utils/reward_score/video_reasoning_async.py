@@ -336,6 +336,79 @@ def count_partial_bbox_attempts(text: str) -> int:
     return incomplete_count
 
 
+def replace_bboxes_with_gt(
+    solution_str: str,
+    bbox_details: List[Dict],
+    bbox_coord_range: float = 1000.0,
+) -> str:
+    """
+    用 VLM 返回的 GT bbox 替换模型预测的 bbox，同时修正时间戳（如果在相邻帧找到）
+
+    用于 Corrected Rollout SFT：当 answer_score=1（答案正确）时，用 GT bbox 替换模型预测的 bbox，
+    然后对替换后的文本计算 SFT loss，引导模型学习正确的 bbox 格式和位置。
+
+    Args:
+        solution_str: 模型输出的完整文本
+        bbox_details: VLM 验证返回的 bbox 详细信息列表，每个元素包含：
+            - bbox_info: dict with keys 'object', 'bbox', 'time', 'char_pos', 'turn_idx'
+            - gt_bbox: list [x1, y1, x2, y2] in [0,1] range, or None if object not found
+            - corrected_time: float, 修正后的时间戳（如果在相邻帧找到），或 None
+        bbox_coord_range: bbox 坐标范围 (1000 = [0,1000], 1 = [0,1])
+
+    Returns:
+        替换后的文本。如果 gt_bbox=None（物体不存在），则将该 bbox 标记退化为普通文本。
+    """
+    if not bbox_details:
+        return solution_str
+
+    result = solution_str
+
+    # 从后往前替换，避免位置偏移影响
+    # 按 char_pos 降序排序
+    sorted_details = sorted(
+        bbox_details,
+        key=lambda x: x.get('bbox_info', {}).get('char_pos', 0),
+        reverse=True
+    )
+
+    for detail in sorted_details:
+        bbox_info = detail.get('bbox_info', {})
+        gt_bbox = detail.get('gt_bbox')
+        corrected_time = detail.get('corrected_time')  # 修正后的时间戳
+
+        obj_name = bbox_info.get('object', '')
+        time_val = bbox_info.get('time', 0)
+
+        if not obj_name:
+            continue
+
+        # 构建精确匹配的正则表达式
+        # 原始格式: <obj>object_name</obj><box>[x1,y1,x2,y2]</box>at<t>time</t>
+        obj_escaped = re.escape(obj_name)
+        # 时间可能是整数或浮点数，匹配两种情况
+        time_pattern = str(int(time_val)) if time_val == int(time_val) else str(time_val)
+        pattern = rf'<obj>{obj_escaped}</obj><box>\[[^\]]+\]</box>at<t>{re.escape(time_pattern)}</t>'
+
+        # 确定输出的时间戳：优先使用修正后的时间，否则用原始时间
+        output_time = corrected_time if corrected_time is not None else time_val
+        output_time_str = str(int(output_time)) if output_time == int(output_time) else str(output_time)
+
+        if gt_bbox is not None:
+            # 有 GT bbox，用 GT 坐标替换，同时可能修正时间戳
+            # gt_bbox 是 [0,1] 范围，需要转换到 bbox_coord_range 范围
+            scaled = [int(c * bbox_coord_range) for c in gt_bbox]
+            replacement = f'<obj>{obj_name}</obj><box>[{scaled[0]},{scaled[1]},{scaled[2]},{scaled[3]}]</box>at<t>{output_time_str}</t>'
+        else:
+            # 物体不存在，退化为普通文本描述
+            replacement = f'the {obj_name} at {output_time_str}s'
+
+        # 转义 replacement 中的反斜杠，避免 re.sub 把它当作转义序列
+        replacement = replacement.replace('\\', '\\\\')
+        result = re.sub(pattern, replacement, result, count=1)
+
+    return result
+
+
 # ============== 帧加载和绘制 ==============
 
 def get_frame_path_for_timestamp(
@@ -1148,14 +1221,23 @@ async def verify_single_bbox_with_vlm(
         else:
             saved_vis_path = None
 
+        # 提取 corrected_time（如果在相邻帧找到）
+        corrected_time = None
+        if best_frame_info.startswith("neighbor@"):
+            # 格式: "neighbor@{ts}s"
+            try:
+                corrected_time = float(best_frame_info.split("@")[1].rstrip("s"))
+            except (IndexError, ValueError):
+                pass
+
         explanation = f"metric={bbox_metric}, score={similarity:.2f} ({best_frame_info}), temporal={temporal_score:.1f}, gt_bbox={best_gt_bbox}, vlm_response={raw_response[:100]}"
         logger.debug(f"BBox verify: obj={object_name}, pred={bbox}, {explanation}")
 
-        return total_score, temporal_score, spatial_score, best_gt_bbox, explanation, vlm_prompt, raw_response, saved_vis_path
+        return total_score, temporal_score, spatial_score, best_gt_bbox, corrected_time, explanation, vlm_prompt, raw_response, saved_vis_path
 
     except Exception as e:
         logger.warning(f"BBox verify exception: {str(e)}")
-        return 0.0, 0.0, 0.0, None, f"Error: {str(e)}", vlm_prompt, "", None
+        return 0.0, 0.0, 0.0, None, None, f"Error: {str(e)}", vlm_prompt, "", None
 
 
 async def verify_bboxes_with_vlm(
@@ -1264,9 +1346,9 @@ async def verify_bboxes_with_vlm(
             bbox_info = bboxes[idx]
             if isinstance(result, Exception):
                 total_score, temporal_score, spatial_score = 0.0, 0.0, 0.0
-                gt_bbox, explanation, vlm_prompt, vlm_response, vis_path = None, str(result), "", "", None
+                gt_bbox, corrected_time, explanation, vlm_prompt, vlm_response, vis_path = None, None, str(result), "", "", None
             else:
-                total_score, temporal_score, spatial_score, gt_bbox, explanation, vlm_prompt, vlm_response, vis_path = result
+                total_score, temporal_score, spatial_score, gt_bbox, corrected_time, explanation, vlm_prompt, vlm_response, vis_path = result
 
             total_scores.append(total_score)
             temporal_scores.append(temporal_score)
@@ -1277,6 +1359,7 @@ async def verify_bboxes_with_vlm(
                 "temporal_score": temporal_score,
                 "spatial_score": spatial_score,
                 "gt_bbox": gt_bbox,
+                "corrected_time": corrected_time,  # 如果在相邻帧找到，返回修正后的时间
                 "explanation": explanation[:200] if explanation else "",
                 "vlm_prompt": vlm_prompt,
                 "vlm_response": vlm_response,
@@ -1877,6 +1960,7 @@ async def compute_score(
 
     start_time = time.time()
 
+    # breakpoint()
     extra_info = extra_info or {}
     video_path = extra_info.get("video_path", "")
     question = extra_info.get("question", "")
@@ -2180,6 +2264,19 @@ async def compute_score(
         bd["char_pos"] = bbox_info.get("char_pos", -1)
         bd["turn_idx"] = bbox_info.get("turn_idx", -1)
 
+    # 计算 corrected_solution_str (用于 Corrected Rollout SFT)
+    # 只有答案正确且有 bbox_details 时才生成
+    # 使用带 special tokens 的原始文本（保留视频 token），如果没有则 fallback 到 solution_str
+    corrected_solution_str = None
+    if answer_score == 1.0 and bbox_details:
+        # 优先使用带 special tokens 的版本（包含视频 token）
+        solution_str_for_sft = extra_info.get("response_str_with_tokens", solution_str) if extra_info else solution_str
+        corrected_solution_str = replace_bboxes_with_gt(
+            solution_str=solution_str_for_sft,
+            bbox_details=bbox_details,
+            bbox_coord_range=bbox_coord_range,
+        )
+
     return {
         "score": final_score,
         "acc": answer_score == 1.0,  # 二元分类：答案正确为 True
@@ -2194,4 +2291,6 @@ async def compute_score(
         # Token placement 详细信息
         "bbox_details": bbox_details,  # 每个 bbox 的详细信息 (含 score, char_pos, turn_idx)
         "segment_details": segment_details,  # 每轮的 segment 信息 (含 score)
+        # Corrected Rollout SFT
+        "corrected_solution_str": corrected_solution_str,  # 用 GT bbox 替换后的文本 (仅当答案正确时)
     }

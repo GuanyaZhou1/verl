@@ -136,9 +136,13 @@ if [ "$NODE_ROLE" = "head" ]; then
     unset ROCR_VISIBLE_DEVICES
     unset HIP_VISIBLE_DEVICES
 
-    echo "[$(hostname)] Starting Ray head..."
+    echo "[$(hostname)] Cleaning up old processes..."
     ray stop --force 2>/dev/null || true
-    sleep 2
+    pkill -9 -f "ray::" 2>/dev/null || true
+    pkill -9 -f "raylet" 2>/dev/null || true
+    sleep 3
+
+    echo "[$(hostname)] Starting Ray head..."
     ray start --head --port=$RAY_PORT --num-gpus=$GPUS --disable-usage-stats --node-ip-address=$HEAD_IP
 
     echo "[$(hostname)] Waiting for cluster ($NNODES nodes, $((NNODES * GPUS)) GPUs)..."
@@ -194,7 +198,9 @@ else
 
     echo "[$(hostname)] Starting Ray worker, connecting to $HEAD_IP:$RAY_PORT..."
     ray stop --force 2>/dev/null || true
-    sleep 2
+    pkill -9 -f "ray::" 2>/dev/null || true
+    pkill -9 -f "raylet" 2>/dev/null || true
+    sleep 3
     # 等待 head 启动
     sleep 10
     ray start --address=$HEAD_IP:$RAY_PORT --num-gpus=$GPUS --disable-usage-stats

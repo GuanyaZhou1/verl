@@ -184,7 +184,7 @@ if [ "$NODE_ROLE" = "head" ]; then
     HYDRA_ENV_ARGS="$HYDRA_ENV_ARGS +ray_kwargs.ray_init.runtime_env.env_vars.NCCL_CUMEM_ENABLE=0"
     HYDRA_ENV_ARGS="$HYDRA_ENV_ARGS +ray_kwargs.ray_init.runtime_env.env_vars.TMPDIR=/tmp"
 
-    bash examples/video_reasoning/run_video_reasoning_dapo_h200_zsr_gdpo.sh $HYDRA_ENV_ARGS $EXTRA_ARGS
+    bash examples/video_reasoning/run_video_reasoning_dapo_h200_zsr_singleturn.sh $HYDRA_ENV_ARGS $EXTRA_ARGS
 
     echo "[$(hostname)] Training complete!"
 else

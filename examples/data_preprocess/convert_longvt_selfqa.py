@@ -27,6 +27,7 @@ import cv2
 sys.path.insert(0, str(Path(__file__).parent.parent / "video_reasoning"))
 from prompts import get_prompts, MULTITURN_SYSTEM_PROMPT as DEFAULT_SYSTEM_PROMPT
 from prompts import OUTPUT_TEMPLATE_OPENENDED as DEFAULT_OUTPUT_TEMPLATE_OPENENDED
+from prompts import get_singleturn_output_template
 
 
 def get_video_duration(video_path: str) -> float:
@@ -46,8 +47,9 @@ def get_video_duration(video_path: str) -> float:
 
 
 # Global prompt variables (will be set from args or defaults)
-MULTITURN_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT
+SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT
 OUTPUT_TEMPLATE_OPENENDED = DEFAULT_OUTPUT_TEMPLATE_OPENENDED
+PROMPT_VERSION = "default"  # Will be set from args
 
 
 def parse_args():
@@ -131,7 +133,8 @@ def extract_video_filename(videos_field: List[Dict]) -> str:
 
 def create_prompt_messages(
     question: str,
-    duration: float = None
+    duration: float = None,
+    question_type: str = "general"
 ) -> List[Dict[str, Any]]:
     """
     Create the initial prompt as a messages list for veRL (open-ended version).
@@ -139,6 +142,7 @@ def create_prompt_messages(
     Args:
         question: The question to answer
         duration: Duration of the video in seconds (optional)
+        question_type: Type of question (for singleturn output template selection)
 
     Returns:
         List of message dictionaries in chat format
@@ -152,14 +156,18 @@ def create_prompt_messages(
     if duration:
         user_content_parts.append(f"This is a video with duration {duration:.1f} seconds.\n")
 
-    # Add system prompt
-    user_content_parts.append(MULTITURN_SYSTEM_PROMPT)
-
-    # Add question (no options for open-ended)
-    user_content_parts.append(f"\nQuestion:\n{question}\n")
-
-    # Add output template for open-ended questions
-    user_content_parts.append(OUTPUT_TEMPLATE_OPENENDED)
+    if PROMPT_VERSION == "singleturn":
+        # Singleturn format: Question → ThinkingInstructions → OutputTemplate
+        user_content_parts.append(f"{question}\n")
+        user_content_parts.append(SYSTEM_PROMPT)
+        user_content_parts.append("\n")
+        output_template = get_singleturn_output_template(question_type)
+        user_content_parts.append(output_template)
+    else:
+        # Multiturn format: SystemPrompt → Question → OutputTemplate
+        user_content_parts.append(SYSTEM_PROMPT)
+        user_content_parts.append(f"\nQuestion:\n{question}\n")
+        user_content_parts.append(OUTPUT_TEMPLATE_OPENENDED)
 
     user_content = "".join(user_content_parts)
 
@@ -204,7 +212,7 @@ def process_sample(sample: Dict[str, Any], video_base_path: str, skip_missing: b
     video_id = os.path.splitext(video_filename)[0]
 
     # Create prompt messages (open-ended format, no options)
-    prompt_messages = create_prompt_messages(question, duration=duration)
+    prompt_messages = create_prompt_messages(question, duration=duration, question_type="free-form")
 
     # Videos field - only path, no resolution params (injected at training time)
     videos = [{"video": video_path}]
@@ -260,11 +268,14 @@ def process_sample(sample: Dict[str, Any], video_base_path: str, skip_missing: b
 
 
 def main():
-    global MULTITURN_SYSTEM_PROMPT, OUTPUT_TEMPLATE_OPENENDED
+    global SYSTEM_PROMPT, OUTPUT_TEMPLATE_OPENENDED, PROMPT_VERSION
     args = parse_args()
 
+    # Set global prompt version
+    PROMPT_VERSION = args.prompt_version
+
     # Load custom prompts if specified
-    MULTITURN_SYSTEM_PROMPT, _, OUTPUT_TEMPLATE_OPENENDED = get_prompts(
+    SYSTEM_PROMPT, _, OUTPUT_TEMPLATE_OPENENDED = get_prompts(
         prompt_file=args.prompt_file,
         prompt_version=args.prompt_version,
         output_template_openended_file=args.output_template_openended_file,

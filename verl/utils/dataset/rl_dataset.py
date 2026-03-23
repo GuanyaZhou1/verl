@@ -180,6 +180,7 @@ class RLHFDataset(Dataset):
 
     def maybe_filter_out_long_prompts(self, dataframe: datasets.Dataset = None):
         # filter out too long prompts
+        # breakpoint()
         if self.filter_overlong_prompts:
             tokenizer = self.tokenizer
             processor = self.processor

@@ -66,8 +66,8 @@ export NCCL_CUMEM_ENABLE=${NCCL_CUMEM_ENABLE:-0}
 # MODEL_PATH="${MODEL_PATH:-/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-stgr-turn_llm_freeze25_freeze_mlp-lr1e-5-epo5}"
 # MODEL_PATH="/mnt/data/home/zhengshurong/project/Qwen3-VL/qwen-vl-finetune/checkpoints/video/Qwen3-VL-8B-Instruct-longvtdata-stgrdata-selfconstructdata-sft-lr1e-5-bs128-ep1/checkpoint-3003"
 MODEL_PATH="/mnt/data/home/zhengshurong/project/Qwen3-VL/qwen-vl-finetune/checkpoints/video/Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1"
-DATA_DIR="${DATA_DIR:-./long_video_data/longvt_selfqa}"
-CACHE_DIR="${CACHE_DIR:-./.cache}"
+DATA_DIR="${DATA_DIR:-./long_video_data/video_holmes}"
+CACHE_DIR="${CACHE_DIR:-./.cache_new}"
 CONFIG_PATH="$(pwd)/examples/video_reasoning/config"
 LOG_DIR="./logs_zsr"
 
@@ -75,7 +75,7 @@ LOG_DIR="./logs_zsr"
 # 训练参数 (支持环境变量覆盖)
 # =============================================================================
 TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-16}
-GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-32}     # DAPO: 生成批次，开启 filter 时需要增大
+GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-16}     # DAPO: 生成批次，开启 filter 时需要增大
 MAX_PROMPT_LENGTH=${MAX_PROMPT_LENGTH:-36000}
 MAX_RESPONSE_LENGTH=${MAX_RESPONSE_LENGTH:-16384}
 
@@ -83,7 +83,7 @@ LEARNING_RATE=${LEARNING_RATE:-1e-6}
 TOTAL_EPOCHS=${TOTAL_EPOCHS:-3}
 
 N_ROLLOUTS=${N_ROLLOUTS:-8}              # 每个 prompt 生成的 response 数
-AGENT_NUM_WORKERS=${AGENT_NUM_WORKERS:-16}
+AGENT_NUM_WORKERS=${AGENT_NUM_WORKERS:-4}
 
 N_GPUS=${N_GPUS:-8}
 NNODES=${NNODES:-1}
@@ -157,7 +157,7 @@ TP_LAMBDA=${TP_LAMBDA:-0.95}                          # GAE lambda
 # 视频缓存参数
 # =============================================================================
 CACHE_FPS=1
-CACHE_MAX_FRAMES=512
+CACHE_MAX_FRAMES=0 # 按fps缓存所有帧
 CACHE_MAX_FRAMES_PER_SEGMENT=32
 USE_CACHED_INITIAL_VIDEO=True            # 使用缓存帧而非原始视频，减少 CPU 内存
 CACHE_NUM_WORKERS=${CACHE_NUM_WORKERS:-64}  # 视频缓存并行数
@@ -223,11 +223,11 @@ PROJECT_NAME="video-reasoning-dapo"
 
 if [ "$ADV_ESTIMATOR" = "gdpo" ]; then
     # GDPO 模式：使用 GDPO 和 Token Placement 参数命名
-    EXPERIMENT_NAME="Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1_gdpo_longvtrl_genbs${GEN_BATCH_SIZE}_trainbs${TRAIN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_gdpo-ans${GDPO_ANSWER_WEIGHT}_fmt${GDPO_FORMAT_WEIGHT}_bbox${GDPO_BBOX_WEIGHT}_seg${GDPO_SEGMENT_WEIGHT}_tp-${TOKEN_PLACEMENT_METHOD}_tpans${TP_ANSWER_WEIGHT}_tpfmt${TP_FORMAT_WEIGHT}_tpbbox${TP_BBOX_WEIGHT}_tpseg${TP_SEGMENT_WEIGHT}_klcoef${KL_LOSS_COEF}_resp${MAX_RESPONSE_LENGTH}_filtergroups${ENABLE_FILTER_GROUPS}_bypass${BY_PASS_ROLLOUT_CORRECTION}_cliphi${CLIP_RATIO_HIGH}_topp${TOP_P}_temp${TEMPERATURE}_0318"
+    EXPERIMENT_NAME="Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1_gdpo_longvtrl_genbs${GEN_BATCH_SIZE}_trainbs${TRAIN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_gdpo-ans${GDPO_ANSWER_WEIGHT}_fmt${GDPO_FORMAT_WEIGHT}_bbox${GDPO_BBOX_WEIGHT}_seg${GDPO_SEGMENT_WEIGHT}_tp-${TOKEN_PLACEMENT_METHOD}_tpans${TP_ANSWER_WEIGHT}_tpfmt${TP_FORMAT_WEIGHT}_tpbbox${TP_BBOX_WEIGHT}_tpseg${TP_SEGMENT_WEIGHT}_klcoef${KL_LOSS_COEF}_resp${MAX_RESPONSE_LENGTH}_filtergroups${ENABLE_FILTER_GROUPS}_bypass${BY_PASS_ROLLOUT_CORRECTION}_cliphi${CLIP_RATIO_HIGH}_topp${TOP_P}_temp${TEMPERATURE}_0319"
     PROJECT_NAME="video-reasoning-gdpo"
 else
     # GRPO 模式：使用原有命名
-    EXPERIMENT_NAME="Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1_dapo_longvtrl_genbs${GEN_BATCH_SIZE}_trainbs${TRAIN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_ans${ANSWER_WEIGHT}_bbox${BBOX_WEIGHT}_fmt${FORMAT_WEIGHT}_seg${SEGMENT_WEIGHT}_klcoef${KL_LOSS_COEF}_filtergroups${ENABLE_FILTER_GROUPS}_bypass${BY_PASS_ROLLOUT_CORRECTION}_cliphi${CLIP_RATIO_HIGH}_topp${TOP_P}_temp${TEMPERATURE}_0318"
+    EXPERIMENT_NAME="Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1_dapo_holmes_genbs${GEN_BATCH_SIZE}_trainbs${TRAIN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_ans${ANSWER_WEIGHT}_bbox${BBOX_WEIGHT}_fmt${FORMAT_WEIGHT}_seg${SEGMENT_WEIGHT}_klcoef${KL_LOSS_COEF}_filtergroups${ENABLE_FILTER_GROUPS}_bypass${BY_PASS_ROLLOUT_CORRECTION}_cliphi${CLIP_RATIO_HIGH}_topp${TOP_P}_temp${TEMPERATURE}_0319"
 fi
 
 # 将 reward_logs 和 tensorboard_log 放到 checkpoint 目录下
@@ -372,7 +372,7 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.max_model_len=128000 \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=4 \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=True \
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=104768 \
     actor_rollout_ref.rollout.calculate_log_probs=true \
@@ -401,7 +401,7 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.rollout.multi_turn.watermark_config.ratio=$WATERMARK_RATIO \
     actor_rollout_ref.rollout.agent.default_agent_loop=video_reasoning \
     actor_rollout_ref.rollout.agent.num_workers=$AGENT_NUM_WORKERS \
-    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=2 \
+    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.ref.log_prob_use_dynamic_bsz=True \
     actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=104768 \
     actor_rollout_ref.ref.ulysses_sequence_parallel_size=4 \

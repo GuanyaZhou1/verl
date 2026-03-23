@@ -344,6 +344,8 @@ class RayDAPOTrainer(RayPPOTrainer):
                             lam=self.config.algorithm.lam,
                             num_repeat=self.config.actor_rollout_ref.rollout.n,
                             norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+                            config=self.config.algorithm,
+                            tokenizer=self.tokenizer,
                         )
 
                     # update critic
@@ -355,6 +357,10 @@ class RayDAPOTrainer(RayPPOTrainer):
 
                     # implement critic warmup
                     if self.config.trainer.critic_warmup <= self.global_steps:
+                        # Prepare SFT labels if enabled
+                        if self.config.actor_rollout_ref.actor.get("sft_loss_enabled", False):
+                            batch = self._prepare_sft_labels(batch)
+
                         # update actor
                         with marked_timer("update_actor", timing_raw, "red"):
                             actor_output = self.actor_rollout_wg.update_actor(batch)

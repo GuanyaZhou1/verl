@@ -185,6 +185,7 @@ class SingleTurnAgentLoop(AgentLoopBase):
                     logger.debug(f"Using {len(frame_paths)} cached frames for video: {video_path}")
 
         # 1. extract images and videos from messages
+        # breakpoint()
         multi_modal_data = await self.process_vision_info(messages)
         images = multi_modal_data.get("images")
         videos = multi_modal_data.get("videos")
@@ -192,10 +193,12 @@ class SingleTurnAgentLoop(AgentLoopBase):
         # 1.5. Fix video_metadata.frames_indices for correct absolute timestamps
         # When loading from cached jpg frames, frames_indices=[0,1,2,...] causes
         # relative timestamps. This fix ensures correct absolute timestamps.
+        # breakpoint()
         if initial_timestamps and videos:
             self._fix_video_metadata_timestamps(videos, initial_timestamps, self.cache_fps)
 
         # 2. apply chat template and tokenize
+        # breakpoint()
         prompt_ids, _ = await self.apply_chat_template(
             messages,
             tools=self.tool_schemas,

@@ -21,7 +21,7 @@ tensorflow/my_graph/*
 reward_logs/
 reward_logs_zsr/
 tensorboard_log/
-
+.cache_new/
 # Distribution / packaging
 .Python
 # env/

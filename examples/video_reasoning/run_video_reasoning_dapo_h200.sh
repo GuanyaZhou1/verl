@@ -33,6 +33,11 @@ export HYDRA_FULL_ERROR=1  # 报错时打印完整 stack trace
 # =============================================================================
 ulimit -n 65535
 export VLLM_USE_V1=1
+#禁用 Python 断点，只在当前有效
+export RAY_DEBUG=0                                                                       
+export PYDEVD_DISABLE_FILE_VALIDATION=1  
+# export NCCL_DEBUG=INFO
+
 # export TIKTOKEN_CACHE_DIR=${TIKTOKEN_CACHE_DIR:-/data_gpu/gyzhou/tmp/tiktoken_cache}
 # export LD_LIBRARY_PATH=/usr/local/cuda-13.1/compat:$LD_LIBRARY_PATH
 # export LD_LIBRARY_PATH=$HOME/cuda-13.1/compat:$LD_LIBRARY_PATH  # 已删除 cuda-13.1 时注释，用系统默认
@@ -45,6 +50,7 @@ export TIKTOKEN_RS_CACHE_DIR=/mnt/data/home/zhengshurong/harmony_cache
 # NCCL 环境变量（IB 优先，单机多机通用）
 # =============================================================================
 # 使用 ${VAR:-default} 语法，允许 launcher 脚本覆盖
+export NCCL_DEBUG=${NCCL_DEBUG:-WARN}                        # 隐藏 NCCL INFO 日志，只显示 WARN 及以上
 export NCCL_IB_DISABLE=${NCCL_IB_DISABLE:-0}               # 启用 IB
 export NCCL_IB_HCA=${NCCL_IB_HCA:-^mlx5_bond,mlx5_6}       # 排除 bond 和有问题的 mlx5_6
 export NCCL_CROSS_NIC=${NCCL_CROSS_NIC:-1}                 # 允许跨 NIC 通信
@@ -81,7 +87,7 @@ LEARNING_RATE=${LEARNING_RATE:-2e-6}
 TOTAL_EPOCHS=${TOTAL_EPOCHS:-3}
 
 N_ROLLOUTS=${N_ROLLOUTS:-8}                             # 每个 prompt 生成的 response 数
-AGENT_NUM_WORKERS=${AGENT_NUM_WORKERS:-4}                      # AgentLoopWorker 数量
+AGENT_NUM_WORKERS=${AGENT_NUM_WORKERS:-2}                      # AgentLoopWorker 数量
 
 N_GPUS=${N_GPUS:-8}
 NNODES=${NNODES:-1}
@@ -99,14 +105,24 @@ CLIP_RATIO_HIGH=${CLIP_RATIO_HIGH:-0.28}              # > low，鼓励正向更�
 NORM_ADV_BY_STD=${NORM_ADV_BY_STD:-true}             # 归一化 advantage
 
 USE_KL_IN_REWARD=false
-USE_KL_LOSS=false
-KL_LOSS_COEF=${KL_LOSS_COEF:-0.0}                     # KL 约束系数
+USE_KL_LOSS=true
+KL_LOSS_COEF=${KL_LOSS_COEF:-0.001}                     # KL 约束系数
 KL_LOSS_TYPE=low_var_kl
 
 BY_PASS_ROLLOUT_CORRECTION=false
 ENTROPY_COEFF=${ENTROPY_COEFF:-0.001}                   # Entropy 系数
 TOP_P=${TOP_P:-1.0}                                   # Top-p 采样
 TEMPERATURE=${TEMPERATURE:-1.0}                       # 采样温度
+
+# =============================================================================
+# Corrected Rollout SFT 配置（混合 RL + SFT Loss）
+# =============================================================================
+# 用 VLM 验证得到的 GT bbox 替换模型预测的不准确 bbox，对替换后的样本计算 SFT loss
+# 仅对 answer_score=1 且有 bbox_details 的样本生效（coupled 设计）
+# 注意：启用 SFT loss 需要关闭 use_remove_padding 和 use_fused_kernels
+SFT_LOSS_ENABLED=${SFT_LOSS_ENABLED:-false}    # 是否启用 Corrected Rollout SFT
+SFT_LOSS_WEIGHT=${SFT_LOSS_WEIGHT:-0.3}        # SFT loss 权重 (推荐 0.1-0.5)
+MAX_SFT_SAMPLES=${MAX_SFT_SAMPLES:-32}         # 每步最多 SFT 样本数，从不同 prompt 均匀采样
 
 # =============================================================================
 # GDPO & Token Placement 配置（多轮 CoT 细粒度奖励分配）
@@ -161,13 +177,13 @@ USE_CACHED_INITIAL_VIDEO=True            # 使用缓存帧而非原始视频，�
 
 # 初始视频分辨率（低分辨率概览）
 INITIAL_VIDEO_FPS=1
-INITIAL_VIDEO_MAX_FRAMES=256
+INITIAL_VIDEO_MAX_FRAMES=512
 INITIAL_VIDEO_MIN_PIXELS=784             # 28*28
 INITIAL_VIDEO_MAX_PIXELS=12544           # ~112x112
 
 # Segment 视频分辨率（高分辨率细节）
 SEGMENT_VIDEO_FPS=1
-SEGMENT_VIDEO_MAX_FRAMES=16
+SEGMENT_VIDEO_MAX_FRAMES=32
 SEGMENT_VIDEO_MIN_PIXELS=784             # 28*28
 SEGMENT_VIDEO_MAX_PIXELS=50176           # ~224x224 
 
@@ -204,9 +220,9 @@ SAVE_BBOX_VISUALIZATION=true
 BBOX_VIS_SAMPLE_RATE=0.001
 # REWARD_LOG_DIR 在 EXPERIMENT_NAME 后设置
 #EXPERIMENT_NAME="Qwen3_8B_dapo_kl${KL_LOSS_COEF}_bbox${BBOX_WEIGHT}_topp${TOP_P:-1.0}_lr${LEARNING_RATE}_0314_GAE_perturn"
-EXPERIMENT_NAME="Qwen3_8B_dapo_kl0.001_bbox0.6_topp1.0_lr2e-6_entropy0.001_0318_GAE_perturn_coverage_0.5_stdtrue_128_16"
+EXPERIMENT_NAME="Qwen3_8B_dapo_kl0.001_bbox0.6_topp1.0_lr2e-6_entropy0.001_0323_GAE_perturn_coverage_0.5_stdtrue_512_32" #_SFT
 SAVE_SAMPLES=true
-SAVE_EVERY_N=10
+SAVE_EVERY_N=1
 LOG_EVERY_N=10
 
 # =============================================================================
@@ -273,7 +289,7 @@ echo "Model:           $MODEL_PATH"
 echo "Data:            $DATA_DIR"
 echo "Train/Gen batch: $TRAIN_BATCH_SIZE / $GEN_BATCH_SIZE"
 echo "Rollouts:        $N_ROLLOUTS"
-echo "GPUs:            $N_GPUS x $NNODES nodes"
+echo "GPUs:            $N_GPUS x $NNOD[ES nodes"
 echo ""
 echo "DAPO Settings:"
 echo "  filter_groups: $ENABLE_FILTER_GROUPS (metric=$FILTER_GROUPS_METRIC)"
@@ -354,7 +370,7 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.model.use_fused_kernels=True \
     actor_rollout_ref.actor.optim.lr=$LEARNING_RATE \
-    actor_rollout_ref.actor.ppo_mini_batch_size=16 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=256 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.actor.clip_ratio_low=$CLIP_RATIO_LOW \
     actor_rollout_ref.actor.clip_ratio_high=$CLIP_RATIO_HIGH \
@@ -363,6 +379,9 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.actor.kl_loss_type=$KL_LOSS_TYPE \
     actor_rollout_ref.actor.loss_agg_mode=token-mean \
     actor_rollout_ref.actor.entropy_coeff=$ENTROPY_COEFF \
+    +actor_rollout_ref.actor.sft_loss_enabled=$SFT_LOSS_ENABLED \
+    +actor_rollout_ref.actor.sft_loss_weight=$SFT_LOSS_WEIGHT \
+    +actor_rollout_ref.actor.max_sft_samples=$MAX_SFT_SAMPLES \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
     actor_rollout_ref.actor.fsdp_config.forward_prefetch=True \
@@ -377,9 +396,9 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.max_model_len=128000 \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=2 \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=True \
-    actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=104768 \
+    actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=65536 \
     actor_rollout_ref.rollout.calculate_log_probs=true \
     actor_rollout_ref.rollout.over_sample_rate=0.1 \
     actor_rollout_ref.rollout.update_weights_bucket_megabytes=512 \
@@ -406,7 +425,7 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.rollout.multi_turn.watermark_config.ratio=$WATERMARK_RATIO \
     actor_rollout_ref.rollout.agent.default_agent_loop=video_reasoning \
     actor_rollout_ref.rollout.agent.num_workers=$AGENT_NUM_WORKERS \
-    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=2 \
+    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.ref.log_prob_use_dynamic_bsz=True \
     actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=104768 \
     actor_rollout_ref.ref.ulysses_sequence_parallel_size=4 \

@@ -33,6 +33,10 @@ from tqdm import tqdm
 # Add parent directory for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "video_reasoning"))
 from prompts import get_prompts, MULTITURN_SYSTEM_PROMPT, OUTPUT_TEMPLATE, OUTPUT_TEMPLATE_OPENENDED
+from prompts import get_singleturn_output_template
+
+# Global prompt version
+PROMPT_VERSION = "default"
 
 
 def parse_args():
@@ -161,6 +165,7 @@ def create_prompt_messages(
     question: str,
     duration: float = None,
     system_prompt: str = MULTITURN_SYSTEM_PROMPT,
+    question_type: str = "general",
 ) -> List[Dict[str, Any]]:
     """Create prompt messages in veRL format."""
     user_content_parts = []
@@ -172,17 +177,24 @@ def create_prompt_messages(
     if duration and duration > 0:
         user_content_parts.append(f"This is a video with duration {duration:.1f} seconds.\n")
 
-    # Add system prompt (multi-turn reasoning format)
-    user_content_parts.append(system_prompt)
-
-    # Add question
-    user_content_parts.append(f"\nQuestion:\n{question}\n")
-
-    # Add output template based on question type
-    if is_multiple_choice(question):
-        user_content_parts.append(OUTPUT_TEMPLATE)
+    if PROMPT_VERSION == "singleturn":
+        # Singleturn format: Question → ThinkingInstructions → OutputTemplate
+        user_content_parts.append(f"{question}\n")
+        user_content_parts.append(system_prompt)
+        user_content_parts.append("\n")
+        if is_multiple_choice(question):
+            output_template = get_singleturn_output_template("multiple choice")
+        else:
+            output_template = get_singleturn_output_template(question_type)
+        user_content_parts.append(output_template)
     else:
-        user_content_parts.append(OUTPUT_TEMPLATE_OPENENDED)
+        # Multiturn format: SystemPrompt → Question → OutputTemplate
+        user_content_parts.append(system_prompt)
+        user_content_parts.append(f"\nQuestion:\n{question}\n")
+        if is_multiple_choice(question):
+            user_content_parts.append(OUTPUT_TEMPLATE)
+        else:
+            user_content_parts.append(OUTPUT_TEMPLATE_OPENENDED)
 
     user_content = "".join(user_content_parts)
 
@@ -280,7 +292,11 @@ def process_sample(
 
 
 def main():
+    global PROMPT_VERSION
     args = parse_args()
+
+    # Set global prompt version
+    PROMPT_VERSION = args.prompt_version
 
     # Load custom prompts if specified
     system_prompt, _, _ = get_prompts(prompt_file=args.prompt_file, prompt_version=args.prompt_version)

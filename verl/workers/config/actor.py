@@ -287,6 +287,10 @@ class FSDPActorConfig(ActorConfig):
     use_rollout_log_probs: bool = False
     calculate_sum_pi_squared: bool = False
     sum_pi_squared_checkpointing: bool = False
+    # Corrected Rollout SFT configuration
+    sft_loss_enabled: bool = False  # Whether to enable Corrected Rollout SFT
+    sft_loss_weight: float = 0.1    # SFT loss weight (recommended 0.1-0.5)
+    max_sft_samples: int = 32       # Max SFT samples per step, sampled from different prompts
 
     def __post_init__(self):
         """Validate FSDP actor configuration parameters."""

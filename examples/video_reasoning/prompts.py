@@ -33,15 +33,22 @@ When ready to provide the final answer, enclose it within '<answer>' tags:
 """
 
 # Single-turn system prompt (no multi-turn, no segment/bbox grounding)
-SINGLETURN_SYSTEM_PROMPT = """You are a helpful assistant. The user asks a question, and then you solves it.
-
-Please first think deeply about the question based on the given video, and then provide the final answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think> <answer> answer here </answer>."""
+SINGLETURN_SYSTEM_PROMPT = """Please think about this question as if you were a human pondering deeply. Engage in an internal dialogue using expressions such as 'let me think', 'wait', 'Hmm', 'oh, I see', 'let's break it down', etc, or other natural language thought expressions. It's encouraged to include self-reflection or verification in the reasoning process. Provide your detailed reasoning between the <think> and </think> tags, and then give your final answer between the <answer> and </answer> tags."""
 
 # Output template for multiple-choice questions
-OUTPUT_TEMPLATE = "Please provide only the single option (e.g., A, B, C, D, etc.) within the <answer> </answer> tags."
+OUTPUT_TEMPLATE = "Please provide only the single option letter (e.g., A, B, C, D, etc.) within the <answer> </answer> tags."
 
 # Output template for open-ended questions
 OUTPUT_TEMPLATE_OPENENDED = "Please provide your answer within the <answer> </answer> tags."
+
+# Singleturn output templates (type-specific)
+SINGLETURN_OUTPUT_TEMPLATES = {
+    "multiple choice": "Please provide only the single option letter (e.g., A, B, C, D, etc.) within the <answer> </answer> tags.",
+    "numerical": "Please provide the numerical value (e.g., 42 or 3.14) within the <answer> </answer> tags.",
+    "OCR": "Please transcribe text from the image/video clearly and provide your text answer within the <answer> </answer> tags.",
+    "free-form": "Please provide your text answer within the <answer> </answer> tags.",
+    "regression": "Please provide the numerical value (e.g., 42 or 3.14) within the <answer> </answer> tags.",
+}
 
 # Prompt version mapping
 PROMPT_VERSIONS = {
@@ -79,3 +86,29 @@ def get_prompts(prompt_file: str = None, prompt_version: str = "default", output
     output_tmpl_open = load_prompt_from_file(output_template_openended_file) if output_template_openended_file else OUTPUT_TEMPLATE_OPENENDED
 
     return system_prompt, output_tmpl, output_tmpl_open
+
+
+def get_singleturn_output_template(question_type: str) -> str:
+    """
+    Get singleturn output template based on question type.
+
+    Args:
+        question_type: Type of question (multiple choice, numerical, OCR, free-form, regression)
+
+    Returns:
+        Output template string for the given question type
+    """
+    # Normalize question type
+    question_type_lower = question_type.lower().strip()
+
+    # Try exact match first
+    if question_type_lower in SINGLETURN_OUTPUT_TEMPLATES:
+        return SINGLETURN_OUTPUT_TEMPLATES[question_type_lower]
+
+    # Try partial match
+    for key, template in SINGLETURN_OUTPUT_TEMPLATES.items():
+        if key in question_type_lower or question_type_lower in key:
+            return template
+
+    # Default to free-form
+    return SINGLETURN_OUTPUT_TEMPLATES["free-form"]

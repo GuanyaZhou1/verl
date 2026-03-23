@@ -102,17 +102,24 @@ class VideoFrameCache:
         Args:
             cache_dir: Directory to store cached frames
             fps: Sampling frequency (frames per second)
-            max_frames: Maximum number of frames to cache per video
+            max_frames: Maximum number of frames to cache per video (None or "None" for no limit)
         """
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.fps = fps
-        self.max_frames = max_frames
+        # Handle string "None" from shell scripts
+        if max_frames is None or max_frames == "None" or max_frames == 0:
+            self.max_frames = None
+        else:
+            self.max_frames = int(max_frames)
 
     def _get_cache_dir_for_video(self, video_path: str) -> Path:
         """Get the cache directory for a video."""
         video_name = Path(video_path).stem
-        cache_name = f"{video_name}_fps{self.fps}_max{self.max_frames}"
+        if self.max_frames is None:
+            cache_name = f"{video_name}_fps{self.fps}_all"
+        else:
+            cache_name = f"{video_name}_fps{self.fps}_max{self.max_frames}"
         return self.cache_dir / cache_name
 
     def _get_metadata_path(self, video_path: str) -> Path:
@@ -172,18 +179,26 @@ class VideoFrameCache:
         if segments is not None:
             filtered_paths = []
             for start, end in segments:
+                # First collect all frames in this segment
                 segment_paths = []
                 for frame_info in all_frame_info:
                     ts = frame_info['timestamp']
                     if start <= ts <= end:
                         segment_paths.append(str(cache_dir / frame_info['path']))
-                        if len(segment_paths) >= max_frames_per_segment:
-                            break
+                # Then uniformly sample if exceeds limit
+                if max_frames_per_segment and len(segment_paths) > max_frames_per_segment:
+                    indices = np.linspace(0, len(segment_paths) - 1, max_frames_per_segment, dtype=int)
+                    segment_paths = [segment_paths[i] for i in indices]
                 filtered_paths.extend(segment_paths)
             return filtered_paths
 
-        # Return all frame paths
-        return [str(cache_dir / f['path']) for f in all_frame_info]
+        # Return all frame paths (with optional limit, uniformly sampled)
+        all_paths = [str(cache_dir / f['path']) for f in all_frame_info]
+        if max_frames_per_segment and len(all_paths) > max_frames_per_segment:
+            # Uniformly sample to cover entire duration
+            indices = np.linspace(0, len(all_paths) - 1, max_frames_per_segment, dtype=int)
+            return [all_paths[i] for i in indices]
+        return all_paths
 
     def load_frame_paths_with_timestamps(
         self,
@@ -232,18 +247,26 @@ class VideoFrameCache:
         if segments is not None:
             filtered_results = []
             for start, end in segments:
+                # First collect all frames in this segment
                 segment_results = []
                 for frame_info in all_frame_info:
                     ts = frame_info['timestamp']
                     if start <= ts <= end:
                         segment_results.append((str(cache_dir / frame_info['path']), ts))
-                        if len(segment_results) >= max_frames_per_segment:
-                            break
+                # Then uniformly sample if exceeds limit
+                if max_frames_per_segment and len(segment_results) > max_frames_per_segment:
+                    indices = np.linspace(0, len(segment_results) - 1, max_frames_per_segment, dtype=int)
+                    segment_results = [segment_results[i] for i in indices]
                 filtered_results.extend(segment_results)
             return filtered_results
 
-        # Return all frame paths with timestamps
-        return [(str(cache_dir / f['path']), f['timestamp']) for f in all_frame_info]
+        # Return all frame paths with timestamps (with optional limit, uniformly sampled)
+        all_results = [(str(cache_dir / f['path']), f['timestamp']) for f in all_frame_info]
+        if max_frames_per_segment and len(all_results) > max_frames_per_segment:
+            # Uniformly sample to cover entire duration
+            indices = np.linspace(0, len(all_results) - 1, max_frames_per_segment, dtype=int)
+            return [all_results[i] for i in indices]
+        return all_results
 
     def load_frames(
         self,
@@ -350,10 +373,21 @@ class VideoFrameCache:
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         duration = frame_count / video_fps if video_fps > 0 else 0
 
-        # Sample frames by timestamp (ensures clean integer timestamps)
-        # Calculate target timestamps: 0, 1, 2, 3, ... seconds
-        num_target_frames = min(int(duration * self.fps) + 1, self.max_frames)
-        target_timestamps = [i / self.fps for i in range(num_target_frames)]
+        # Sample frames by timestamp
+        # When max_frames is None, cache all frames at the specified fps
+        # When total frames exceed max_frames, uniformly sample across entire video
+        # to ensure coverage of the full video duration
+        total_frames = int(duration * self.fps) + 1
+        if self.max_frames is None:
+            # No limit, cache all frames at specified fps
+            target_timestamps = [i / self.fps for i in range(total_frames)]
+        elif total_frames > self.max_frames:
+            # Uniformly sample across entire video duration
+            indices = np.linspace(0, total_frames - 1, self.max_frames, dtype=int)
+            target_timestamps = [i / self.fps for i in indices]
+        else:
+            # Use all frames: 0, 1, 2, 3, ... seconds
+            target_timestamps = [i / self.fps for i in range(total_frames)]
 
         frames_info = []
         for saved_count, target_ts in enumerate(target_timestamps):

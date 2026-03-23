@@ -315,7 +315,7 @@ def compute_grpo_outcome_advantage(
             shape is (bs, response_length)
     """
     scores = token_level_rewards.sum(dim=-1)
-
+    # breakpoint()
     id2score = defaultdict(list)
     id2mean = {}
     id2std = {}
@@ -704,7 +704,7 @@ def find_turn_boundaries(
         result["turns"].append(turn)
 
     # Find bbox positions (marked by </t> as the end of bbox)
-    bbox_pattern = r'</t>'
+    bbox_pattern = r'</t>(?![a-zA-Z])'
     for m in re.finditer(bbox_pattern, response_str, re.IGNORECASE):
         char_pos = m.end()
         token_pos = char_to_token_position(char_pos, token_char_offsets)
@@ -1658,7 +1658,7 @@ def compute_policy_loss(
         "The lower bound of the clip_ratio_c for dual-clip PPO should be greater than 1.0,"
         + f" but get the value: {clip_ratio_c}."
     )
-
+    # breakpoint()
     negative_approx_kl = log_prob - old_log_prob
     # Clamp negative_approx_kl for stability
     negative_approx_kl = torch.clamp(negative_approx_kl, min=-20.0, max=20.0)

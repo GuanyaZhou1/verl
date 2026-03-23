@@ -29,11 +29,11 @@ set -eo pipefail
 MODEL_PATH="${MODEL_PATH:-/mnt/data/home/zhengshurong/project/Qwen3-VL/qwen-vl-finetune/checkpoints/video/Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1}"
 
 # 数据路径
-DATA_DIR="${DATA_DIR:-./long_video_data/video_holmes}"
+DATA_DIR="${DATA_DIR:-./long_video_data/longvt_selfqa}"
 DATA_PATH="${DATA_DIR}/train.parquet"
 
 # 输出目录
-OUTPUT_DIR="${OUTPUT_DIR:-./difficulty_analysis/video_holmes}"
+OUTPUT_DIR="${OUTPUT_DIR:-./difficulty_analysis/longvt_selfqa}"
 
 # 采样参数
 N_ROLLOUTS=${N_ROLLOUTS:-8}
@@ -59,14 +59,26 @@ CACHE_FPS=${CACHE_FPS:-1}
 CACHE_MAX_FRAMES=${CACHE_MAX_FRAMES:-512}
 MAX_FRAMES_PER_SEGMENT=${MAX_FRAMES_PER_SEGMENT:-32}
 
+# 视频参数配置 (与 video_reasoning_agent_loop.py 一致)
+# Initial video config (for first frame load)
+INITIAL_FPS=${INITIAL_FPS:-1}
+INITIAL_MAX_FRAMES=${INITIAL_MAX_FRAMES:-512}
+INITIAL_MIN_PIXELS=${INITIAL_MIN_PIXELS:-784}      # 28*28
+INITIAL_MAX_PIXELS=${INITIAL_MAX_PIXELS:-12544}    # ~112x112
+# Segment video config (for segment frames)
+SEGMENT_FPS=${SEGMENT_FPS:-1}
+SEGMENT_MAX_FRAMES=${SEGMENT_MAX_FRAMES:-32}
+SEGMENT_MIN_PIXELS=${SEGMENT_MIN_PIXELS:-784}      # 28*28
+SEGMENT_MAX_PIXELS=${SEGMENT_MAX_PIXELS:-50176}    # ~224x224
+
 # VLM 奖励评分服务
 VLM_ENDPOINT="${VLM_ENDPOINT:-10.0.1.35:8081}"
 VLM_MODEL_NAME="${VLM_MODEL_NAME:-Qwen3-VL-235B-A22B-Instruct}"
 VLM_API_KEY="${VLM_API_KEY:-123456}"
 
 # 奖励权重 (与训练脚本一致)
-ANSWER_WEIGHT=${ANSWER_WEIGHT:-0.0}
-BBOX_WEIGHT=${BBOX_WEIGHT:-0.0}
+ANSWER_WEIGHT=${ANSWER_WEIGHT:-1.0}
+BBOX_WEIGHT=${BBOX_WEIGHT:-0.5}
 FORMAT_WEIGHT=${FORMAT_WEIGHT:-0.5}
 SEGMENT_WEIGHT=${SEGMENT_WEIGHT:-1.0}
 USE_STRICT_FORMAT=${USE_STRICT_FORMAT:-true}
@@ -324,6 +336,14 @@ if [ "$USE_OFFLINE" = true ]; then
         --cache_fps $CACHE_FPS \
         --cache_max_frames $CACHE_MAX_FRAMES \
         --max_frames_per_segment $MAX_FRAMES_PER_SEGMENT \
+        --initial_fps $INITIAL_FPS \
+        --initial_max_frames $INITIAL_MAX_FRAMES \
+        --initial_min_pixels $INITIAL_MIN_PIXELS \
+        --initial_max_pixels $INITIAL_MAX_PIXELS \
+        --segment_fps $SEGMENT_FPS \
+        --segment_max_frames $SEGMENT_MAX_FRAMES \
+        --segment_min_pixels $SEGMENT_MIN_PIXELS \
+        --segment_max_pixels $SEGMENT_MAX_PIXELS \
         --answer_weight $ANSWER_WEIGHT \
         --bbox_weight $BBOX_WEIGHT \
         --format_weight $FORMAT_WEIGHT \
@@ -349,6 +369,14 @@ else
         --cache_fps $CACHE_FPS \
         --cache_max_frames $CACHE_MAX_FRAMES \
         --max_frames_per_segment $MAX_FRAMES_PER_SEGMENT \
+        --initial_fps $INITIAL_FPS \
+        --initial_max_frames $INITIAL_MAX_FRAMES \
+        --initial_min_pixels $INITIAL_MIN_PIXELS \
+        --initial_max_pixels $INITIAL_MAX_PIXELS \
+        --segment_fps $SEGMENT_FPS \
+        --segment_max_frames $SEGMENT_MAX_FRAMES \
+        --segment_min_pixels $SEGMENT_MIN_PIXELS \
+        --segment_max_pixels $SEGMENT_MAX_PIXELS \
         --answer_weight $ANSWER_WEIGHT \
         --bbox_weight $BBOX_WEIGHT \
         --format_weight $FORMAT_WEIGHT \

@@ -422,7 +422,7 @@ class VideoReasoningAgentLoop(AgentLoopBase):
             )
 
     async def _run_impl(self, sampling_params: dict[str, Any], **kwargs) -> AgentLoopOutput:
-        breakpoint()
+        # breakpoint()
         """实际的 run 实现"""
         raw_prompt = kwargs.get("raw_prompt", [])
         extra_info = kwargs.get("extra_info", {})
@@ -478,14 +478,14 @@ class VideoReasoningAgentLoop(AgentLoopBase):
                 initial_frame_paths_with_ts = self._get_initial_frame_paths_with_timestamps(video_path)
                 if initial_frame_paths_with_ts:
                     initial_frame_paths = [fp for fp, _ in initial_frame_paths_with_ts]
-                    breakpoint()
+                    # breakpoint()
                     self._replace_video_with_cached_frames(messages, initial_frame_paths)
                     # Track timestamps for metadata fix
                     initial_timestamps = [ts for _, ts in initial_frame_paths_with_ts]
                     logger.info(f"Using {len(initial_frame_paths)} cached frames for initial video")
 
         # Process initial vision info using parent class method
-        breakpoint()
+        # breakpoint()
         multi_modal_data = await self.process_vision_info(messages)
         images = multi_modal_data.get("images", [])
         videos = multi_modal_data.get("videos", [])
@@ -523,7 +523,7 @@ class VideoReasoningAgentLoop(AgentLoopBase):
         assistant_turns = 0
 
         # Tokenize initial prompt and get multi_modal_inputs (with watermark for rollout)
-        breakpoint()
+        # breakpoint()
         prompt_ids, initial_mm_inputs = await self.apply_chat_template(
             messages,
             images=images if images else None,
@@ -543,7 +543,7 @@ class VideoReasoningAgentLoop(AgentLoopBase):
             )
 
         # Main reasoning loop
-        breakpoint()
+        # breakpoint()
         for turn in range(self.max_assistant_turns):
             if user_turns >= self.max_user_turns:
                 break
@@ -691,14 +691,14 @@ class VideoReasoningAgentLoop(AgentLoopBase):
 
             # Process observation message to extract videos in correct format
             # process_vision_info will load jpg files and return (tensor, metadata) tuples
-            breakpoint()
+            # breakpoint()
             obs_multi_modal = await self.process_vision_info([observation_message])
             obs_videos = obs_multi_modal.get("videos", [])
 
             # Fix video_metadata.frames_indices to use absolute timestamps.
             # fetch_video sets frames_indices=[0,1,2,...] for frame lists, causing
             # the processor to generate relative <0.2s> tokens instead of <34.0s>.
-            breakpoint()
+            # breakpoint()
             self._fix_video_metadata_timestamps(obs_videos, all_absolute_timestamps, self.cache_fps)
 
             # Accumulate videos for output
@@ -707,7 +707,7 @@ class VideoReasoningAgentLoop(AgentLoopBase):
             videos = videos + obs_videos
 
             # Tokenize observation message with processed videos
-            breakpoint()
+            # breakpoint()
             obs_ids, obs_mm_inputs = await self.apply_chat_template(
                 [observation_message],
                 images=None,

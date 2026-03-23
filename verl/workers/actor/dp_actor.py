@@ -161,6 +161,10 @@ class DataParallelPPOActor(BasePPOActor):
             if position_ids.dim() == 3:  # qwen2vl mrope
                 position_ids = position_ids.transpose(0, 1)  # (bsz, 4, seqlen) -> (4, bsz, seqlen)
 
+            # [Corrected Rollout SFT] Initialize sft_log_probs
+            # Will be computed in non-rmpad, non-fused_kernels path only
+            sft_log_probs = None
+
             if self.use_remove_padding:
                 input_ids_rmpad, indices, cu_seqlens, *_ = unpad_input(
                     input_ids.unsqueeze(-1), attention_mask
@@ -250,6 +254,10 @@ class DataParallelPPOActor(BasePPOActor):
                     **extra_args,
                 )  # prevent model thinks we are generating
 
+                # [Corrected Rollout SFT] Initialize sft_log_probs_rmpad for rmpad path
+                # Only computed in non-fused_kernels path where we have access to logits
+                sft_log_probs_rmpad = None
+
                 if self.use_fused_kernels:
                     log_probs = output.log_probs.squeeze(0)  # (total_nnz,)
                     entropy_rmpad = output.entropy.squeeze(0)  # (total_nnz,)
@@ -267,6 +275,34 @@ class DataParallelPPOActor(BasePPOActor):
                         labels=input_ids_rmpad_rolled,
                         inplace_backward=inplace_backward,
                     )
+
+                    # [Corrected Rollout SFT] Compute sft_log_probs in rmpad path
+                    # Need to unpad sft_responses and compute log_probs separately
+                    sft_log_probs_rmpad = None
+                    if "sft_responses" in micro_batch:
+                        # sft_responses is (bsz, response_length), need to create full sequence and unpad
+                        sft_responses = micro_batch["sft_responses"]  # (bsz, response_length)
+                        # Create full input_ids with sft_responses replacing the response part
+                        # input_ids is (bsz, seqlen), response is the last response_length tokens
+                        sft_input_ids = input_ids.clone()
+                        sft_input_ids[:, -response_length:] = sft_responses
+                        # Unpad and roll
+                        sft_input_ids_rmpad, _, _, *_ = unpad_input(sft_input_ids.unsqueeze(-1), attention_mask)
+                        sft_input_ids_rmpad = sft_input_ids_rmpad.transpose(0, 1)  # (1, total_nnz)
+                        sft_input_ids_rmpad_rolled = torch.roll(sft_input_ids_rmpad, shifts=-1, dims=1)
+                        if self.use_ulysses_sp:
+                            sft_input_ids_rmpad_rolled, _, _ = ulysses_pad_and_slice_inputs(
+                                sft_input_ids_rmpad_rolled,
+                                position_ids_rmpad=None,
+                                sp_size=self.ulysses_sequence_parallel_size,
+                            )
+                        sft_input_ids_rmpad_rolled = sft_input_ids_rmpad_rolled.squeeze(0)
+                        # Compute sft_log_probs using the same logits
+                        sft_log_probs_rmpad = logprobs_from_logits(
+                            logits=logits_rmpad,
+                            labels=sft_input_ids_rmpad_rolled,
+                            inplace_backward=True,  # Can use inplace since we don't need grad through labels
+                        )
 
                     # compute entropy
                     if calculate_entropy:
@@ -307,11 +343,19 @@ class DataParallelPPOActor(BasePPOActor):
                         sum_pi_squared_rmpad = gather_outputs_and_unpad(
                             sum_pi_squared_rmpad, gather_dim=0, unpad_dim=0, padding_size=pad_size
                         )
+                    # [Corrected Rollout SFT] gather sft_log_probs if computed
+                    if sft_log_probs_rmpad is not None:
+                        sft_log_probs_rmpad = gather_outputs_and_unpad(
+                            sft_log_probs_rmpad, gather_dim=0, unpad_dim=0, padding_size=pad_size
+                        )
 
                 if is_mask_all_zero:
                     log_probs = log_probs[:0]
                     if calculate_entropy:
                         entropy_rmpad = entropy_rmpad[:0]
+                    # [Corrected Rollout SFT] handle mask_all_zero case
+                    if sft_log_probs_rmpad is not None:
+                        sft_log_probs_rmpad = sft_log_probs_rmpad[:0]
 
                 # pad back to (bsz, seqlen)
                 if calculate_entropy:
@@ -334,6 +378,14 @@ class DataParallelPPOActor(BasePPOActor):
                     batch=batch_size,
                     seqlen=seqlen,
                 )
+                # [Corrected Rollout SFT] pad back sft_log_probs
+                if sft_log_probs_rmpad is not None:
+                    full_sft_log_probs = pad_input(
+                        hidden_states=sft_log_probs_rmpad.unsqueeze(-1),
+                        indices=indices,
+                        batch=batch_size,
+                        seqlen=seqlen,
+                    )
 
                 # only return response part:
                 if calculate_entropy:
@@ -342,6 +394,9 @@ class DataParallelPPOActor(BasePPOActor):
                     # (bsz, response_length)
                     sum_pi_squared = full_sum_pi_squared.squeeze(-1)[:, -response_length - 1 : -1]
                 log_probs = full_log_probs.squeeze(-1)[:, -response_length - 1 : -1]  # (bsz, response_length)
+                # [Corrected Rollout SFT] extract response part for sft_log_probs
+                if sft_log_probs_rmpad is not None:
+                    sft_log_probs = full_sft_log_probs.squeeze(-1)[:, -response_length - 1 : -1]
 
             else:  # not using rmpad and no ulysses sp
                 extra_args = {}
@@ -368,6 +423,12 @@ class DataParallelPPOActor(BasePPOActor):
                     logits.div_(temperature)
                     logits = logits[:, -response_length - 1 : -1, :]  # (bsz, response_length, vocab_size)
                     log_probs = logprobs_from_logits(logits, micro_batch["responses"])
+
+                    # [Corrected Rollout SFT] Compute sft_log_probs for SFT loss
+                    # This is just an extra gather operation on the same logits, minimal overhead
+                    if "sft_responses" in micro_batch:
+                        sft_log_probs = logprobs_from_logits(logits, micro_batch["sft_responses"])
+
                     if calculate_entropy:
                         if not self.config.entropy_checkpointing:
                             entropy = verl_F.entropy_from_logits(logits)  # (bsz, response_length)
@@ -386,6 +447,9 @@ class DataParallelPPOActor(BasePPOActor):
                 outputs["entropys"] = entropy
             if calculate_sum_pi_squared:
                 outputs["sum_pi_squared"] = sum_pi_squared
+            # [Corrected Rollout SFT] Add sft_log_probs to outputs
+            if "sft_responses" in micro_batch and sft_log_probs is not None:
+                outputs["sft_log_probs"] = sft_log_probs
             return outputs
 
     def _optimizer_step(self):
@@ -526,6 +590,13 @@ class DataParallelPPOActor(BasePPOActor):
         # Include rollout_log_probs for computing rollout_corr metrics in bypass mode
         if "rollout_log_probs" in data.batch.keys():
             select_keys.append("rollout_log_probs")
+        # [Corrected Rollout SFT] Include SFT-related keys if SFT loss is enabled
+        sft_loss_enabled = self.config.get('sft_loss_enabled', False)
+        sft_loss_weight = self.config.get('sft_loss_weight', 0.1)
+        if sft_loss_enabled and "sft_responses" in data.batch.keys() and "sft_mask" in data.batch.keys():
+            select_keys.extend(["sft_responses", "sft_mask"])
+            if "sft_response_mask" in data.batch.keys():
+                select_keys.append("sft_response_mask")
 
         has_multi_modal_inputs = "multi_modal_inputs" in data.non_tensor_batch.keys()
         non_tensor_select_keys = []
@@ -545,6 +616,7 @@ class DataParallelPPOActor(BasePPOActor):
         metrics = {
             "actor/pg_loss": 0.0,
             "actor/kl_loss": 0.0,
+            "actor/sft_loss": 0.0,
         }
         for _ in range(self.config.ppo_epochs):
             for batch_idx, mini_batch in enumerate(mini_batches):
@@ -648,6 +720,67 @@ class DataParallelPPOActor(BasePPOActor):
                         policy_loss = policy_loss + kl_loss * self.config.kl_loss_coef
                         metrics["actor/kl_loss"] += kl_loss.detach().item() * loss_scale_factor
                         micro_batch_metrics["actor/kl_coef"] = self.config.kl_loss_coef
+
+                    # [Corrected Rollout SFT] Compute SFT loss with separate forward pass
+                    # This approach doesn't depend on fused_kernels setting
+                    if sft_loss_enabled and "sft_responses" in model_inputs and "sft_mask" in model_inputs:
+                        sft_mask_mb = model_inputs["sft_mask"]  # (micro_bs,)
+
+                        if sft_mask_mb is not None and sft_mask_mb.any():
+                            # Get SFT response mask
+                            sft_response_mask_mb = model_inputs.get("sft_response_mask", response_mask)
+
+                            # Build input for SFT samples only
+                            sft_indices = sft_mask_mb.nonzero(as_tuple=True)[0]
+                            n_sft = len(sft_indices)
+
+                            # Create SFT input by replacing responses with sft_responses
+                            sft_input_ids = micro_batch.batch["input_ids"][sft_indices].clone()
+                            sft_responses = model_inputs["sft_responses"][sft_indices]
+                            response_length = sft_responses.shape[1]
+                            sft_input_ids[:, -response_length:] = sft_responses
+
+                            # Build model inputs for SFT forward
+                            sft_model_inputs = {
+                                "input_ids": sft_input_ids,
+                                "attention_mask": micro_batch.batch["attention_mask"][sft_indices],
+                                "position_ids": micro_batch.batch["position_ids"][sft_indices],
+                                "responses": sft_responses,
+                            }
+                            sft_non_tensor_inputs = {"pad_token_id": pad_token_id}
+                            if "multi_modal_inputs" in micro_batch.non_tensor_batch:
+                                # Select multi_modal_inputs for SFT samples
+                                mm_inputs = micro_batch.non_tensor_batch["multi_modal_inputs"]
+                                sft_non_tensor_inputs["multi_modal_inputs"] = [mm_inputs[i] for i in sft_indices.cpu().tolist()]
+
+                            # Forward pass for SFT (no need to create DataProto, just call _forward_micro_batch directly)
+                            with torch.enable_grad():
+                                sft_outputs = self._forward_micro_batch(
+                                    {**sft_model_inputs, **sft_non_tensor_inputs},
+                                    temperature=temperature,
+                                    calculate_entropy=False,
+                                )
+                            sft_log_probs = sft_outputs["log_probs"]  # (n_sft, response_length)
+                            sft_rm = sft_response_mask_mb[sft_indices]  # (n_sft, response_length)
+
+                            # SFT loss: masked_mean(-log_prob)
+                            sft_loss = verl_F.masked_mean(-sft_log_probs, sft_rm)
+
+                            if torch.isfinite(sft_loss):
+                                policy_loss = policy_loss + sft_loss_weight * sft_loss
+                                metrics["actor/sft_loss"] += sft_loss.detach().item() * loss_scale_factor
+                                micro_batch_metrics["actor/sft_samples"] = n_sft
+                                micro_batch_metrics["actor/sft_weight"] = sft_loss_weight
+
+                                # Log SFT loss details (only on rank 0, first micro-batch)
+                                if torch.distributed.get_rank() == 0 and batch_idx == 0:
+                                    avg_sft_logprob = verl_F.masked_mean(sft_log_probs, sft_rm).item()
+                                    print(
+                                        f"[SFT Loss] n_samples={n_sft}, "
+                                        f"loss={sft_loss.item():.4f}, "
+                                        f"weighted_loss={sft_loss.item() * sft_loss_weight:.4f}, "
+                                        f"avg_logprob={avg_sft_logprob:.4f}"
+                                    )
 
                     if self.config.use_dynamic_bsz:
                         # relative to the dynamic bsz

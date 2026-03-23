@@ -232,6 +232,16 @@ class OpenAIAPIInferenceEngine:
         cache_fps: int = 1,
         cache_max_frames: int = 512,
         max_frames_per_segment: int = 16,
+        # Initial video config (for first frame load)
+        initial_fps: int = 1,
+        initial_max_frames: int = 512,
+        initial_min_pixels: int = 784,  # 28*28
+        initial_max_pixels: int = 12544,  # ~112x112
+        # Segment video config (for segment frames)
+        segment_fps: int = 1,
+        segment_max_frames: int = 32,
+        segment_min_pixels: int = 784,  # 28*28
+        segment_max_pixels: int = 50176,  # ~224x224
     ):
         try:
             import openai
@@ -267,13 +277,144 @@ class OpenAIAPIInferenceEngine:
         )
         self.max_frames_per_segment = max_frames_per_segment
 
+        # Video config for initial video (aligned with video_reasoning_agent_loop.py)
+        self.initial_fps = initial_fps
+        self.initial_max_frames = initial_max_frames
+        self.initial_min_pixels = initial_min_pixels
+        self.initial_max_pixels = initial_max_pixels
+
+        # Video config for segment frames
+        self.segment_fps = segment_fps
+        self.segment_max_frames = segment_max_frames
+        self.segment_min_pixels = segment_min_pixels
+        self.segment_max_pixels = segment_max_pixels
+
+        # Base64 cache for images (avoid repeated encoding)
+        self._base64_cache = {}
+
         logger.info(f"Initialized OpenAI API client with {len(self.endpoints)} endpoint(s): {self.endpoints}")
+        logger.info(f"Initial video config: fps={initial_fps}, max_frames={initial_max_frames}, max_pixels={initial_max_pixels}")
+        logger.info(f"Segment video config: fps={segment_fps}, max_frames={segment_max_frames}, max_pixels={segment_max_pixels}")
+
+    def _inject_video_params(
+        self,
+        messages: List[Dict],
+        fps: int,
+        max_frames: int,
+        min_pixels: int,
+        max_pixels: int,
+    ) -> List[Dict]:
+        """
+        Inject video parameters into messages containing video content.
+
+        This allows the processor to control actual frame count and resolution,
+        while cache only provides fast loading.
+
+        Aligned with video_reasoning_agent_loop.py
+        """
+        for message in messages:
+            content = message.get("content")
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "video":
+                        if "fps" not in item:
+                            item["fps"] = fps
+                        if "max_frames" not in item:
+                            item["max_frames"] = max_frames
+                        if "min_pixels" not in item:
+                            item["min_pixels"] = min_pixels
+                        if "max_pixels" not in item:
+                            item["max_pixels"] = max_pixels
+        return messages
+
+    def _inject_video_to_messages(
+        self,
+        messages: List[Dict],
+        video_path: str,
+    ) -> List[Dict]:
+        """
+        Inject video content into messages that contain <video> text marker.
+
+        For OpenAI API, we load cached frames and convert to base64 images.
+        """
+        import copy
+        messages = copy.deepcopy(messages)
+
+        # Load initial frames from cache
+        try:
+            frame_paths = self.frame_cache.load_frame_paths(
+                video_path,
+                segments=None,  # Load all cached frames
+                max_frames_per_segment=self.initial_max_frames,
+            )
+        except CacheNotFoundError:
+            logger.warning(f"Cache not found for {video_path}, cannot inject video")
+            return messages
+
+        if not frame_paths:
+            return messages
+
+        for message in messages:
+            content = message.get("content")
+            if isinstance(content, str) and "<video>" in content:
+                # Convert string content to list format with video frames
+                parts = content.split("<video>", 1)
+                new_content = []
+                if parts[0]:
+                    new_content.append({"type": "text", "text": parts[0]})
+                # Add frames as images (OpenAI API format)
+                for frame_path in frame_paths:
+                    base64_image = self._load_image_as_base64(frame_path)
+                    new_content.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{base64_image}"
+                        }
+                    })
+                if len(parts) > 1 and parts[1]:
+                    new_content.append({"type": "text", "text": parts[1]})
+                message["content"] = new_content
+                break  # Only process first message with <video>
+            elif isinstance(content, list):
+                # Check if any text item has <video> marker
+                for i, item in enumerate(content):
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        text = item.get("text", "")
+                        if "<video>" in text:
+                            parts = text.split("<video>", 1)
+                            new_items = []
+                            if parts[0]:
+                                new_items.append({"type": "text", "text": parts[0]})
+                            for frame_path in frame_paths:
+                                base64_image = self._load_image_as_base64(frame_path)
+                                new_items.append({
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{base64_image}"
+                                    }
+                                })
+                            if len(parts) > 1 and parts[1]:
+                                new_items.append({"type": "text", "text": parts[1]})
+                            content[i:i+1] = new_items
+                            break
+                break  # Only process first message
+        return messages
 
     def _load_image_as_base64(self, image_path: str) -> str:
-        """Load image and convert to base64 for API"""
+        """Load image and convert to base64 for API (with caching)"""
+        if image_path in self._base64_cache:
+            return self._base64_cache[image_path]
+
         import base64
         with open(image_path, "rb") as f:
-            return base64.b64encode(f.read()).decode("utf-8")
+            encoded = base64.b64encode(f.read()).decode("utf-8")
+
+        self._base64_cache[image_path] = encoded
+        return encoded
+
+    def clear_base64_cache(self):
+        """Clear the base64 cache to free memory"""
+        self._base64_cache.clear()
 
     def _build_observation_message(
         self,
@@ -352,6 +493,17 @@ class OpenAIAPIInferenceEngine:
             Tuple of (full_response, num_turns)
         """
         current_messages = list(messages)
+        # Inject video content if messages contain <video> marker
+        if video_path:
+            current_messages = self._inject_video_to_messages(current_messages, video_path)
+        # Inject initial video params for the first message
+        self._inject_video_params(
+            current_messages,
+            fps=self.initial_fps,
+            max_frames=self.initial_max_frames,
+            min_pixels=self.initial_min_pixels,
+            max_pixels=self.initial_max_pixels,
+        )
         full_response_parts = []
         num_turns = 0
 
@@ -443,6 +595,17 @@ class OpenAIAPIInferenceEngine:
         """
         client = self.async_clients[client_idx]
         current_messages = list(messages)
+        # Inject video content if messages contain <video> marker
+        if video_path:
+            current_messages = self._inject_video_to_messages(current_messages, video_path)
+        # Inject initial video params for the first message
+        self._inject_video_params(
+            current_messages,
+            fps=self.initial_fps,
+            max_frames=self.initial_max_frames,
+            min_pixels=self.initial_min_pixels,
+            max_pixels=self.initial_max_pixels,
+        )
         full_response_parts = []
         num_turns = 0
 
@@ -532,37 +695,64 @@ class OpenAIAPIInferenceEngine:
         max_tokens: int,
         temperature: float,
         top_p: float,
+        max_concurrent_per_endpoint: int = 8,  # 每个 endpoint 的最大并发数
     ) -> List[List[Tuple[str, int]]]:
         """
         Async implementation for parallel generation across multiple endpoints.
+
+        Optimizations:
+        1. Pre-process messages with video injection (avoid repeated work per rollout)
+        2. Cache base64 encoded images
+        3. Configurable concurrency
         """
         import random as _random
         num_endpoints = len(self.async_clients)
         results = []
 
-        # 创建所有任务
-        all_tasks = []
-        task_info = []  # (prompt_idx, rollout_idx)
-
+        # 预处理：为每个 prompt 构建带视频的消息（只做一次，而不是每个 rollout 重复）
+        logger.info("Pre-processing messages with video injection...")
+        preprocessed_messages = []
         for prompt_idx, (prompt, video_path, video_duration) in enumerate(
             zip(prompts, video_paths, video_durations)
         ):
             # 构建消息
             if isinstance(prompt, list):
-                messages = prompt
+                messages = list(prompt)
             elif isinstance(prompt, str):
                 messages = [{"role": "user", "content": prompt}]
             else:
                 messages = [{"role": "user", "content": str(prompt)}]
 
+            # 预先注入视频内容（这是耗时操作，只做一次）
+            if video_path:
+                messages = self._inject_video_to_messages(messages, video_path)
+
+            # 预先注入视频参数
+            self._inject_video_params(
+                messages,
+                fps=self.initial_fps,
+                max_frames=self.initial_max_frames,
+                min_pixels=self.initial_min_pixels,
+                max_pixels=self.initial_max_pixels,
+            )
+
+            preprocessed_messages.append((messages, video_path, video_duration))
+
+        logger.info(f"Pre-processing complete. Base64 cache size: {len(self._base64_cache)} images")
+
+        # 创建所有任务
+        all_tasks = []
+        task_info = []  # (prompt_idx, rollout_idx)
+
+        for prompt_idx, (messages, video_path, video_duration) in enumerate(preprocessed_messages):
             for rollout_idx in range(n_rollouts):
                 # 轮询分配到不同的 endpoint
                 client_idx = (prompt_idx * n_rollouts + rollout_idx) % num_endpoints
                 # 为每个 rollout 生成不同的随机种子
                 seed = _random.randint(0, 2**31 - 1)
-                task = self._async_generate_single_multiturn(
+                task = self._async_generate_single_multiturn_preprocessed(
                     client_idx=client_idx,
-                    messages=messages,
+                    messages=messages,  # 使用预处理后的消息
                     video_path=video_path,
                     video_duration=video_duration,
                     max_turns=max_turns,
@@ -574,12 +764,13 @@ class OpenAIAPIInferenceEngine:
                 all_tasks.append(task)
                 task_info.append((prompt_idx, rollout_idx))
 
-        # 并行执行所有任务，带进度条
+        # 并行执行所有任务
         logger.info(f"Running {len(all_tasks)} tasks across {num_endpoints} endpoint(s)...")
 
         # 使用 semaphore 限制并发数，避免过载
-        max_concurrent = num_endpoints * 4  # 每个 endpoint 最多 4 个并发
+        max_concurrent = num_endpoints * max_concurrent_per_endpoint
         semaphore = asyncio.Semaphore(max_concurrent)
+        logger.info(f"Max concurrent requests: {max_concurrent}")
 
         async def run_with_semaphore(task):
             async with semaphore:
@@ -605,6 +796,76 @@ class OpenAIAPIInferenceEngine:
 
         return results
 
+    async def _async_generate_single_multiturn_preprocessed(
+        self,
+        client_idx: int,
+        messages: List[Dict],
+        video_path: Optional[str],
+        video_duration: Optional[float],
+        max_turns: int = 5,
+        max_tokens: int = 8192,
+        temperature: float = 0.7,
+        top_p: float = 0.7,
+        seed: Optional[int] = None,
+    ) -> Tuple[str, int]:
+        """
+        Async version for preprocessed messages (video already injected).
+
+        This skips the video injection step since messages are already preprocessed.
+        """
+        import copy
+        client = self.async_clients[client_idx]
+        # Deep copy to avoid modifying the original preprocessed messages
+        current_messages = copy.deepcopy(messages)
+        full_response_parts = []
+        num_turns = 0
+
+        for turn in range(max_turns):
+            try:
+                # 每轮使用不同的 seed 确保多样性
+                request_seed = seed + turn if seed is not None else None
+                response = await client.chat.completions.create(
+                    model=self.model_name,
+                    messages=current_messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    seed=request_seed,
+                )
+                response_text = response.choices[0].message.content or ""
+            except Exception as e:
+                logger.warning(f"API call failed on endpoint {self.endpoints[client_idx]}: {e}")
+                break
+
+            num_turns += 1
+            full_response_parts.append(response_text)
+
+            # Check for answer
+            answer = extract_answer(response_text)
+            if answer:
+                break
+
+            # Check for segments
+            segments = extract_segments(response_text)
+            if not segments or not video_path:
+                break
+
+            # Add assistant response
+            current_messages.append({"role": "assistant", "content": response_text})
+
+            # Build observation message
+            observation_message = self._build_observation_message(
+                segments, video_path, video_duration
+            )
+
+            if observation_message is None:
+                break
+
+            current_messages.append(observation_message)
+
+        full_response = "\n".join(full_response_parts)
+        return full_response, num_turns
+
 
 class VLLMInferenceEngine:
     """vLLM 推理引擎 - 支持多轮推理"""
@@ -620,6 +881,16 @@ class VLLMInferenceEngine:
         cache_fps: int = 1,
         cache_max_frames: int = 512,
         max_frames_per_segment: int = 16,
+        # Initial video config (for first frame load)
+        initial_fps: int = 1,
+        initial_max_frames: int = 512,
+        initial_min_pixels: int = 784,  # 28*28
+        initial_max_pixels: int = 12544,  # ~112x112
+        # Segment video config (for segment frames)
+        segment_fps: int = 1,
+        segment_max_frames: int = 32,
+        segment_min_pixels: int = 784,  # 28*28
+        segment_max_pixels: int = 50176,  # ~224x224
     ):
         try:
             from vllm import LLM
@@ -648,7 +919,101 @@ class VLLMInferenceEngine:
         )
         self.max_frames_per_segment = max_frames_per_segment
 
+        # Video config for initial video (aligned with video_reasoning_agent_loop.py)
+        self.initial_fps = initial_fps
+        self.initial_max_frames = initial_max_frames
+        self.initial_min_pixels = initial_min_pixels
+        self.initial_max_pixels = initial_max_pixels
+
+        # Video config for segment frames
+        self.segment_fps = segment_fps
+        self.segment_max_frames = segment_max_frames
+        self.segment_min_pixels = segment_min_pixels
+        self.segment_max_pixels = segment_max_pixels
+
         logger.info("vLLM engine initialized successfully")
+        logger.info(f"Initial video config: fps={initial_fps}, max_frames={initial_max_frames}, max_pixels={initial_max_pixels}")
+        logger.info(f"Segment video config: fps={segment_fps}, max_frames={segment_max_frames}, max_pixels={segment_max_pixels}")
+
+    def _inject_video_params(
+        self,
+        messages: List[Dict],
+        fps: int,
+        max_frames: int,
+        min_pixels: int,
+        max_pixels: int,
+    ) -> List[Dict]:
+        """
+        Inject video parameters into messages containing video content.
+
+        This allows the processor to control actual frame count and resolution,
+        while cache only provides fast loading.
+
+        Aligned with video_reasoning_agent_loop.py
+        """
+        for message in messages:
+            content = message.get("content")
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "video":
+                        if "fps" not in item:
+                            item["fps"] = fps
+                        if "max_frames" not in item:
+                            item["max_frames"] = max_frames
+                        if "min_pixels" not in item:
+                            item["min_pixels"] = min_pixels
+                        if "max_pixels" not in item:
+                            item["max_pixels"] = max_pixels
+        return messages
+
+    def _inject_video_to_messages(
+        self,
+        messages: List[Dict],
+        video_path: str,
+    ) -> List[Dict]:
+        """
+        Inject video content into messages that contain <video> text marker.
+
+        This converts text-only prompts with <video> markers into proper
+        multimodal messages with actual video content.
+
+        The parquet data stores prompts with text like "<video>\nThis is a video..."
+        but the actual video path is in a separate column. This method merges them.
+        """
+        import copy
+        messages = copy.deepcopy(messages)
+
+        for message in messages:
+            content = message.get("content")
+            if isinstance(content, str) and "<video>" in content:
+                # Convert string content to list format with video
+                # Replace <video> marker with actual video content
+                parts = content.split("<video>", 1)
+                new_content = []
+                if parts[0]:
+                    new_content.append({"type": "text", "text": parts[0]})
+                new_content.append({"type": "video", "video": video_path})
+                if len(parts) > 1 and parts[1]:
+                    new_content.append({"type": "text", "text": parts[1]})
+                message["content"] = new_content
+            elif isinstance(content, list):
+                # Already list format, check if video needs to be injected
+                for i, item in enumerate(content):
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        text = item.get("text", "")
+                        if "<video>" in text:
+                            # Split and inject video
+                            parts = text.split("<video>", 1)
+                            new_items = []
+                            if parts[0]:
+                                new_items.append({"type": "text", "text": parts[0]})
+                            new_items.append({"type": "video", "video": video_path})
+                            if len(parts) > 1 and parts[1]:
+                                new_items.append({"type": "text", "text": parts[1]})
+                            # Replace single item with multiple
+                            content[i:i+1] = new_items
+                            break  # Only process first <video> marker
+        return messages
 
     def _build_observation_message(
         self,
@@ -693,10 +1058,14 @@ class VLLMInferenceEngine:
             # Add segment label
             content_list.append({"type": "text", "text": f"\nFrom {start}s to {end}s:"})
 
-            # Add frames as video (vLLM format)
+            # Add frames as video (vLLM format) with segment video params
             content_list.append({
                 "type": "video",
                 "video": frame_paths,
+                "fps": self.segment_fps,
+                "max_frames": self.segment_max_frames,
+                "min_pixels": self.segment_min_pixels,
+                "max_pixels": self.segment_max_pixels,
             })
 
         if total_frames == 0:
@@ -741,6 +1110,14 @@ class VLLMInferenceEngine:
         )
 
         current_messages = list(messages)
+        # Inject initial video params for the first message
+        self._inject_video_params(
+            current_messages,
+            fps=self.initial_fps,
+            max_frames=self.initial_max_frames,
+            min_pixels=self.initial_min_pixels,
+            max_pixels=self.initial_max_pixels,
+        )
         full_response_parts = []
         num_turns = 0
 
@@ -829,6 +1206,10 @@ class VLLMInferenceEngine:
                 messages = [{"role": "user", "content": prompt}]
             else:
                 messages = [{"role": "user", "content": str(prompt)}]
+
+            # 如果 messages 中包含 <video> 标记但没有实际视频内容，注入视频路径
+            if video_path:
+                messages = self._inject_video_to_messages(messages, video_path)
 
             responses = []
             for _ in range(n_rollouts):
@@ -1201,6 +1582,15 @@ async def main_async(args):
             cache_fps=args.cache_fps,
             cache_max_frames=args.cache_max_frames,
             max_frames_per_segment=args.max_frames_per_segment,
+            # Video config params
+            initial_fps=args.initial_fps,
+            initial_max_frames=args.initial_max_frames,
+            initial_min_pixels=args.initial_min_pixels,
+            initial_max_pixels=args.initial_max_pixels,
+            segment_fps=args.segment_fps,
+            segment_max_frames=args.segment_max_frames,
+            segment_min_pixels=args.segment_min_pixels,
+            segment_max_pixels=args.segment_max_pixels,
         )
     else:
         engine = VLLMInferenceEngine(
@@ -1212,6 +1602,15 @@ async def main_async(args):
             cache_fps=args.cache_fps,
             cache_max_frames=args.cache_max_frames,
             max_frames_per_segment=args.max_frames_per_segment,
+            # Video config params
+            initial_fps=args.initial_fps,
+            initial_max_frames=args.initial_max_frames,
+            initial_min_pixels=args.initial_min_pixels,
+            initial_max_pixels=args.initial_max_pixels,
+            segment_fps=args.segment_fps,
+            segment_max_frames=args.segment_max_frames,
+            segment_min_pixels=args.segment_min_pixels,
+            segment_max_pixels=args.segment_max_pixels,
         )
 
     # 准备奖励函数参数
@@ -1406,6 +1805,7 @@ def main():
     parser.add_argument("--temperature", type=float, default=0.7, help="采样温度")
     parser.add_argument("--top_p", type=float, default=0.7, help="Top-p 采样")
     parser.add_argument("--batch_size", type=int, default=4, help="批处理大小")
+    parser.add_argument("--max_concurrent_per_endpoint", type=int, default=8, help="每个 API endpoint 的最大并发请求数")
 
     # vLLM 参数
     parser.add_argument("--tensor_parallel_size", type=int, default=1, help="vLLM tensor parallel size")
@@ -1416,6 +1816,18 @@ def main():
     parser.add_argument("--cache_fps", type=int, default=1, help="帧缓存的 FPS")
     parser.add_argument("--cache_max_frames", type=int, default=512, help="每个视频最大缓存帧数")
     parser.add_argument("--max_frames_per_segment", type=int, default=16, help="每个 segment 最大帧数")
+
+    # 视频参数配置 (与 video_reasoning_agent_loop.py 一致)
+    # Initial video config (for first frame load)
+    parser.add_argument("--initial_fps", type=int, default=1, help="初始视频采样 FPS")
+    parser.add_argument("--initial_max_frames", type=int, default=512, help="初始视频最大帧数")
+    parser.add_argument("--initial_min_pixels", type=int, default=784, help="初始视频最小像素 (28*28)")
+    parser.add_argument("--initial_max_pixels", type=int, default=12544, help="初始视频最大像素 (~112x112)")
+    # Segment video config (for segment frames)
+    parser.add_argument("--segment_fps", type=int, default=1, help="片段视频采样 FPS")
+    parser.add_argument("--segment_max_frames", type=int, default=32, help="片段视频最大帧数")
+    parser.add_argument("--segment_min_pixels", type=int, default=784, help="片段视频最小像素 (28*28)")
+    parser.add_argument("--segment_max_pixels", type=int, default=50176, help="片段视频最大像素 (~224x224)")
 
     # 奖励函数参数
     parser.add_argument("--vlm_endpoint", type=str, default="10.0.1.35:8081", help="VLM 服务地址")

@@ -46,22 +46,27 @@ def qwen3_vl_vision_forward_profiled(self, hidden_states: torch.Tensor, grid_thw
         torch.cuda.synchronize()
         t0 = time.perf_counter()
 
-    # Replace Conv3d with equivalent F.linear (bypass PyTorch 2.9 cuDNN disable for Conv3d)
+    # ============================================================================
+    # ORIGINAL Conv3d → Linear workaround (COMMENTED OUT for PyTorch 2.8 testing)
+    # This was a workaround for PyTorch 2.9 cuDNN disable for Conv3d
     # When stride == kernel_size, Conv3d is mathematically identical to F.linear
-    pe = self.patch_embed
-    weight_2d = pe.proj.weight.view(pe.embed_dim, -1)  # (1152, 1536) same memory
-    bias = pe.proj.bias
+    # ============================================================================
+    # pe = self.patch_embed
+    # weight_2d = pe.proj.weight.view(pe.embed_dim, -1)  # (1152, 1536) same memory
+    # bias = pe.proj.bias
+    # hidden_states = hidden_states.view(-1, pe.in_channels * pe.temporal_patch_size * pe.patch_size * pe.patch_size)
+    # hidden_states = F.linear(hidden_states, weight_2d, bias)
 
-    hidden_states = hidden_states.view(-1, pe.in_channels * pe.temporal_patch_size * pe.patch_size * pe.patch_size)
-    hidden_states = F.linear(hidden_states, weight_2d, bias)
+    # Use original patch_embed (Conv3d) - should work fine with PyTorch 2.8
+    hidden_states = self.patch_embed(hidden_states)
 
     if _do_profile:
         torch.cuda.synchronize()
         t1 = time.perf_counter()
         print(
-            f"[PatchEmbed F.linear] call={qwen3_vl_vision_forward_profiled._call_count} | "
+            f"[PatchEmbed Conv3d] call={qwen3_vl_vision_forward_profiled._call_count} | "
             f"time={t1-t0:.3f}s | patches={hidden_states.shape[0]} | "
-            f"weight_dtype={weight_2d.dtype} | input_dtype={hidden_states.dtype}",
+            f"input_dtype={hidden_states.dtype}",
             flush=True,
         )
 

@@ -273,22 +273,22 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
                 pass
 
     # Token placement metrics
-    if "token_placement_info" in batch.non_tensor_batch:
-        tp_info = batch.non_tensor_batch["token_placement_info"]
+    if "token_placement_info" in batch.meta_info:
+        tp_info = batch.meta_info["token_placement_info"]
         if isinstance(tp_info, dict):
             for k, v in tp_info.items():
                 if isinstance(v, (int, float, bool)):
                     metrics[f"token_placement/{k}"] = float(v) if isinstance(v, bool) else v
 
     # Turn-level advantage stats (for per_turn / per_turn_gae methods)
-    if "bbox_turn_adv_mean" in batch.non_tensor_batch:
-        metrics["token_placement/bbox_turn_adv_mean"] = float(batch.non_tensor_batch["bbox_turn_adv_mean"])
-    if "bbox_turn_adv_std" in batch.non_tensor_batch:
-        metrics["token_placement/bbox_turn_adv_std"] = float(batch.non_tensor_batch["bbox_turn_adv_std"])
-    if "segment_turn_adv_mean" in batch.non_tensor_batch:
-        metrics["token_placement/segment_turn_adv_mean"] = float(batch.non_tensor_batch["segment_turn_adv_mean"])
-    if "segment_turn_adv_std" in batch.non_tensor_batch:
-        metrics["token_placement/segment_turn_adv_std"] = float(batch.non_tensor_batch["segment_turn_adv_std"])
+    if "bbox_turn_adv_mean" in batch.meta_info:
+        metrics["token_placement/bbox_turn_adv_mean"] = float(batch.meta_info["bbox_turn_adv_mean"])
+    if "bbox_turn_adv_std" in batch.meta_info:
+        metrics["token_placement/bbox_turn_adv_std"] = float(batch.meta_info["bbox_turn_adv_std"])
+    if "segment_turn_adv_mean" in batch.meta_info:
+        metrics["token_placement/segment_turn_adv_mean"] = float(batch.meta_info["segment_turn_adv_mean"])
+    if "segment_turn_adv_std" in batch.meta_info:
+        metrics["token_placement/segment_turn_adv_std"] = float(batch.meta_info["segment_turn_adv_std"])
 
     return metrics
 
@@ -667,6 +667,10 @@ def process_validation_metrics(
 
                 # skip non-numeric types (e.g., bbox_details, segment_details which are lists of dicts)
                 if isinstance(var_vals[0], (dict, list)):
+                    continue
+
+                # skip if first value is None (e.g., corrected_solution_str when answer is wrong)
+                if var_vals[0] is None:
                     continue
 
                 # compute mean and std

@@ -416,11 +416,11 @@ def compute_advantage(
             all_bbox_advs = [a for sample_dict in bbox_advs for a in sample_dict.values()]
             all_segment_advs = [a for sample_dict in segment_advs for a in sample_dict.values()]
             if all_bbox_advs:
-                data.non_tensor_batch["bbox_turn_adv_mean"] = np.mean(all_bbox_advs)
-                data.non_tensor_batch["bbox_turn_adv_std"] = np.std(all_bbox_advs)
+                data.meta_info["bbox_turn_adv_mean"] = np.mean(all_bbox_advs)
+                data.meta_info["bbox_turn_adv_std"] = np.std(all_bbox_advs)
             if all_segment_advs:
-                data.non_tensor_batch["segment_turn_adv_mean"] = np.mean(all_segment_advs)
-                data.non_tensor_batch["segment_turn_adv_std"] = np.std(all_segment_advs)
+                data.meta_info["segment_turn_adv_mean"] = np.mean(all_segment_advs)
+                data.meta_info["segment_turn_adv_std"] = np.std(all_segment_advs)
 
             # Store token placement diagnostic info
             total_turns = sum(len(ti["turns"]) for ti in turn_info)
@@ -449,7 +449,7 @@ def compute_advantage(
                 "avg_within_sample_adv_var": avg_within_sample_var,
                 "enable_batch_norm": enable_batch_norm,
             }
-            data.non_tensor_batch["token_placement_info"] = tp_info
+            data.meta_info["token_placement_info"] = tp_info
 
             # Log token placement method (once)
             if not hasattr(compute_advantage, "_tp_logged"):
@@ -736,6 +736,39 @@ class RayPPOTrainer:
                     "request_id",
                     batch.non_tensor_batch["request_id"].tolist(),
                 )
+
+            # Add SFT sample info to reward log
+            if "sft_mask" in batch.batch and "sft_responses" in batch.batch:
+                sft_mask = batch.batch["sft_mask"].cpu().tolist()
+                reward_extra_infos_to_dump["is_sft_sample"] = sft_mask
+
+                # Decode SFT responses for samples where sft_mask is True
+                sft_responses_text = []
+                sft_response_lengths = []
+                for i in range(len(sft_mask)):
+                    if sft_mask[i]:
+                        sft_resp = batch.batch["sft_responses"][i]
+                        # Get actual length from sft_response_mask if available
+                        if "sft_response_mask" in batch.batch:
+                            sft_len = batch.batch["sft_response_mask"][i].sum().item()
+                            sft_text = self.tokenizer.decode(sft_resp[:int(sft_len)], skip_special_tokens=True)
+                        else:
+                            sft_text = self.tokenizer.decode(sft_resp, skip_special_tokens=True)
+                            sft_len = (sft_resp != (self.tokenizer.pad_token_id or 0)).sum().item()
+                        sft_responses_text.append(sft_text)
+                        sft_response_lengths.append(int(sft_len))
+                    else:
+                        sft_responses_text.append(None)
+                        sft_response_lengths.append(0)
+                reward_extra_infos_to_dump["sft_response"] = sft_responses_text
+                reward_extra_infos_to_dump["sft_response_length"] = sft_response_lengths
+
+            # Add corrected_solution_str (refine 前后对比)
+            corrected_strs = batch.non_tensor_batch.get('corrected_solution_str', None)
+            if corrected_strs is not None:
+                reward_extra_infos_to_dump["corrected_solution_str"] = [
+                    str(s) if s is not None else None for s in corrected_strs
+                ]
 
             self._dump_generations(
                 inputs=inputs,
@@ -1522,6 +1555,424 @@ class RayPPOTrainer:
             old_log_prob_mfu = 0
         return old_log_prob, old_log_prob_mfu
 
+    def _prepare_sft_labels(self, batch: DataProto) -> DataProto:
+        """
+        为答对的样本准备 SFT labels（token ids 形式，和 responses 同 shape）。
+
+        用于 Corrected Rollout SFT：当 answer_score=1 时，用 GT bbox 替换模型预测的 bbox，
+        然后对替换后的文本计算 SFT loss，引导模型学习正确的 bbox 格式和位置。
+
+        策略：
+        - 使用 corrected_solution_str（已在 reward 函数中生成，保留了视频 token）
+        - Tokenize 后 truncate/pad 到 response_length
+        - sft_response_mask 标记 corrected 的实际有效长度
+        - 采样：限制最多 max_sft_samples 个样本，从不同 prompt 中均匀抽取
+
+        Args:
+            batch: DataProto containing 'responses' and 'corrected_solution_str' in non_tensor_batch
+
+        Returns:
+            Updated DataProto with 'sft_responses', 'sft_mask', 'sft_response_mask' added to batch
+        """
+        import random
+
+        # Check if SFT loss is enabled in config
+        actor_config = self.config.actor_rollout_ref.actor
+        if not actor_config.get('sft_loss_enabled', False):
+            return batch
+
+        # Get max SFT samples from config (default 32)
+        max_sft_samples = actor_config.get('max_sft_samples', 32)
+
+        # Get corrected solution strings (generated in reward function with video tokens preserved)
+        corrected_strs = batch.non_tensor_batch.get('corrected_solution_str', None)
+        if corrected_strs is None:
+            return batch
+
+        bs = batch.batch['responses'].shape[0]
+        response_length = batch.batch['responses'].shape[1]
+
+        # sft_responses: same shape as responses, initialized with pad tokens
+        pad_id = self.tokenizer.pad_token_id if self.tokenizer.pad_token_id is not None else 0
+        sft_responses = torch.full_like(batch.batch['responses'], pad_id)
+        sft_mask = torch.zeros(bs, dtype=torch.bool)
+        sft_response_mask = torch.zeros(bs, response_length, dtype=torch.bool, device=batch.batch['responses'].device)
+
+        # First pass: collect all valid candidates with their prompt info
+        candidates = []  # List of (index, corrected_str, prompt_id)
+
+        # Try to get prompt/uid info for grouping by prompt
+        uids = batch.non_tensor_batch.get('uid', None)
+
+        for i, corrected_str in enumerate(corrected_strs):
+            if corrected_str is None:
+                continue
+            # Use uid as prompt identifier, or fallback to index // n_rollouts
+            prompt_id = uids[i] if uids is not None else i // self.config.actor_rollout_ref.rollout.n
+            candidates.append((i, corrected_str, prompt_id))
+
+        n_total_candidates = len(candidates)
+
+        # Sampling: if too many candidates, sample from different prompts
+        if len(candidates) > max_sft_samples:
+            # Group by prompt_id
+            prompt_groups = {}
+            for idx, corrected_str, prompt_id in candidates:
+                if prompt_id not in prompt_groups:
+                    prompt_groups[prompt_id] = []
+                prompt_groups[prompt_id].append((idx, corrected_str))
+
+            # Sample uniformly from each prompt group
+            sampled_candidates = []
+            prompt_ids = list(prompt_groups.keys())
+            random.shuffle(prompt_ids)
+
+            # Round-robin sampling from each prompt until we reach max_sft_samples
+            while len(sampled_candidates) < max_sft_samples and prompt_groups:
+                for prompt_id in list(prompt_ids):
+                    if prompt_id not in prompt_groups or not prompt_groups[prompt_id]:
+                        prompt_ids.remove(prompt_id)
+                        continue
+                    # Take one sample from this prompt
+                    idx, corrected_str = prompt_groups[prompt_id].pop(0)
+                    sampled_candidates.append((idx, corrected_str, prompt_id))
+                    if len(sampled_candidates) >= max_sft_samples:
+                        break
+
+            candidates = sampled_candidates
+
+        n_matched = 0
+        n_truncated = 0
+
+        # For detailed logging
+        sft_sample_logs = []
+
+        for idx, corrected_str, prompt_id in candidates:
+            # Tokenize corrected string (it already contains video tokens from reward function)
+            corrected_ids = self.tokenizer.encode(str(corrected_str), add_special_tokens=False)
+
+            # Truncate if too long
+            if len(corrected_ids) > response_length:
+                corrected_ids = corrected_ids[:response_length]
+                n_truncated += 1
+
+            corrected_len = len(corrected_ids)
+
+            # Fill sft_responses with corrected tokens
+            sft_responses[idx, :corrected_len] = torch.tensor(
+                corrected_ids,
+                dtype=sft_responses.dtype,
+                device=sft_responses.device
+            )
+            sft_mask[idx] = True
+            sft_response_mask[idx, :corrected_len] = True
+            n_matched += 1
+
+            # Log first few samples
+            if len(sft_sample_logs) < 2:
+                original_resp = batch.batch['responses'][idx]
+                original_valid_len = (original_resp != pad_id).sum().item()
+                sft_sample_logs.append({
+                    "idx": idx,
+                    "prompt_id": prompt_id,
+                    "original_len": original_valid_len,
+                    "corrected_len": corrected_len,
+                })
+
+        batch.batch['sft_responses'] = sft_responses
+        batch.batch['sft_mask'] = sft_mask
+        batch.batch['sft_response_mask'] = sft_response_mask
+
+        # Count unique prompts in selected samples
+        n_unique_prompts = len(set(p for _, _, p in candidates))
+
+        # Print summary
+        print(
+            f"[SFT Labels] Step {self.global_steps}: {n_matched} sampled from {n_total_candidates} candidates "
+            f"(max={max_sft_samples}), {n_unique_prompts} unique prompts, {n_truncated} truncated"
+        )
+
+        # Print sample details
+        if sft_sample_logs:
+            print(f"[SFT Samples] Showing {len(sft_sample_logs)} example(s):")
+            for j, sample in enumerate(sft_sample_logs):
+                print(f"--- SFT Sample {j+1} (idx={sample['idx']}, prompt={sample['prompt_id']}, "
+                      f"orig_len={sample['original_len']}, corr_len={sample['corrected_len']}) ---")
+
+        # Save SFT visualization
+        self._save_sft_visualization(batch, pad_id)
+
+        return batch
+
+    def _save_sft_visualization(self, batch: DataProto, pad_id: int):
+        """
+        保存 SFT 可视化数据到 reward_logs/sft_vis/ 目录。
+
+        每个 step 保存一个 JSONL 文件，包含 refine 前后的对比：
+        - original_response: 原始 rollout 输出
+        - corrected_response: bbox 替换后的文本
+        - bbox_details: 每个 bbox 的详细信息（含 GT bbox）
+        - answer_score, bbox_score 等奖励信息
+
+        同时保存 bbox 可视化图片（pred_bbox vs gt_bbox）
+        """
+        try:
+            # Debug: check if sft_mask exists
+            if 'sft_mask' not in batch.batch:
+                print(f"[SFT Vis] Warning: sft_mask not found in batch.batch, skipping visualization")
+                return
+
+            # Get reward log directory from config (handle OmegaConf)
+            from omegaconf import OmegaConf
+            reward_kwargs = OmegaConf.select(self.config, "custom_reward_function.reward_kwargs", default={})
+            if reward_kwargs is None:
+                reward_kwargs = {}
+            log_dir = reward_kwargs.get("log_dir", "./reward_logs") if isinstance(reward_kwargs, dict) else getattr(reward_kwargs, "log_dir", "./reward_logs")
+            cache_dir = reward_kwargs.get("cache_dir", ".cache") if isinstance(reward_kwargs, dict) else getattr(reward_kwargs, "cache_dir", ".cache")
+            cache_fps = reward_kwargs.get("cache_fps", 1) if isinstance(reward_kwargs, dict) else getattr(reward_kwargs, "cache_fps", 1)
+            cache_max_frames = reward_kwargs.get("cache_max_frames", 512) if isinstance(reward_kwargs, dict) else getattr(reward_kwargs, "cache_max_frames", 512)
+            bbox_coord_range = reward_kwargs.get("bbox_coord_range", 1000.0) if isinstance(reward_kwargs, dict) else getattr(reward_kwargs, "bbox_coord_range", 1000.0)
+
+            sft_vis_dir = os.path.join(log_dir, "sft_vis")
+            sft_vis_images_dir = os.path.join(sft_vis_dir, "images")
+            os.makedirs(sft_vis_dir, exist_ok=True)
+            os.makedirs(sft_vis_images_dir, exist_ok=True)
+
+            # Only save every N steps to avoid too many files (configurable)
+            save_every_n = reward_kwargs.get("save_every_n", 1) if isinstance(reward_kwargs, dict) else getattr(reward_kwargs, "save_every_n", 1)
+            print(f"[SFT Vis] Step {self.global_steps}, save_every_n={save_every_n}, will_save={self.global_steps % save_every_n == 0}")
+            if self.global_steps % save_every_n != 0:
+                return
+
+            # Prepare data
+            bs = batch.batch['responses'].shape[0]
+            sft_mask = batch.batch['sft_mask'].cpu().tolist()
+            n_sft_samples = sum(sft_mask)
+            print(f"[SFT Vis] Found {n_sft_samples} SFT samples out of {bs} total")
+
+            # Get various data from batch
+            bbox_details_list = batch.non_tensor_batch.get('bbox_details', [None] * bs)
+            answer_scores = batch.non_tensor_batch.get('answer_score', [None] * bs)
+            bbox_scores = batch.non_tensor_batch.get('bbox_score', [None] * bs)
+            format_scores = batch.non_tensor_batch.get('format_score', [None] * bs)
+            segment_scores = batch.non_tensor_batch.get('segment_score', [None] * bs)
+            extra_infos = batch.non_tensor_batch.get('extra_info', [{}] * bs)
+
+            # Debug: check extra_info content (handle numpy array)
+            if extra_infos is not None and len(extra_infos) > 0:
+                sample_extra = extra_infos[0] if extra_infos[0] is not None else {}
+                print(f"[SFT Vis] Sample extra_info keys: {list(sample_extra.keys()) if isinstance(sample_extra, dict) else 'not a dict'}")
+
+            # Build JSONL entries
+            entries = []
+            n_images_saved = 0
+            max_images_per_step = 5  # Limit images per step to avoid too many files
+
+            for i in range(bs):
+                if not sft_mask[i]:
+                    continue
+
+                # Decode original and corrected responses
+                original_resp = batch.batch['responses'][i]
+                sft_resp = batch.batch['sft_responses'][i]
+                original_valid_len = (original_resp != pad_id).sum().item()
+                sft_valid_len = (sft_resp != pad_id).sum().item()
+
+                original_text = self.tokenizer.decode(original_resp[:original_valid_len], skip_special_tokens=False)
+                corrected_text = self.tokenizer.decode(sft_resp[:sft_valid_len], skip_special_tokens=False)
+
+                # Get bbox details with GT info
+                bbox_details = bbox_details_list[i] if i < len(bbox_details_list) else None
+                bbox_vis_info = []
+                image_paths = []  # Paths to saved visualization images
+
+                if bbox_details and n_images_saved < max_images_per_step:
+                    # Try to get video path from extra_info
+                    extra_info = extra_infos[i] if i < len(extra_infos) else {}
+                    video_path = extra_info.get('video_path', None) if isinstance(extra_info, dict) else None
+
+                    for bd_idx, bd in enumerate(bbox_details):
+                        bbox_info = bd.get('bbox_info', {})
+                        gt_bbox = bd.get('gt_bbox')
+                        pred_bbox = bbox_info.get('bbox')
+                        time_val = bbox_info.get('time', 0)
+
+                        bbox_vis_info.append({
+                            "object": bbox_info.get('object', ''),
+                            "time": time_val,
+                            "pred_bbox": pred_bbox,  # 模型预测的 bbox
+                            "gt_bbox": gt_bbox,      # VLM 验证的 GT bbox
+                            "iou_score": bd.get('iou_score'),
+                            "temporal_score": bd.get('temporal_score'),
+                            "total_score": bd.get('total_score'),
+                        })
+
+                        # Save bbox visualization image (pred vs gt)
+                        if video_path and gt_bbox and pred_bbox and n_images_saved < max_images_per_step:
+                            try:
+                                img_path = self._save_bbox_comparison_image(
+                                    video_path=video_path,
+                                    timestamp=time_val,
+                                    pred_bbox=pred_bbox,
+                                    gt_bbox=gt_bbox,
+                                    object_name=bbox_info.get('object', ''),
+                                    output_dir=sft_vis_images_dir,
+                                    step=self.global_steps,
+                                    batch_idx=i,
+                                    bbox_idx=bd_idx,
+                                    cache_dir=cache_dir,
+                                    cache_fps=cache_fps,
+                                    cache_max_frames=cache_max_frames,
+                                    bbox_coord_range=bbox_coord_range,
+                                )
+                                if img_path:
+                                    image_paths.append(img_path)
+                                    n_images_saved += 1
+                            except Exception as e:
+                                print(f"[SFT Vis] Warning: Failed to save bbox image: {e}")
+
+                entry = {
+                    "step": self.global_steps,
+                    "batch_idx": i,
+                    "original_response": original_text,
+                    "corrected_response": corrected_text,
+                    "answer_score": answer_scores[i] if i < len(answer_scores) else None,
+                    "bbox_score": bbox_scores[i] if i < len(bbox_scores) else None,
+                    "format_score": format_scores[i] if i < len(format_scores) else None,
+                    "segment_score": segment_scores[i] if i < len(segment_scores) else None,
+                    "bbox_details": bbox_vis_info,  # 包含 pred_bbox 和 gt_bbox 的对比
+                    "image_paths": image_paths,  # 可视化图片路径
+                }
+                entries.append(entry)
+
+            # Save to JSONL
+            if entries:
+                filename = os.path.join(sft_vis_dir, f"step_{self.global_steps}.jsonl")
+                with open(filename, 'w', encoding='utf-8') as f:
+                    for entry in entries:
+                        f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+                print(f"[SFT Vis] Saved {len(entries)} samples to {filename}, {n_images_saved} bbox images")
+        except Exception as e:
+            import traceback
+            print(f"[SFT Vis] Warning: Failed to save visualization: {e}")
+            print(f"[SFT Vis] Traceback: {traceback.format_exc()}")
+
+    def _save_bbox_comparison_image(
+        self,
+        video_path: str,
+        timestamp: float,
+        pred_bbox: list,
+        gt_bbox: list,
+        object_name: str,
+        output_dir: str,
+        step: int,
+        batch_idx: int,
+        bbox_idx: int,
+        cache_dir: str = ".cache",
+        cache_fps: int = 1,
+        cache_max_frames: int = 512,
+        bbox_coord_range: float = 1000.0,
+    ) -> str:
+        """
+        保存 bbox 对比可视化图片（pred_bbox 红色，gt_bbox 绿色）
+
+        Args:
+            video_path: 视频文件路径
+            timestamp: 帧时间戳
+            pred_bbox: 模型预测的 bbox [x1, y1, x2, y2]
+            gt_bbox: GT bbox [x1, y1, x2, y2]（归一化到 [0,1]）
+            object_name: 物体名称
+            output_dir: 输出目录
+            step: 训练步数
+            batch_idx: batch 索引
+            bbox_idx: bbox 索引
+            cache_dir: 帧缓存目录
+            cache_fps: 缓存帧的 fps
+            cache_max_frames: 缓存的最大帧数
+            bbox_coord_range: pred_bbox 的坐标范围
+
+        Returns:
+            保存的图片路径，失败返回 None
+        """
+        try:
+            from PIL import Image, ImageDraw, ImageFont
+
+            # Load frame from cache
+            from verl.utils.video_frame_cache import VideoFrameCache
+            cache = VideoFrameCache(cache_dir=cache_dir, fps=cache_fps, max_frames=cache_max_frames)
+
+            frame_paths = cache.load_frame_paths(video_path, segments=None, auto_cache=False)
+            if not frame_paths:
+                return None
+
+            # Find closest frame to timestamp
+            best_path = None
+            best_diff = float('inf')
+            for fp in frame_paths:
+                # Extract timestamp from filename (e.g., frame_0010_10s.jpg)
+                try:
+                    frame_time = float(os.path.basename(fp).split('_')[-1].replace('s.jpg', ''))
+                    diff = abs(frame_time - timestamp)
+                    if diff < best_diff:
+                        best_diff = diff
+                        best_path = fp
+                except:
+                    continue
+
+            if not best_path or not os.path.exists(best_path):
+                return None
+
+            # Load image
+            img = Image.open(best_path).convert('RGB')
+            draw = ImageDraw.Draw(img)
+            width, height = img.size
+
+            # Scale pred_bbox from coord_range to pixel coordinates
+            pred_x1 = int(pred_bbox[0] / bbox_coord_range * width)
+            pred_y1 = int(pred_bbox[1] / bbox_coord_range * height)
+            pred_x2 = int(pred_bbox[2] / bbox_coord_range * width)
+            pred_y2 = int(pred_bbox[3] / bbox_coord_range * height)
+
+            # Scale gt_bbox from [0,1] to pixel coordinates
+            gt_x1 = int(gt_bbox[0] * width)
+            gt_y1 = int(gt_bbox[1] * height)
+            gt_x2 = int(gt_bbox[2] * width)
+            gt_y2 = int(gt_bbox[3] * height)
+
+            # Draw pred_bbox (red, dashed - simulated with thinner line)
+            draw.rectangle([pred_x1, pred_y1, pred_x2, pred_y2], outline='red', width=2)
+
+            # Draw gt_bbox (green, solid)
+            draw.rectangle([gt_x1, gt_y1, gt_x2, gt_y2], outline='green', width=3)
+
+            # Add legend
+            try:
+                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+            except:
+                font = ImageFont.load_default()
+
+            # Draw legend at top-left
+            legend_y = 10
+            draw.rectangle([5, legend_y, 15, legend_y + 10], outline='red', fill='red')
+            draw.text((20, legend_y - 2), f"Pred: {object_name}", fill='red', font=font)
+            legend_y += 18
+            draw.rectangle([5, legend_y, 15, legend_y + 10], outline='green', fill='green')
+            draw.text((20, legend_y - 2), f"GT: {object_name}", fill='green', font=font)
+            legend_y += 18
+            draw.text((5, legend_y), f"t={timestamp}s", fill='white', font=font)
+
+            # Save image
+            # Clean filename (only clean the filename part, not the directory path)
+            safe_object_name = object_name[:20].replace(' ', '_').replace('/', '_')
+            filename = f"step{step}_batch{batch_idx}_bbox{bbox_idx}_{safe_object_name}_{timestamp}s.jpg"
+            output_path = os.path.join(output_dir, filename)
+            img.save(output_path, quality=85)
+
+            return output_path
+        except Exception as e:
+            print(f"[SFT Vis] Warning: Failed to create bbox comparison image: {e}")
+            return None
+
     def _update_actor(self, batch: DataProto) -> DataProto:
         rollout_config = self.config.actor_rollout_ref.rollout
         batch.meta_info["multi_turn"] = rollout_config.multi_turn.enable
@@ -1871,6 +2322,10 @@ class RayPPOTrainer:
                             config=self.config.algorithm,
                             tokenizer=self.tokenizer,
                         )
+
+                    # Prepare SFT labels for Corrected Rollout SFT (if enabled)
+                    # This tokenizes corrected_solution_str and creates sft_responses/sft_mask
+                    batch = self._prepare_sft_labels(batch)
 
                     # update critic
                     if self.use_critic:
