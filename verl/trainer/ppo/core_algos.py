@@ -658,8 +658,15 @@ def find_turn_boundaries(
     """
     Find turn boundaries and bbox positions in the response.
 
-    Identifies <think>...</think><answer>...</answer> boundaries for each turn
-    and locates bbox positions within think sections.
+    Identifies turn boundaries based on <think>, <segment>, and <answer> tags.
+
+    Format expected:
+    - Intermediate turns: <think>...</think><segment>...</segment>
+    - Final turn: <think>...</think><answer>...</answer>
+
+    Turn boundaries:
+    - segment reward: <think> to </segment> (or </answer> for final turn)
+    - bbox reward: previous turn's <segment> + current turn's <think>
 
     Args:
         response_str: Decoded response string
@@ -668,7 +675,8 @@ def find_turn_boundaries(
 
     Returns:
         Dictionary with:
-        - turns: List of turn info dicts with think_start, think_end, answer_start, answer_end
+        - turns: List of turn info dicts with think_start, think_end, segment_start, segment_end,
+                 answer_start, answer_end, turn_end (effective end for this turn)
         - bbox_positions: List of bbox position dicts with token_pos, turn_idx, char_pos
     """
     result = {"turns": [], "bbox_positions": []}
@@ -681,26 +689,72 @@ def find_turn_boundaries(
         cumulative_chars += len(decoded)
         token_char_offsets.append(cumulative_chars)
 
-    # Find all turn boundaries
+    # Find all tag positions
     think_starts = [m.start() for m in re.finditer(r'<think>', response_str, re.IGNORECASE)]
     think_ends = [m.end() for m in re.finditer(r'</think>', response_str, re.IGNORECASE)]
+    segment_starts = [m.start() for m in re.finditer(r'<segment>', response_str, re.IGNORECASE)]
+    segment_ends = [m.end() for m in re.finditer(r'</segment>', response_str, re.IGNORECASE)]
     answer_starts = [m.start() for m in re.finditer(r'<answer>', response_str, re.IGNORECASE)]
     answer_ends = [m.end() for m in re.finditer(r'</answer>', response_str, re.IGNORECASE)]
 
-    # Build turn info
+    # Build turn info - match each <think> with its following <segment> or <answer>
     num_turns = len(think_starts)
     for i in range(num_turns):
+        think_start_char = think_starts[i] if i < len(think_starts) else -1
+        think_end_char = think_ends[i] if i < len(think_ends) else -1
+
+        # Find the <segment> that comes after this </think> (if any)
+        # A segment belongs to this turn if it starts after think_end and before the next think_start
+        next_think_start = think_starts[i + 1] if i + 1 < len(think_starts) else len(response_str)
+
+        seg_start_char = -1
+        seg_end_char = -1
+        for j, seg_start in enumerate(segment_starts):
+            if think_end_char >= 0 and think_end_char <= seg_start < next_think_start:
+                seg_start_char = seg_start
+                seg_end_char = segment_ends[j] if j < len(segment_ends) else -1
+                break
+
+        # Find the <answer> that comes after this </think> (if any)
+        # Usually only the last turn has an answer
+        ans_start_char = -1
+        ans_end_char = -1
+        for j, ans_start in enumerate(answer_starts):
+            if think_end_char >= 0 and think_end_char <= ans_start < next_think_start:
+                ans_start_char = ans_start
+                ans_end_char = answer_ends[j] if j < len(answer_ends) else -1
+                break
+
+        # Determine the effective turn end:
+        # - If this turn has a <segment>, turn ends at </segment>
+        # - If this turn has an <answer>, turn ends at </answer>
+        # - Otherwise, turn ends at </think>
+        if seg_end_char >= 0:
+            turn_end_char = seg_end_char
+        elif ans_end_char >= 0:
+            turn_end_char = ans_end_char
+        else:
+            turn_end_char = think_end_char
+
         turn = {
-            "think_start_char": think_starts[i] if i < len(think_starts) else -1,
-            "think_end_char": think_ends[i] if i < len(think_ends) else -1,
-            "answer_start_char": answer_starts[i] if i < len(answer_starts) else -1,
-            "answer_end_char": answer_ends[i] if i < len(answer_ends) else -1,
+            "think_start_char": think_start_char,
+            "think_end_char": think_end_char,
+            "segment_start_char": seg_start_char,
+            "segment_end_char": seg_end_char,
+            "answer_start_char": ans_start_char,
+            "answer_end_char": ans_end_char,
+            "turn_end_char": turn_end_char,
         }
+
         # Convert char positions to token positions
         turn["think_start"] = char_to_token_position(turn["think_start_char"], token_char_offsets) if turn["think_start_char"] >= 0 else -1
         turn["think_end"] = char_to_token_position(turn["think_end_char"], token_char_offsets) if turn["think_end_char"] >= 0 else -1
+        turn["segment_start"] = char_to_token_position(turn["segment_start_char"], token_char_offsets) if turn["segment_start_char"] >= 0 else -1
+        turn["segment_end"] = char_to_token_position(turn["segment_end_char"], token_char_offsets) if turn["segment_end_char"] >= 0 else -1
         turn["answer_start"] = char_to_token_position(turn["answer_start_char"], token_char_offsets) if turn["answer_start_char"] >= 0 else -1
         turn["answer_end"] = char_to_token_position(turn["answer_end_char"], token_char_offsets) if turn["answer_end_char"] >= 0 else -1
+        turn["turn_end"] = char_to_token_position(turn["turn_end_char"], token_char_offsets) if turn["turn_end_char"] >= 0 else -1
+
         result["turns"].append(turn)
 
     # Find bbox positions (marked by </t> as the end of bbox)
@@ -807,6 +861,7 @@ def apply_token_placement(
             continue
 
         # 2. Segment reward (per-turn) - uses turn-level normalized advantage
+        # Segment reward covers: <think>...</think><segment>...</segment> (or <answer> for final turn)
         sample_segment_advs = segment_advs[i] if i < len(segment_advs) else {}
         for turn_idx, turn in enumerate(turns):
             # Look up advantage by turn_idx
@@ -816,7 +871,8 @@ def apply_token_placement(
                 continue
 
             turn_start = turn.get("think_start", -1)
-            turn_end = turn.get("answer_end", -1)
+            # Use turn_end which is the effective end (segment_end or answer_end)
+            turn_end = turn.get("turn_end", -1)
             if turn_start < 0:
                 continue
             if turn_end < 0:
@@ -838,7 +894,7 @@ def apply_token_placement(
                         advantages[i, t] += seg_adv * decay
 
         # 3. BBox reward (per-turn) - uses turn-level normalized advantage
-        # bbox advantage is placed at current turn's <think> + previous turn's <answer>
+        # bbox advantage is placed at: previous turn's <segment> + current turn's <think>
         sample_bbox_advs = bbox_advs[i] if i < len(bbox_advs) else {}
 
         # Iterate over turns that have bbox advantages
@@ -855,21 +911,22 @@ def apply_token_placement(
             if think_start < 0:
                 continue
             if think_end < 0:
-                think_end = min(turn.get("answer_start", eos_pos), eos_pos)
+                think_end = min(turn.get("segment_start", turn.get("answer_start", eos_pos)), eos_pos)
 
-            # Previous turn's <answer> range (segment selection affects bbox quality)
-            prev_answer_start = -1
-            prev_answer_end = -1
+            # Previous turn's <segment> range (segment selection affects bbox quality)
+            # Use segment_start/segment_end instead of answer_start/answer_end
+            prev_segment_start = -1
+            prev_segment_end = -1
             if turn_idx > 0:
                 prev_turn = turns[turn_idx - 1]
-                prev_answer_start = prev_turn.get("answer_start", -1)
-                prev_answer_end = prev_turn.get("answer_end", -1)
+                prev_segment_start = prev_turn.get("segment_start", -1)
+                prev_segment_end = prev_turn.get("segment_end", -1)
 
             if method == "per_turn":
-                # Bbox reward → current think + previous answer (broadcast within region)
-                # Previous answer
-                if prev_answer_start >= 0 and prev_answer_end >= 0:
-                    for t in range(prev_answer_start, min(prev_answer_end + 1, response_length)):
+                # Bbox reward → previous segment + current think (broadcast within region)
+                # Previous segment
+                if prev_segment_start >= 0 and prev_segment_end >= 0:
+                    for t in range(prev_segment_start, min(prev_segment_end + 1, response_length)):
                         if response_mask[i, t] > 0:
                             advantages[i, t] += bbox_adv_value
                 # Current think
@@ -878,8 +935,8 @@ def apply_token_placement(
                         advantages[i, t] += bbox_adv_value
 
             elif method == "per_turn_gae":
-                # GAE propagation from think_end to previous answer start (or think start)
-                propagate_start = prev_answer_start if prev_answer_start >= 0 else think_start
+                # GAE propagation from think_end to previous segment start (or think start)
+                propagate_start = prev_segment_start if prev_segment_start >= 0 else think_start
                 propagate_end = min(think_end, eos_pos)
                 advantages[i, propagate_end] += bbox_adv_value
                 decay = 1.0

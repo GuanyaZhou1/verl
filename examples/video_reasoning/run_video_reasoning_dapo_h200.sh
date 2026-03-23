@@ -78,8 +78,8 @@ LOG_DIR="./logs"
 # =============================================================================
 # 训练参数
 # =============================================================================
-TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-32}
-GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-32}                        # DAPO: 生成批次
+TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-16}
+GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-16}                        # DAPO: 生成批次
 MAX_PROMPT_LENGTH=${MAX_PROMPT_LENGTH:-36000}
 MAX_RESPONSE_LENGTH=${MAX_RESPONSE_LENGTH:-8192}
 
@@ -370,7 +370,7 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.model.use_fused_kernels=True \
     actor_rollout_ref.actor.optim.lr=$LEARNING_RATE \
-    actor_rollout_ref.actor.ppo_mini_batch_size=256 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=16 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.actor.clip_ratio_low=$CLIP_RATIO_LOW \
     actor_rollout_ref.actor.clip_ratio_high=$CLIP_RATIO_HIGH \
@@ -382,7 +382,7 @@ python3 -m recipe.dapo.main_dapo \
     +actor_rollout_ref.actor.sft_loss_enabled=$SFT_LOSS_ENABLED \
     +actor_rollout_ref.actor.sft_loss_weight=$SFT_LOSS_WEIGHT \
     +actor_rollout_ref.actor.max_sft_samples=$MAX_SFT_SAMPLES \
-    actor_rollout_ref.actor.fsdp_config.param_offload=False \
+    actor_rollout_ref.actor.fsdp_config.param_offload=True \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
     actor_rollout_ref.actor.fsdp_config.forward_prefetch=True \
     actor_rollout_ref.actor.ulysses_sequence_parallel_size=4 \
