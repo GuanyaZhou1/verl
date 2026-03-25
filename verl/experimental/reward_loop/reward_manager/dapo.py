@@ -76,7 +76,7 @@ class DAPORewardManager(RewardManagerBase):
 
         # 保存原始输入文本信息到 extra_info，用于 reward_logs 保存
         prompt_str = await self.loop.run_in_executor(
-            None, lambda: self.tokenizer.decode(valid_prompt_ids, skip_special_tokens=True)
+            None, lambda: self.tokenizer.decode(valid_prompt_ids, skip_special_tokens=False)
         )
         extra_info["prompt_str"] = prompt_str
         # 保存带 special tokens 的 response（用于 Corrected Rollout SFT，保留视频 token）

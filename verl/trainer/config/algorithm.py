@@ -49,11 +49,14 @@ class FilterGroupsConfig(BaseConfig):
         enable (bool): Whether to enable filter groups.
         metric (Optional[str]): Metric to use for filtering: "acc", "score", "seq_reward", "seq_final_reward", etc.
         max_num_gen_batches (int): Non-positive values mean no upper limit.
+        std_threshold (float): Minimum std threshold for keeping a group. Groups with std <= threshold are filtered.
+            Default is 0.0, meaning only groups with std > 0 (i.e., not all same) are kept.
     """
 
     enable: bool = False
     metric: Optional[str] = None
     max_num_gen_batches: int = 0
+    std_threshold: float = 0.0
 
 
 @dataclass
@@ -612,3 +615,13 @@ class AlgoConfig(BaseConfig):
     # Rollout Correction: corrects off-policy issues (policy mismatch, model staleness, distribution shifts)
     # Set to None to disable, use RolloutCorrectionConfig presets (e.g., .tis(), .mis()), or pass dict
     rollout_correction: Optional[RolloutCorrectionConfig] = None
+
+    # Unified reward component weights for advantage computation
+    # Used by both grpo and gdpo modes. Set weight to 0 to exclude a component.
+    # Keys should match the score names returned by reward function (e.g., "answer_score", "format_score")
+    reward_weights: dict[str, float] = field(default_factory=lambda: {
+        "answer_score": 1.0,
+        "format_score": 0.0,
+        "bbox_score": 0.0,
+        "segment_score": 0.0,
+    })

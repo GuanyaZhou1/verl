@@ -68,21 +68,21 @@ MODEL_PATH="${MODEL_PATH:-/mnt/data/home/zhengshurong/hf_cache/Qwen/Qwen3-VL-8B-
 # MODEL_PATH="${MODEL_PATH:-/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-stgr-turn_llm_freeze25_freeze_mlp-lr1e-5-epo5}"
 # MODEL_PATH="/mnt/data/home/zhengshurong/project/Qwen3-VL/qwen-vl-finetune/checkpoints/video/Qwen3-VL-8B-Instruct-longvtdata-stgrdata-selfconstructdata-sft-lr1e-5-bs128-ep1/checkpoint-3003"
 # MODEL_PATH="/mnt/data/home/zhengshurong/project/Qwen3-VL/qwen-vl-finetune/checkpoints/video/Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1"
-DATA_DIR="${DATA_DIR:-./long_video_data_singleturn/video_holmes}"
-CACHE_DIR="${CACHE_DIR:-./.cache}"
+DATA_DIR="${DATA_DIR:-./long_video_data_singleturn/longvt_selfqa}"
+CACHE_DIR="${CACHE_DIR:-./.cache_new}"
 CONFIG_PATH="$(pwd)/examples/video_reasoning/config"
 LOG_DIR="./logs_zsr"
 
 # =============================================================================
 # 训练参数 (支持环境变量覆盖)
 # =============================================================================
-TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-32}
-GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-32}     # GRPO: 生成批次，开启 filter 时需要增大
-MAX_PROMPT_LENGTH=${MAX_PROMPT_LENGTH:-36000}
-MAX_RESPONSE_LENGTH=${MAX_RESPONSE_LENGTH:-16384}
+TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-16}
+GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-16}     # GRPO: 生成批次，开启 filter 时需要增大
+MAX_PROMPT_LENGTH=${MAX_PROMPT_LENGTH:-16384}
+MAX_RESPONSE_LENGTH=${MAX_RESPONSE_LENGTH:-2048}
 
 LEARNING_RATE=${LEARNING_RATE:-1e-6}
-TOTAL_EPOCHS=${TOTAL_EPOCHS:-3}
+TOTAL_EPOCHS=${TOTAL_EPOCHS:-15}
 
 N_ROLLOUTS=${N_ROLLOUTS:-8}              # 每个 prompt 生成的 response 数
 AGENT_NUM_WORKERS=${AGENT_NUM_WORKERS:-4}
@@ -104,21 +104,24 @@ ENTROPY_COEFF=${ENTROPY_COEFF:-0.0}                   # Entropy 系数
 TOP_P=${TOP_P:-1.0}                                   # Top-p 采样
 TEMPERATURE=${TEMPERATURE:-1.0}                       # 采样温度
 
+# Ulysses 序列并行 (设为1禁用，可能导致KL loss异常)
+ULYSSES_SP_SIZE=${ULYSSES_SP_SIZE:-1}
+
 # =============================================================================
 # 视频缓存参数
 # =============================================================================
 CACHE_FPS=1
-CACHE_MAX_FRAMES=512
+CACHE_MAX_FRAMES=0
 CACHE_MAX_FRAMES_PER_SEGMENT=32
 USE_CACHED_INITIAL_VIDEO=True            # 使用缓存帧而非原始视频，减少 CPU 内存
 CACHE_NUM_WORKERS=${CACHE_NUM_WORKERS:-64}  # 视频缓存并行数
 
 # 初始视频分辨率（低分辨率概览）
 INITIAL_VIDEO_FPS=1
-INITIAL_VIDEO_MAX_FRAMES=512
+INITIAL_VIDEO_MAX_FRAMES=32
 INITIAL_VIDEO_MIN_PIXELS=784             # 28*28
 # INITIAL_VIDEO_MAX_PIXELS=12544           # ~112x112
-INITIAL_VIDEO_MAX_PIXELS=200704 # ~448x448
+INITIAL_VIDEO_MAX_PIXELS=50176 # ~448x448
 
 # Segment 视频分辨率（高分辨率细节）
 SEGMENT_VIDEO_FPS=1
@@ -148,7 +151,7 @@ USE_VLM_SCORING=true
 USE_BBOX_VERIFICATION=true
 ANSWER_WEIGHT=${ANSWER_WEIGHT:-1.0}
 BBOX_WEIGHT=${BBOX_WEIGHT:-0.0}
-FORMAT_WEIGHT=${FORMAT_WEIGHT:-0.0}          # 格式奖励权重 (0 = 不使用)
+FORMAT_WEIGHT=${FORMAT_WEIGHT:-1.0}          # 格式奖励权重 (0 = 不使用)
 SEGMENT_WEIGHT=${SEGMENT_WEIGHT:-0.0}        # segment 时间段匹配奖励权重 (0 = 不使用)
 USE_STRICT_FORMAT=${USE_STRICT_FORMAT:-true}  # 是否使用严格的 segment 格式检查
 BBOX_COORD_RANGE=1.0                     # bbox 坐标范围 [0, 1]，不影响，内部后续改为根据模型的输出动态调整
@@ -163,8 +166,8 @@ LOG_EVERY_N=10
 # =============================================================================
 # Checkpoint 配置
 # =============================================================================
-SAVE_FREQ=30
-TEST_FREQ=20
+SAVE_FREQ=20
+TEST_FREQ=5
 VAL_BEFORE_TRAIN=True
 RESUME_MODE=disable                      # disable / resume_path / auto
 
@@ -178,7 +181,7 @@ AGENT_LOOP_TYPE=${AGENT_LOOP_TYPE:-single_turn_agent}
 # =============================================================================
 TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
 PROJECT_NAME="video-reasoning-grpo"
-EXPERIMENT_NAME="Qwen3-VL-8B-Instruct_grpo_longvtrl_singleturn_agent${AGENT_LOOP_TYPE}_genbs${GEN_BATCH_SIZE}_trainbs${TRAIN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_ans${ANSWER_WEIGHT}_bbox${BBOX_WEIGHT}_fmt${FORMAT_WEIGHT}_seg${SEGMENT_WEIGHT}_strictfmt${USE_STRICT_FORMAT}_klcoef${KL_LOSS_COEF}_resp${MAX_RESPONSE_LENGTH}_topp${TOP_P}_temp${TEMPERATURE}"
+EXPERIMENT_NAME="Qwen3-VL-8B-Instruct_grpo_longvtrl_singleturn_agent${AGENT_LOOP_TYPE}_genbs${GEN_BATCH_SIZE}_trainbs${TRAIN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_ans${ANSWER_WEIGHT}_bbox${BBOX_WEIGHT}_fmt${FORMAT_WEIGHT}_seg${SEGMENT_WEIGHT}_strictfmt${USE_STRICT_FORMAT}_klcoef${KL_LOSS_COEF}_resp${MAX_RESPONSE_LENGTH}_topp${TOP_P}_temp${TEMPERATURE}_usp${ULYSSES_SP_SIZE}"
 # EXPERIMENT_NAME="Qwen3_8B_longvt_tvg-openo3video_stgr-selfconstructdata_grpo_long_video_data_genbs32_ep1_lr1e_6_bbox0_0_normadvbystdfalse_${TIMESTAMP}"
 
 # 将 reward_logs 和 tensorboard_log 放到 checkpoint 目录下
@@ -291,12 +294,18 @@ python3 -m verl.trainer.main_ppo \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
     data.return_raw_chat=True \
+    data.image_key=images \
+    +data.video_fps=1 \
+    +data.video_max_frames=32 \
+    +data.video_min_frames=4 \
+    +data.max_pixels=50176 \
+    +data.min_pixels=3136 \
     actor_rollout_ref.model.path=$MODEL_PATH \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.model.use_fused_kernels=True \
     actor_rollout_ref.actor.optim.lr=$LEARNING_RATE \
-    actor_rollout_ref.actor.ppo_mini_batch_size=16 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=$TRAIN_BATCH_SIZE \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.actor.use_kl_loss=$USE_KL_LOSS \
     actor_rollout_ref.actor.kl_loss_coef=$KL_LOSS_COEF \
@@ -305,7 +314,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
     actor_rollout_ref.actor.fsdp_config.forward_prefetch=True \
-    actor_rollout_ref.actor.ulysses_sequence_parallel_size=4 \
+    actor_rollout_ref.actor.ulysses_sequence_parallel_size=$ULYSSES_SP_SIZE \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.mode=async \
     actor_rollout_ref.rollout.top_p=$TOP_P \
@@ -314,15 +323,19 @@ python3 -m verl.trainer.main_ppo \
     +actor_rollout_ref.rollout.repetition_penalty=1.0 \
     +actor_rollout_ref.rollout.max_tokens_per_turn=2048 \
     actor_rollout_ref.rollout.n=$N_ROLLOUTS \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
-    actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.35 \
+    actor_rollout_ref.rollout.tensor_model_parallel_size=2 \
     actor_rollout_ref.rollout.max_model_len=128000 \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=2 \
+    actor_rollout_ref.rollout.enable_chunked_prefill=False \
+    actor_rollout_ref.rollout.enforce_eager=False \
+    actor_rollout_ref.rollout.free_cache_engine=True \
+    +actor_rollout_ref.rollout.engine_kwargs.vllm.disable_mm_preprocessor_cache=True \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=True \
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=104768 \
     actor_rollout_ref.rollout.calculate_log_probs=true \
     actor_rollout_ref.rollout.over_sample_rate=0.1 \
-    actor_rollout_ref.rollout.update_weights_bucket_megabytes=512 \
+    actor_rollout_ref.rollout.update_weights_bucket_megabytes=4096 \
     actor_rollout_ref.rollout.multi_turn.enable=True \
     actor_rollout_ref.rollout.multi_turn.max_assistant_turns=5 \
     actor_rollout_ref.rollout.multi_turn.max_user_turns=5 \
@@ -346,11 +359,11 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.multi_turn.watermark_config.ratio=$WATERMARK_RATIO \
     actor_rollout_ref.rollout.agent.default_agent_loop=${AGENT_LOOP_TYPE} \
     actor_rollout_ref.rollout.agent.num_workers=$AGENT_NUM_WORKERS \
-    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=2 \
+    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.ref.log_prob_use_dynamic_bsz=True \
     actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=104768 \
-    actor_rollout_ref.ref.ulysses_sequence_parallel_size=4 \
-    actor_rollout_ref.ref.fsdp_config.param_offload=False \
+    actor_rollout_ref.ref.ulysses_sequence_parallel_size=$ULYSSES_SP_SIZE \
+    actor_rollout_ref.ref.fsdp_config.param_offload=True \
     algorithm.adv_estimator=grpo \
     algorithm.norm_adv_by_std_in_grpo=$NORM_ADV_BY_STD \
     algorithm.use_kl_in_reward=$USE_KL_IN_REWARD \
@@ -386,10 +399,12 @@ python3 -m verl.trainer.main_ppo \
     trainer.total_epochs=$TOTAL_EPOCHS \
     trainer.save_freq=$SAVE_FREQ \
     trainer.test_freq=$TEST_FREQ \
+    trainer.log_val_generations=10 \
     trainer.val_before_train=$VAL_BEFORE_TRAIN \
     trainer.critic_warmup=0 \
     trainer.resume_mode=$RESUME_MODE \
     trainer.logger='["console", "tensorboard"]' \
+    +ray_kwargs.ray_init.runtime_env.env_vars.VLLM_USE_V1='"1"' \
     +ray_kwargs.ray_init.runtime_env.env_vars.TENSORBOARD_DIR="$TENSORBOARD_DIR" \
     "$@" 2>&1 | tee -a "$LOG_FILE"
 

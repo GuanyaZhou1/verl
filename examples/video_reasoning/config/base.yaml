@@ -83,6 +83,13 @@ custom_reward_function:
 
 # DAPO filter_groups 结构（值在 shell 中覆盖）
 algorithm:
+  # 统一的 reward component 权重（grpo 和 gdpo 都使用这套权重）
+  reward_weights:
+    answer_score: 1.0
+    format_score: 0.0
+    bbox_score: 0.0
+    segment_score: 0.0
+
   filter_groups:
     _target_: verl.trainer.config.FilterGroupsConfig
     enable: False
@@ -95,13 +102,6 @@ algorithm:
   gdpo:
     # 是否在加权求和后做 batch-wise 归一化 (推荐开启，提高训练稳定性)
     enable_batch_norm: True
-    # 各奖励组件的权重 (自动检测 *_score 字段，未指定的默认 1.0)
-    # 设为 0 可排除某个组件
-    reward_weights:
-      answer_score: 1.0
-      format_score: 0.5
-      bbox_score: 0.3
-      segment_score: 0.3
 
 # DAPO overlong_buffer 结构
 reward_model:

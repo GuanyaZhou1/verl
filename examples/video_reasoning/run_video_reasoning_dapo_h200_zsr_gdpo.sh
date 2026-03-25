@@ -75,7 +75,7 @@ LOG_DIR="./logs_zsr"
 # 训练参数 (支持环境变量覆盖)
 # =============================================================================
 TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-16}
-GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-16}     # DAPO: 生成批次，开启 filter 时需要增大
+GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-32}     # DAPO: 生成批次，开启 filter 时需要增大
 MAX_PROMPT_LENGTH=${MAX_PROMPT_LENGTH:-36000}
 MAX_RESPONSE_LENGTH=${MAX_RESPONSE_LENGTH:-16384}
 
@@ -91,8 +91,9 @@ NNODES=${NNODES:-1}
 # =============================================================================
 # DAPO 算法参数 (支持环境变量覆盖)
 # =============================================================================
-ENABLE_FILTER_GROUPS=${ENABLE_FILTER_GROUPS:-False}   # 过滤组内全对/全错的样本
-FILTER_GROUPS_METRIC=${FILTER_GROUPS_METRIC:-score}   # 用总分做组过滤
+ENABLE_FILTER_GROUPS=${ENABLE_FILTER_GROUPS:-True}   # 过滤组内全对/全错的样本
+FILTER_GROUPS_METRIC=${FILTER_GROUPS_METRIC:-answer_score}   # 用总分做组过滤
+FILTER_GROUPS_STD_THRESHOLD=${FILTER_GROUPS_STD_THRESHOLD:-0.35}  # std 阈值，std > threshold 才保留
 MAX_NUM_GEN_BATCHES=${MAX_NUM_GEN_BATCHES:-20}         # 最多重采样轮数
 
 CLIP_RATIO_LOW=${CLIP_RATIO_LOW:-0.2}                 # Clip-Higher: 非对称 clip ratio
@@ -146,7 +147,7 @@ TP_ENABLE_BATCH_NORM=${TP_ENABLE_BATCH_NORM:-true}
 
 # Token Placement 各 component 权重（用于组合 advantage）
 TP_ANSWER_WEIGHT=${TP_ANSWER_WEIGHT:-1.0}
-TP_FORMAT_WEIGHT=${TP_FORMAT_WEIGHT:-0.5}
+TP_FORMAT_WEIGHT=${TP_FORMAT_WEIGHT:-0.0}
 TP_BBOX_WEIGHT=${TP_BBOX_WEIGHT:-1.0}
 TP_SEGMENT_WEIGHT=${TP_SEGMENT_WEIGHT:-1.0}
 
@@ -164,9 +165,11 @@ CACHE_NUM_WORKERS=${CACHE_NUM_WORKERS:-64}  # 视频缓存并行数
 
 # 初始视频分辨率（低分辨率概览）
 INITIAL_VIDEO_FPS=1
-INITIAL_VIDEO_MAX_FRAMES=512
+# INITIAL_VIDEO_MAX_FRAMES=512
+INITIAL_VIDEO_MAX_FRAMES=64
 INITIAL_VIDEO_MIN_PIXELS=784             # 28*28
 INITIAL_VIDEO_MAX_PIXELS=12544           # ~112x112
+# INITIAL_VIDEO_MAX_PIXELS=50176           # ~224x224
 
 # Segment 视频分辨率（高分辨率细节）
 SEGMENT_VIDEO_FPS=1
@@ -195,7 +198,7 @@ USE_VLM_SCORING=true
 USE_BBOX_VERIFICATION=true
 ANSWER_WEIGHT=${ANSWER_WEIGHT:-1.0}
 BBOX_WEIGHT=${BBOX_WEIGHT:-0.5}
-FORMAT_WEIGHT=${FORMAT_WEIGHT:-0.5}          # 格式奖励权重 (0 = 不使用)
+FORMAT_WEIGHT=${FORMAT_WEIGHT:-0.0}          # 格式奖励权重 (0 = 不使用)
 SEGMENT_WEIGHT=${SEGMENT_WEIGHT:-1.0}        # segment 时间段匹配奖励权重 (0 = 不使用)
 USE_STRICT_FORMAT=${USE_STRICT_FORMAT:-true}  # 是否使用严格的 segment 格式检查
 BBOX_COORD_RANGE=1.0                     # bbox 坐标范围 [0, 1]，不影响，内部后续改为根据模型的输出动态调整
@@ -223,11 +226,11 @@ PROJECT_NAME="video-reasoning-dapo"
 
 if [ "$ADV_ESTIMATOR" = "gdpo" ]; then
     # GDPO 模式：使用 GDPO 和 Token Placement 参数命名
-    EXPERIMENT_NAME="Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1_gdpo_longvtrl_genbs${GEN_BATCH_SIZE}_trainbs${TRAIN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_gdpo-ans${GDPO_ANSWER_WEIGHT}_fmt${GDPO_FORMAT_WEIGHT}_bbox${GDPO_BBOX_WEIGHT}_seg${GDPO_SEGMENT_WEIGHT}_tp-${TOKEN_PLACEMENT_METHOD}_tpans${TP_ANSWER_WEIGHT}_tpfmt${TP_FORMAT_WEIGHT}_tpbbox${TP_BBOX_WEIGHT}_tpseg${TP_SEGMENT_WEIGHT}_klcoef${KL_LOSS_COEF}_resp${MAX_RESPONSE_LENGTH}_filtergroups${ENABLE_FILTER_GROUPS}_bypass${BY_PASS_ROLLOUT_CORRECTION}_cliphi${CLIP_RATIO_HIGH}_topp${TOP_P}_temp${TEMPERATURE}_0319"
+    EXPERIMENT_NAME="Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1_gdpo_longvtrl_genbs${GEN_BATCH_SIZE}_trainbs${TRAIN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_gdpo-ans${GDPO_ANSWER_WEIGHT}_fmt${GDPO_FORMAT_WEIGHT}_bbox${GDPO_BBOX_WEIGHT}_seg${GDPO_SEGMENT_WEIGHT}_tp-${TOKEN_PLACEMENT_METHOD}_tpans${TP_ANSWER_WEIGHT}_tpfmt${TP_FORMAT_WEIGHT}_tpbbox${TP_BBOX_WEIGHT}_tpseg${TP_SEGMENT_WEIGHT}_klcoef${KL_LOSS_COEF}_resp${MAX_RESPONSE_LENGTH}_filtergroups${ENABLE_FILTER_GROUPS}_bypass${BY_PASS_ROLLOUT_CORRECTION}_cliphi${CLIP_RATIO_HIGH}_topp${TOP_P}_temp${TEMPERATURE}_0325"
     PROJECT_NAME="video-reasoning-gdpo"
 else
     # GRPO 模式：使用原有命名
-    EXPERIMENT_NAME="Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1_dapo_holmes_genbs${GEN_BATCH_SIZE}_trainbs${TRAIN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_ans${ANSWER_WEIGHT}_bbox${BBOX_WEIGHT}_fmt${FORMAT_WEIGHT}_seg${SEGMENT_WEIGHT}_klcoef${KL_LOSS_COEF}_filtergroups${ENABLE_FILTER_GROUPS}_bypass${BY_PASS_ROLLOUT_CORRECTION}_cliphi${CLIP_RATIO_HIGH}_topp${TOP_P}_temp${TEMPERATURE}_0319"
+    EXPERIMENT_NAME="Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1_dapo_holmes_genbs${GEN_BATCH_SIZE}_trainbs${TRAIN_BATCH_SIZE}_ep${TOTAL_EPOCHS}_lr${LEARNING_RATE}_ans${ANSWER_WEIGHT}_bbox${BBOX_WEIGHT}_fmt${FORMAT_WEIGHT}_seg${SEGMENT_WEIGHT}_klcoef${KL_LOSS_COEF}_filtergroups${ENABLE_FILTER_GROUPS}_stdthres${FILTER_GROUPS_STD_THRESHOLD}_cliphi${CLIP_RATIO_HIGH}_topp${TOP_P}_temp${TEMPERATURE}_mf${INITIAL_VIDEO_MAX_FRAMES}_mp${INITIAL_VIDEO_MAX_PIXELS}_0325"
 fi
 
 # 将 reward_logs 和 tensorboard_log 放到 checkpoint 目录下
@@ -277,7 +280,7 @@ echo "Cache workers:   $CACHE_NUM_WORKERS"
 echo ""
 echo "DAPO Settings:"
 echo "  adv_estimator: $ADV_ESTIMATOR"
-echo "  filter_groups: $ENABLE_FILTER_GROUPS (metric=$FILTER_GROUPS_METRIC)"
+echo "  filter_groups: $ENABLE_FILTER_GROUPS (metric=$FILTER_GROUPS_METRIC, std_threshold=$FILTER_GROUPS_STD_THRESHOLD)"
 echo "  clip_ratio:    [$CLIP_RATIO_LOW, $CLIP_RATIO_HIGH]"
 echo "  norm_by_std:   $NORM_ADV_BY_STD"
 if [ "$ADV_ESTIMATOR" = "gdpo" ]; then
@@ -348,7 +351,7 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.model.use_fused_kernels=True \
     actor_rollout_ref.actor.optim.lr=$LEARNING_RATE \
-    actor_rollout_ref.actor.ppo_mini_batch_size=16 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=$TRAIN_BATCH_SIZE \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.actor.clip_ratio_low=$CLIP_RATIO_LOW \
     actor_rollout_ref.actor.clip_ratio_high=$CLIP_RATIO_HIGH \
@@ -360,7 +363,7 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
     actor_rollout_ref.actor.fsdp_config.forward_prefetch=True \
-    actor_rollout_ref.actor.ulysses_sequence_parallel_size=4 \
+    actor_rollout_ref.actor.ulysses_sequence_parallel_size=1 \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.mode=async \
     actor_rollout_ref.rollout.top_p=$TOP_P \
@@ -404,7 +407,7 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.ref.log_prob_use_dynamic_bsz=True \
     actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=104768 \
-    actor_rollout_ref.ref.ulysses_sequence_parallel_size=4 \
+    actor_rollout_ref.ref.ulysses_sequence_parallel_size=1 \
     actor_rollout_ref.ref.fsdp_config.param_offload=False \
     algorithm.adv_estimator=$ADV_ESTIMATOR \
     algorithm.gdpo.enable_batch_norm=$GDPO_ENABLE_BATCH_NORM \
@@ -414,6 +417,7 @@ python3 -m recipe.dapo.main_dapo \
     algorithm.filter_groups.enable=$ENABLE_FILTER_GROUPS \
     algorithm.filter_groups.metric=$FILTER_GROUPS_METRIC \
     algorithm.filter_groups.max_num_gen_batches=$MAX_NUM_GEN_BATCHES \
+    +algorithm.filter_groups.std_threshold=$FILTER_GROUPS_STD_THRESHOLD \
     reward_model.enable=False \
     reward_model.reward_manager=dapo \
     reward_model.overlong_buffer.enable=True \

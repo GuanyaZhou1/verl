@@ -71,23 +71,23 @@ export NCCL_CUMEM_ENABLE=${NCCL_CUMEM_ENABLE:-0}
 #MODEL_PATH="/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-self_holmes_caption_233-self_longvideoreason_caption_930-openo3video_stgr_singleturn_7k-self_holmes_multiturn_1k5-self_longvideoreason_multiturn_5k3-sft-lr5e-5-b24"
 # MODEL_PATH="${MODEL_PATH:-/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-stgr-turn_llm_freeze25_freeze_mlp-lr1e-5-epo5}"
 MODEL_PATH="/mnt/data/home/zhengshurong/project/Qwen3-VL/qwen-vl-finetune/checkpoints/video/Qwen3-VL-8B-Instruct-longvt_tvg-openo3video_stgr-selfconstructdata-sft-lr1e-5-bs64-ep1"
-DATA_DIR="${DATA_DIR:-/mnt/data/home/zhengshurong/project/verl/long_video_data/video_holmes}"
-CACHE_DIR="${CACHE_DIR:-./.cache}"
+DATA_DIR="${DATA_DIR:-/mnt/data/home/zhengshurong/project/verl/long_video_data}"
+CACHE_DIR="${CACHE_DIR:-./.cache_new}"
 CONFIG_PATH="$(pwd)/examples/video_reasoning/config"
 LOG_DIR="./logs"
 # =============================================================================
 # 训练参数
 # =============================================================================
-TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-16}
-GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-16}                        # DAPO: 生成批次
+TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-32}
+GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-64}                        # DAPO: 生成批次
 MAX_PROMPT_LENGTH=${MAX_PROMPT_LENGTH:-36000}
 MAX_RESPONSE_LENGTH=${MAX_RESPONSE_LENGTH:-8192}
 
 LEARNING_RATE=${LEARNING_RATE:-2e-6}
 TOTAL_EPOCHS=${TOTAL_EPOCHS:-3}
 
-N_ROLLOUTS=${N_ROLLOUTS:-8}                             # 每个 prompt 生成的 response 数
-AGENT_NUM_WORKERS=${AGENT_NUM_WORKERS:-2}                      # AgentLoopWorker 数量
+N_ROLLOUTS=${N_ROLLOUTS:-16}                             # 每个 prompt 生成的 response 数
+AGENT_NUM_WORKERS=${AGENT_NUM_WORKERS:-4}                      # AgentLoopWorker 数量
 
 N_GPUS=${N_GPUS:-8}
 NNODES=${NNODES:-1}
@@ -95,8 +95,9 @@ NNODES=${NNODES:-1}
 # =============================================================================
 # DAPO 算法参数（支持环境变量覆盖，便于自动化实验）
 # =============================================================================
-ENABLE_FILTER_GROUPS=${ENABLE_FILTER_GROUPS:-false}   # 过滤组内全对/全错的样本
+ENABLE_FILTER_GROUPS=${ENABLE_FILTER_GROUPS:-true}   # 过滤组内全对/全错的样本
 FILTER_GROUPS_METRIC=${FILTER_GROUPS_METRIC:-acc}   # 用总分做组过滤
+FILTER_GROUPS_STD_THRESHOLD=${FILTER_GROUPS_STD_THRESHOLD:-0.0}  # 最小std阈值
 MAX_NUM_GEN_BATCHES=${MAX_NUM_GEN_BATCHES:-5}         # 最多重采样轮数
 
 CLIP_RATIO_LOW=${CLIP_RATIO_LOW:-0.2}                 # Clip-Higher: 非对称 clip ratio
@@ -106,11 +107,11 @@ NORM_ADV_BY_STD=${NORM_ADV_BY_STD:-true}             # 归一化 advantage
 
 USE_KL_IN_REWARD=false
 USE_KL_LOSS=true
-KL_LOSS_COEF=${KL_LOSS_COEF:-0.001}                     # KL 约束系数
+KL_LOSS_COEF=${KL_LOSS_COEF:-0.01}                     # KL 约束系数
 KL_LOSS_TYPE=low_var_kl
 
 BY_PASS_ROLLOUT_CORRECTION=false
-ENTROPY_COEFF=${ENTROPY_COEFF:-0.001}                   # Entropy 系数
+ENTROPY_COEFF=${ENTROPY_COEFF:-0}                   # Entropy 系数
 TOP_P=${TOP_P:-1.0}                                   # Top-p 采样
 TEMPERATURE=${TEMPERATURE:-1.0}                       # 采样温度
 
@@ -132,15 +133,19 @@ MAX_SFT_SAMPLES=${MAX_SFT_SAMPLES:-32}         # 每步最多 SFT 样本数，�
 #   - gdpo: Group reward-Decoupled normalization Policy Optimization
 #           每个 reward component 独立归一化，避免 advantage collapse
 # 使用 bbox/segment 的 turn 级别 group norm 时，必须设为 gdpo。
-ADV_ESTIMATOR=${ADV_ESTIMATOR:-gdpo}
+ADV_ESTIMATOR=${ADV_ESTIMATOR:-grpo}
 
-# GDPO reward component 权重（仅 adv_estimator=gdpo 时生效）
-# 设为 0 可排除该 component
-GDPO_ANSWER_WEIGHT=${GDPO_ANSWER_WEIGHT:-1.0}         # 答案正确性权重
-GDPO_FORMAT_WEIGHT=${GDPO_FORMAT_WEIGHT:-0.4}         # 格式正确性权重
-GDPO_BBOX_WEIGHT=${GDPO_BBOX_WEIGHT:-0.6}             # BBox 验证权重
-GDPO_SEGMENT_WEIGHT=${GDPO_SEGMENT_WEIGHT:-0.4}       # Segment 定位权重
-GDPO_ENABLE_BATCH_NORM=${GDPO_ENABLE_BATCH_NORM:-true}  # 批次归一化（推荐开启）
+# =============================================================================
+# 统一的 Reward 权重配置（同时用于 grpo 和 gdpo）
+# =============================================================================
+# 设为 0 可排除该 component。grpo 和 gdpo 模式都使用这套权重。
+REWARD_WEIGHT_ANSWER=${REWARD_WEIGHT_ANSWER:-0.8}     # 答案正确性权重
+REWARD_WEIGHT_FORMAT=${REWARD_WEIGHT_FORMAT:-0.2}     # 格式正确性权重
+REWARD_WEIGHT_BBOX=${REWARD_WEIGHT_BBOX:-0.0}         # BBox 验证权重
+REWARD_WEIGHT_SEGMENT=${REWARD_WEIGHT_SEGMENT:-0.0}   # Segment 定位权重
+
+# GDPO batch norm（仅 adv_estimator=gdpo 时生效）
+GDPO_ENABLE_BATCH_NORM=${GDPO_ENABLE_BATCH_NORM:-true}
 
 # Token Placement 方法（控制奖励如何分配到 token，仅 adv_estimator=gdpo 时生效）
 # bbox/segment 的 turn 级别 group norm 由 gdpo 计算，在此通过 method 决定如何落到 token：
@@ -158,12 +163,6 @@ TOKEN_PLACEMENT_GLOBAL_MODE=${TOKEN_PLACEMENT_GLOBAL_MODE:-broadcast}
 # 最终 batch norm（推荐开启以稳定训练）
 TP_ENABLE_BATCH_NORM=${TP_ENABLE_BATCH_NORM:-true}
 
-# Token Placement 各 component 权重（用于组合 advantage）
-TP_ANSWER_WEIGHT=${TP_ANSWER_WEIGHT:-1.0}
-TP_FORMAT_WEIGHT=${TP_FORMAT_WEIGHT:-0.5}
-TP_BBOX_WEIGHT=${TP_BBOX_WEIGHT:-0.5}
-TP_SEGMENT_WEIGHT=${TP_SEGMENT_WEIGHT:-0.5}
-
 # GAE 参数（per_turn_gae 或 global_mode=gae 时使用）
 TP_GAMMA=${TP_GAMMA:-0.99}                            # 衰减因子
 TP_LAMBDA=${TP_LAMBDA:-0.95}                          # GAE lambda
@@ -171,7 +170,7 @@ TP_LAMBDA=${TP_LAMBDA:-0.95}                          # GAE lambda
 # 视频缓存参数
 # =============================================================================
 CACHE_FPS=1
-CACHE_MAX_FRAMES=512
+CACHE_MAX_FRAMES=0  # 0表示不限制，全部缓存（每秒1帧）
 CACHE_MAX_FRAMES_PER_SEGMENT=32
 USE_CACHED_INITIAL_VIDEO=True            # 使用缓存帧而非原始视频，减少 CPU 内存
 
@@ -206,9 +205,7 @@ VLM_MODEL_NAME="Qwen3-VL-235B-A22B-Instruct"
 VLM_API_KEY="123456"
 
 USE_VLM_SCORING=true
-USE_BBOX_VERIFICATION=true
-ANSWER_WEIGHT=${ANSWER_WEIGHT:-1.0}
-BBOX_WEIGHT=${BBOX_WEIGHT:-0.5}    # bbox验证权重（降低可减少噪声）
+USE_BBOX_VERIFICATION=false
 BBOX_COORD_RANGE=1.0                     # bbox 坐标范围 [0, 1]
 
 # BBox 评分指标选择
@@ -216,11 +213,10 @@ BBOX_METRIC=${BBOX_METRIC:-iou}          # "iou" 原始指标, "adaptive_iou" �
 TEMPORAL_TOLERANCE=${TEMPORAL_TOLERANCE:-1}  # 相邻帧容忍度 (0=禁用, 1=±1帧)，对应 Qwen3-VL temporal_patch_size=2
 BBOX_PER_TURN=${BBOX_PER_TURN:-2}  # 每个 think turn 期望输出的 bbox 数量
 
-SAVE_BBOX_VISUALIZATION=true
+SAVE_BBOX_VISUALIZATION=false
 BBOX_VIS_SAMPLE_RATE=0.001
 # REWARD_LOG_DIR 在 EXPERIMENT_NAME 后设置
-#EXPERIMENT_NAME="Qwen3_8B_dapo_kl${KL_LOSS_COEF}_bbox${BBOX_WEIGHT}_topp${TOP_P:-1.0}_lr${LEARNING_RATE}_0314_GAE_perturn"
-EXPERIMENT_NAME="Qwen3_8B_dapo_kl0.001_bbox0.6_topp1.0_lr2e-6_entropy0.001_0323_GAE_perturn_coverage_0.5_stdtrue_512_32" #_SFT
+EXPERIMENT_NAME="${EXPERIMENT_NAME:-Qwen3_8B_grpo_acc0.8_format0.2_kl0.01_lr2e-6_$(date +%m%d)_mini8_filter_N16}"
 SAVE_SAMPLES=true
 SAVE_EVERY_N=1
 LOG_EVERY_N=10
@@ -242,7 +238,7 @@ PROJECT_NAME="${PROJECT_NAME:-video-reasoning-dapo}"
 # 如果未设置 EXPERIMENT_NAME，则根据当前参数自动生成
 if [ -z "$EXPERIMENT_NAME" ]; then
     # 自动生成实验名：包含关键超参数
-    EXPERIMENT_NAME="Qwen3_8B_dapo_kl${KL_LOSS_COEF}_bbox${BBOX_WEIGHT}_topp${TOP_P:-1.0}_lr${LEARNING_RATE}_${TIMESTAMP}"
+    EXPERIMENT_NAME="Qwen3_8B_${ADV_ESTIMATOR}_acc${REWARD_WEIGHT_ANSWER}_fmt${REWARD_WEIGHT_FORMAT}_kl${KL_LOSS_COEF}_lr${LEARNING_RATE}_${TIMESTAMP}"
 fi
 # 示例手动设置：
 # export EXPERIMENT_NAME="my_custom_exp_name"
@@ -292,20 +288,19 @@ echo "Rollouts:        $N_ROLLOUTS"
 echo "GPUs:            $N_GPUS x $NNOD[ES nodes"
 echo ""
 echo "DAPO Settings:"
-echo "  filter_groups: $ENABLE_FILTER_GROUPS (metric=$FILTER_GROUPS_METRIC)"
+echo "  filter_groups: $ENABLE_FILTER_GROUPS (metric=$FILTER_GROUPS_METRIC, std_threshold=$FILTER_GROUPS_STD_THRESHOLD)"
 echo "  clip_ratio:    [$CLIP_RATIO_LOW, $CLIP_RATIO_HIGH]"
 echo "  norm_by_std:   $NORM_ADV_BY_STD"
 echo ""
 echo "GDPO/Token Placement:"
 echo "  adv_estimator: $ADV_ESTIMATOR"
+echo "  reward_weights: ans=$REWARD_WEIGHT_ANSWER, fmt=$REWARD_WEIGHT_FORMAT, bbox=$REWARD_WEIGHT_BBOX, seg=$REWARD_WEIGHT_SEGMENT"
 if [ "$ADV_ESTIMATOR" = "gdpo" ]; then
-    echo "  gdpo_weights:  ans=$GDPO_ANSWER_WEIGHT, fmt=$GDPO_FORMAT_WEIGHT, bbox=$GDPO_BBOX_WEIGHT, seg=$GDPO_SEGMENT_WEIGHT"
     echo "  batch_norm:    $GDPO_ENABLE_BATCH_NORM"
     echo "  token_placement:"
     echo "    method:      $TOKEN_PLACEMENT_METHOD"
     echo "    global_mode: $TOKEN_PLACEMENT_GLOBAL_MODE"
     if [ "$TOKEN_PLACEMENT_METHOD" != "broadcast" ]; then
-        echo "    weights:     ans=$TP_ANSWER_WEIGHT, fmt=$TP_FORMAT_WEIGHT, bbox=$TP_BBOX_WEIGHT, seg=$TP_SEGMENT_WEIGHT"
         echo "    gae:         gamma=$TP_GAMMA, lambda=$TP_LAMBDA"
     fi
 fi
@@ -313,7 +308,6 @@ echo ""
 echo "Reward:"
 echo "  VLM scoring:   $USE_VLM_SCORING ($VLM_ENDPOINT)"
 echo "  BBox verify:   $USE_BBOX_VERIFICATION"
-echo "  Weights:       answer=$ANSWER_WEIGHT, bbox=$BBOX_WEIGHT"
 echo "  BBox metric:   $BBOX_METRIC (temporal_tolerance=$TEMPORAL_TOLERANCE, bbox_per_turn=$BBOX_PER_TURN)"
 echo "================================="
 echo ""
@@ -327,7 +321,8 @@ if [ "${SKIP_VIDEO_CACHE:-false}" != "true" ]; then
         --input_parquet "$DATA_DIR/train.parquet" \
         --cache_dir "$CACHE_DIR" \
         --fps "$CACHE_FPS" \
-        --max_frames "$CACHE_MAX_FRAMES"
+        --max_frames "$CACHE_MAX_FRAMES" \
+        --num_workers 64
 
     # set -eo pipefail 已确保上述命令失败时脚本自动退出
     echo "===== Step 1 Complete ====="
@@ -370,7 +365,7 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.model.use_fused_kernels=True \
     actor_rollout_ref.actor.optim.lr=$LEARNING_RATE \
-    actor_rollout_ref.actor.ppo_mini_batch_size=16 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=8 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.actor.clip_ratio_low=$CLIP_RATIO_LOW \
     actor_rollout_ref.actor.clip_ratio_high=$CLIP_RATIO_HIGH \
@@ -382,10 +377,9 @@ python3 -m recipe.dapo.main_dapo \
     +actor_rollout_ref.actor.sft_loss_enabled=$SFT_LOSS_ENABLED \
     +actor_rollout_ref.actor.sft_loss_weight=$SFT_LOSS_WEIGHT \
     +actor_rollout_ref.actor.max_sft_samples=$MAX_SFT_SAMPLES \
-    actor_rollout_ref.actor.fsdp_config.param_offload=True \
+    actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
     actor_rollout_ref.actor.fsdp_config.forward_prefetch=True \
-    actor_rollout_ref.actor.ulysses_sequence_parallel_size=4 \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.mode=async \
     actor_rollout_ref.rollout.top_p=$TOP_P \
@@ -428,7 +422,6 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.ref.log_prob_use_dynamic_bsz=True \
     actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=104768 \
-    actor_rollout_ref.ref.ulysses_sequence_parallel_size=4 \
     actor_rollout_ref.ref.fsdp_config.param_offload=False \
     algorithm.adv_estimator=$ADV_ESTIMATOR \
     algorithm.rollout_correction.bypass_mode=$BY_PASS_ROLLOUT_CORRECTION \
@@ -436,19 +429,16 @@ python3 -m recipe.dapo.main_dapo \
     algorithm.use_kl_in_reward=$USE_KL_IN_REWARD \
     algorithm.filter_groups.enable=$ENABLE_FILTER_GROUPS \
     algorithm.filter_groups.metric=$FILTER_GROUPS_METRIC \
+    +algorithm.filter_groups.std_threshold=$FILTER_GROUPS_STD_THRESHOLD \
     algorithm.filter_groups.max_num_gen_batches=$MAX_NUM_GEN_BATCHES \
     algorithm.gdpo.enable_batch_norm=$GDPO_ENABLE_BATCH_NORM \
-    algorithm.gdpo.reward_weights.answer_score=$GDPO_ANSWER_WEIGHT \
-    algorithm.gdpo.reward_weights.format_score=$GDPO_FORMAT_WEIGHT \
-    algorithm.gdpo.reward_weights.bbox_score=$GDPO_BBOX_WEIGHT \
-    algorithm.gdpo.reward_weights.segment_score=$GDPO_SEGMENT_WEIGHT \
+    algorithm.reward_weights.answer_score=$REWARD_WEIGHT_ANSWER \
+    algorithm.reward_weights.format_score=$REWARD_WEIGHT_FORMAT \
+    algorithm.reward_weights.bbox_score=$REWARD_WEIGHT_BBOX \
+    algorithm.reward_weights.segment_score=$REWARD_WEIGHT_SEGMENT \
     algorithm.token_placement.method=$TOKEN_PLACEMENT_METHOD \
     algorithm.token_placement.global_reward_mode=$TOKEN_PLACEMENT_GLOBAL_MODE \
     algorithm.token_placement.enable_batch_norm=$TP_ENABLE_BATCH_NORM \
-    algorithm.token_placement.answer_weight=$TP_ANSWER_WEIGHT \
-    algorithm.token_placement.format_weight=$TP_FORMAT_WEIGHT \
-    algorithm.token_placement.bbox_weight=$TP_BBOX_WEIGHT \
-    algorithm.token_placement.segment_weight=$TP_SEGMENT_WEIGHT \
     algorithm.token_placement.gamma=$TP_GAMMA \
     algorithm.token_placement.lambda=$TP_LAMBDA \
     reward_model.enable=False \
@@ -463,8 +453,6 @@ python3 -m recipe.dapo.main_dapo \
     custom_reward_function.reward_kwargs.vlm_api_key="$VLM_API_KEY" \
     custom_reward_function.reward_kwargs.use_vlm_scoring=$USE_VLM_SCORING \
     custom_reward_function.reward_kwargs.use_bbox_verification=$USE_BBOX_VERIFICATION \
-    custom_reward_function.reward_kwargs.answer_weight=$ANSWER_WEIGHT \
-    custom_reward_function.reward_kwargs.bbox_weight=$BBOX_WEIGHT \
     custom_reward_function.reward_kwargs.bbox_coord_range=$BBOX_COORD_RANGE \
     +custom_reward_function.reward_kwargs.bbox_metric=$BBOX_METRIC \
     +custom_reward_function.reward_kwargs.temporal_tolerance=$TEMPORAL_TOLERANCE \
@@ -494,10 +482,12 @@ python3 -m recipe.dapo.main_dapo \
     "$@" 2>&1 | tee -a "$LOG_FILE"
 #     +actor_rollout_ref.rollout.repetition_penalty=1.1 \
 # trainer.resume_from_path=/data_gpu/songlin/rl/verl/checkpoints/video-reasoning-grpo/video_reasoning_grpo_20260131-085501/global_step_200
+#    actor_rollout_ref.actor.ppo_epochs=2 \
 
 echo ""
 echo "===== Step 2 Complete: Training Finished ====="
-
+#     actor_rollout_ref.actor.ulysses_sequence_parallel_size=4 \
+#     actor_rollout_ref.ref.ulysses_sequence_parallel_size=4 \
 # =============================================================================
 # Step 3: 自动合并模型 (Merge FSDP checkpoints to HuggingFace format)
 # =============================================================================

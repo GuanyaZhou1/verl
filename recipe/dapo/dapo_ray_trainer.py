@@ -28,6 +28,34 @@ from tqdm import tqdm
 
 from verl import DataProto
 from verl.trainer.ppo.core_algos import agg_loss
+
+
+def _extract_reward_components(batch: DataProto) -> dict[str, list]:
+    """Extract reward component values from batch for accumulation."""
+    components = {}
+    for key in batch.non_tensor_batch.keys():
+        if key.endswith("_score") or key in ("acc", "format"):
+            values = batch.non_tensor_batch[key]
+            if isinstance(values, np.ndarray):
+                components[key] = values.tolist()
+            elif isinstance(values, (list, tuple)):
+                components[key] = list(values)
+            elif isinstance(values, torch.Tensor):
+                components[key] = values.detach().cpu().numpy().tolist()
+    return components
+
+
+def _compute_reward_components_metrics(components: dict[str, list], prefix: str) -> dict[str, float]:
+    """Compute statistics for accumulated reward components."""
+    metrics = {}
+    for key, values in components.items():
+        if len(values) > 0:
+            arr = np.array(values, dtype=float)
+            metrics[f"{prefix}/{key}/mean"] = float(np.mean(arr))
+            metrics[f"{prefix}/{key}/min"] = float(np.min(arr))
+            metrics[f"{prefix}/{key}/max"] = float(np.max(arr))
+            metrics[f"{prefix}/{key}/std"] = float(np.std(arr))
+    return metrics
 from verl.trainer.ppo.metric_utils import compute_data_metrics, compute_throughout_metrics, compute_timing_metrics
 from verl.trainer.ppo.ray_trainer import (
     AdvantageEstimator,
@@ -145,6 +173,7 @@ class RayDAPOTrainer(RayPPOTrainer):
         batch = None
         num_prompt_in_batch = 0
         num_gen_batches = 0
+        reward_components_before_filter = defaultdict(list)  # Accumulate reward components before filtering
         for epoch in range(self.config.trainer.total_epochs):
             for batch_dict in self.train_dataloader:
                 if hasattr(self.actor_rollout_wg, "async_calls_finalize_fn_exec"):
@@ -241,6 +270,12 @@ class RayDAPOTrainer(RayPPOTrainer):
                         else:
                             new_batch.batch["token_level_rewards"] = new_batch.batch["token_level_scores"]
 
+                    # Accumulate reward components before filtering (for logging)
+                    if self.config.algorithm.filter_groups.enable:
+                        batch_components = _extract_reward_components(new_batch)
+                        for key, values in batch_components.items():
+                            reward_components_before_filter[key].extend(values)
+
                     if not self.config.algorithm.filter_groups.enable:
                         batch = new_batch
                     else:  # NOTE: When prompts after filtering is less than train batch size,
@@ -265,12 +300,17 @@ class RayDAPOTrainer(RayPPOTrainer):
 
                         prompt_uid2metric_std = {}
                         for prompt_uid, metric_vals in prompt_uid2metric_vals.items():
-                            prompt_uid2metric_std[prompt_uid] = np.std(metric_vals)
+                            valid_vals = [v for v in metric_vals if v is not None]
+                            if valid_vals:
+                                prompt_uid2metric_std[prompt_uid] = np.std(valid_vals)
+                            else:
+                                prompt_uid2metric_std[prompt_uid] = 0.0  # All None, treat as no variance
 
+                        std_threshold = self.config.algorithm.filter_groups.std_threshold
                         kept_prompt_uids = [
                             uid
                             for uid, std in prompt_uid2metric_std.items()
-                            if std > 0 or len(prompt_uid2metric_vals[uid]) == 1
+                            if std > std_threshold or len(prompt_uid2metric_vals[uid]) == 1
                         ]
                         num_prompt_in_batch += len(kept_prompt_uids)
 
@@ -406,6 +446,13 @@ class RayDAPOTrainer(RayPPOTrainer):
 
                 # collect metrics
                 metrics.update(compute_data_metrics(batch=batch, use_critic=self.use_critic))
+
+                # Add reward components before filtering (if filter_groups enabled)
+                if self.config.algorithm.filter_groups.enable and reward_components_before_filter:
+                    metrics.update(_compute_reward_components_metrics(
+                        reward_components_before_filter, prefix="reward_components_before_filter"
+                    ))
+
                 metrics.update(compute_timing_metrics(batch=batch, timing_raw=timing_raw))
                 # TODO: implement actual tflpo and theoretical tflpo
                 n_gpus = self.resource_pool_manager.get_n_gpus()
@@ -416,6 +463,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                 batch = None
                 num_prompt_in_batch = 0
                 num_gen_batches = 0
+                reward_components_before_filter = defaultdict(list)  # Reset for next step
 
                 # TODO: make a canonical logger that supports various backend
                 logger.log(data=metrics, step=self.global_steps)

@@ -244,10 +244,49 @@ def compute_advantage(
     elif adv_estimator == AdvantageEstimator.GRPO:
         # Initialize the mask for GRPO calculation
         grpo_calculation_mask = data.batch["response_mask"]
+        device = data.batch["token_level_rewards"].device
+
+        # Check if unified reward_weights are configured
+        reward_weights = config.get("reward_weights", {}) if config else {}
+        active_weights = {k: v for k, v in reward_weights.items() if v > 0}
+
+        if active_weights:
+            # Use unified reward_weights: compute weighted score from individual components
+            bs, response_length = data.batch["token_level_rewards"].shape
+            weighted_rewards = torch.zeros((bs, response_length), device=device, dtype=torch.float32)
+            total_weight = sum(active_weights.values())
+
+            for name, weight in active_weights.items():
+                if name in data.non_tensor_batch:
+                    component_scores = data.non_tensor_batch[name]
+                    # Convert to tensor if needed
+                    if isinstance(component_scores, np.ndarray):
+                        component_scores = torch.tensor(component_scores, device=device, dtype=torch.float32)
+                    elif isinstance(component_scores, (list, tuple)):
+                        component_scores = torch.tensor([float(s) for s in component_scores], device=device, dtype=torch.float32)
+                    elif not isinstance(component_scores, torch.Tensor):
+                        continue
+
+                    # Place weighted score at the end of each response (outcome-based reward)
+                    for i in range(bs):
+                        valid_len = grpo_calculation_mask[i].sum().int().item()
+                        if valid_len > 0:
+                            weighted_rewards[i, valid_len - 1] += (weight / total_weight) * component_scores[i]
+
+            # Log which components are being used (only once)
+            if not hasattr(compute_advantage, "_grpo_logged_weights"):
+                component_info = ", ".join([f"{k}(w={v})" for k, v in active_weights.items()])
+                print(f"[GRPO] Using unified reward_weights: {component_info}")
+                compute_advantage._grpo_logged_weights = True
+
+            token_level_rewards_to_use = weighted_rewards
+        else:
+            # Fallback to original behavior: use pre-computed token_level_rewards
+            token_level_rewards_to_use = data.batch["token_level_rewards"]
 
         # Call compute_grpo_outcome_advantage with parameters matching its definition
         advantages, returns = core_algos.compute_grpo_outcome_advantage(
-            token_level_rewards=data.batch["token_level_rewards"],
+            token_level_rewards=token_level_rewards_to_use,
             response_mask=grpo_calculation_mask,
             index=data.non_tensor_batch["uid"],
             norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
@@ -258,8 +297,20 @@ def compute_advantage(
         # GDPO: Group reward-Decoupled normalization Policy Optimization
         # Reference: https://arxiv.org/abs/2601.05242
         gdpo_config = config.get("gdpo", {}) if config else {}
-        reward_weights = gdpo_config.get("reward_weights", {})
         device = data.batch["token_level_rewards"].device
+
+        # Use unified reward_weights, with fallback to gdpo_config for backward compatibility
+        unified_weights = config.get("reward_weights", {}) if config else {}
+        legacy_weights = gdpo_config.get("reward_weights", {})
+        # Prefer unified weights if any are non-zero, otherwise use legacy
+        if any(w > 0 for w in unified_weights.values()):
+            reward_weights = unified_weights
+            if legacy_weights and not hasattr(compute_advantage, "_gdpo_warned_legacy"):
+                print("[GDPO] Using unified algorithm.reward_weights. "
+                      "Note: algorithm.gdpo.reward_weights is deprecated.")
+                compute_advantage._gdpo_warned_legacy = True
+        else:
+            reward_weights = legacy_weights
 
         # Token placement configuration
         token_placement_config = config.get("token_placement", {}) if config else {}
@@ -371,13 +422,14 @@ def compute_advantage(
             # =================================================================
             # Step 4: Apply token placement
             # =================================================================
+            # Use unified reward_weights for component weighting
             tp_config = {
                 "method": tp_method,
                 "global_reward_mode": token_placement_config.get("global_reward_mode", "broadcast"),
-                "answer_weight": token_placement_config.get("answer_weight", 1.0),
-                "format_weight": token_placement_config.get("format_weight", 0.5),
-                "bbox_weight": token_placement_config.get("bbox_weight", 1.0),
-                "segment_weight": token_placement_config.get("segment_weight", 1.0),
+                "answer_weight": reward_weights.get("answer_score", 1.0),
+                "format_weight": reward_weights.get("format_score", 0.0),
+                "bbox_weight": reward_weights.get("bbox_score", 0.0),
+                "segment_weight": reward_weights.get("segment_score", 0.0),
                 "gamma": token_placement_config.get("gamma", 0.99),
                 "lam": token_placement_config.get("lambda", 0.95),
             }
