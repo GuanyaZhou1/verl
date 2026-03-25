@@ -15,11 +15,17 @@ Usage:
 
 import json
 import argparse
+import sys
 from pathlib import Path
 from typing import Dict, List, Any
 import pandas as pd
 from tqdm import tqdm
 import cv2
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "video_reasoning"))
+from prompts import get_prompts, MULTITURN_SYSTEM_PROMPT as DEFAULT_SYSTEM_PROMPT
+from prompts import OUTPUT_TEMPLATE as DEFAULT_OUTPUT_TEMPLATE
 
 
 def get_video_duration(video_path: str) -> float:
@@ -41,30 +47,9 @@ def get_video_duration(video_path: str) -> float:
         return 0.0
 
 
-# System prompt matching the eval script format
-MULTITURN_SYSTEM_PROMPT = """You should reason step by step and, in EACH step, FIRST analyze and THEN focus on specific video segments. Place the grounded time segments at the END of the step.
-
-Each reasoning step must be enclosed within '<think>' tags and reference specific time segments.
-
-<think>
-{Single reasoning step — analyze the question; summarize relevant findings from the currently available sampled input and any previously inspected segments; brainstorm hypotheses; verify whether current evidence is sufficient; refine errors; revisit prior steps if needed; if insufficient to answer, decide the NEXT most informative segments to inspect based on question intent and previously seen content}
-</think>
-
-When identifying relevant segments, use '<segment>' tags with time ranges in seconds:
-
-<segment>
-[(start1, end1), (start2, end2), ...]
-</segment>
-
-Your reasoning should be grounded in visual spatiotemporal evidence from the video. When mentioning any objects related to the evidence, strictly follow this format:
-<obj>object_name</obj><box>[x1,y1,x2,y2]</box>at<t>time_in_seconds</t>
-
-When ready to provide the final answer, enclose it within '<answer>' tags:
-
-<answer> {final answer} </answer>
-"""
-
-OUTPUT_TEMPLATE = "Please provide only the single option (e.g., A, B, C, D, etc.) within the <answer> </answer> tags."
+# Global prompt variables (will be set from args or defaults)
+MULTITURN_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT
+OUTPUT_TEMPLATE = DEFAULT_OUTPUT_TEMPLATE
 
 
 def parse_args():
@@ -104,6 +89,18 @@ def parse_args():
         type=int,
         default=-1,
         help="Maximum number of samples to process (-1 for all)"
+    )
+    parser.add_argument(
+        "--prompt_file",
+        type=str,
+        default=None,
+        help="Path to custom system prompt file (optional, uses default if not specified)"
+    )
+    parser.add_argument(
+        "--output_template_file",
+        type=str,
+        default=None,
+        help="Path to custom output template file for multiple-choice (optional)"
     )
     return parser.parse_args()
 
@@ -250,7 +247,18 @@ def process_sample(sample: Dict[str, Any], video_base_path: str) -> Dict[str, An
 
 
 def main():
+    global MULTITURN_SYSTEM_PROMPT, OUTPUT_TEMPLATE
     args = parse_args()
+
+    # Load custom prompts if specified
+    MULTITURN_SYSTEM_PROMPT, OUTPUT_TEMPLATE, _ = get_prompts(
+        prompt_file=args.prompt_file,
+        output_template_file=args.output_template_file,
+    )
+    if args.prompt_file:
+        print(f"Loaded custom system prompt from: {args.prompt_file}")
+    if args.output_template_file:
+        print(f"Loaded custom output template from: {args.output_template_file}")
 
     # Load input JSON
     print(f"Loading data from {args.input_json}...")

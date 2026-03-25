@@ -15,12 +15,19 @@ Usage:
 import json
 import argparse
 import os
+import sys
 import re
 from pathlib import Path
 from typing import Dict, List, Any
 import pandas as pd
 from tqdm import tqdm
 import cv2
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "video_reasoning"))
+from prompts import get_prompts, MULTITURN_SYSTEM_PROMPT as DEFAULT_SYSTEM_PROMPT
+from prompts import OUTPUT_TEMPLATE_OPENENDED as DEFAULT_OUTPUT_TEMPLATE_OPENENDED
+from prompts import get_singleturn_output_template
 
 
 def get_video_duration(video_path: str) -> float:
@@ -39,31 +46,10 @@ def get_video_duration(video_path: str) -> float:
         return 0.0
 
 
-# System prompt matching the current training format (same as video_reasoning_multiturn.py)
-MULTITURN_SYSTEM_PROMPT = """You should reason step by step and, in EACH step, FIRST analyze and THEN focus on specific video segments. Place the grounded time segments at the END of the step.
-
-Each reasoning step must be enclosed within '<think>' tags and reference specific time segments.
-
-<think>
-{Single reasoning step — analyze the question; summarize relevant findings from the currently available sampled input and any previously inspected segments; brainstorm hypotheses; verify whether current evidence is sufficient; refine errors; revisit prior steps if needed; if insufficient to answer, decide the NEXT most informative segments to inspect based on question intent and previously seen content}
-</think>
-
-When identifying relevant segments, use '<segment>' tags with time ranges in seconds:
-
-<segment>
-[(start1, end1), (start2, end2), ...]
-</segment>
-
-Your reasoning should be grounded in visual spatiotemporal evidence from the video. When mentioning any objects related to the evidence, strictly follow this format:
-<obj>object_name</obj><box>[x1,y1,x2,y2]</box>at<t>time_in_seconds</t>
-
-When ready to provide the final answer, enclose it within '<answer>' tags:
-
-<answer> {final answer} </answer>
-"""
-
-# Output template for open-ended questions (different from multiple-choice)
-OUTPUT_TEMPLATE_OPENENDED = "Please provide your answer within the <answer> </answer> tags."
+# Global prompt variables (will be set from args or defaults)
+SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT
+OUTPUT_TEMPLATE_OPENENDED = DEFAULT_OUTPUT_TEMPLATE_OPENENDED
+PROMPT_VERSION = "default"  # Will be set from args
 
 
 def parse_args():
@@ -109,6 +95,25 @@ def parse_args():
         action="store_true",
         help="Skip samples with missing video files instead of raising error"
     )
+    parser.add_argument(
+        "--prompt_file",
+        type=str,
+        default=None,
+        help="Path to custom system prompt file (optional, uses default if not specified)"
+    )
+    parser.add_argument(
+        "--prompt_version",
+        type=str,
+        default="default",
+        choices=["default", "multiturn", "singleturn"],
+        help="Prompt version: default/multiturn (multi-turn reasoning) or singleturn (simple think+answer)"
+    )
+    parser.add_argument(
+        "--output_template_openended_file",
+        type=str,
+        default=None,
+        help="Path to custom output template file for open-ended (optional)"
+    )
     return parser.parse_args()
 
 
@@ -128,7 +133,8 @@ def extract_video_filename(videos_field: List[Dict]) -> str:
 
 def create_prompt_messages(
     question: str,
-    duration: float = None
+    duration: float = None,
+    question_type: str = "general"
 ) -> List[Dict[str, Any]]:
     """
     Create the initial prompt as a messages list for veRL (open-ended version).
@@ -136,6 +142,7 @@ def create_prompt_messages(
     Args:
         question: The question to answer
         duration: Duration of the video in seconds (optional)
+        question_type: Type of question (for singleturn output template selection)
 
     Returns:
         List of message dictionaries in chat format
@@ -149,14 +156,18 @@ def create_prompt_messages(
     if duration:
         user_content_parts.append(f"This is a video with duration {duration:.1f} seconds.\n")
 
-    # Add system prompt
-    user_content_parts.append(MULTITURN_SYSTEM_PROMPT)
-
-    # Add question (no options for open-ended)
-    user_content_parts.append(f"\nQuestion:\n{question}\n")
-
-    # Add output template for open-ended questions
-    user_content_parts.append(OUTPUT_TEMPLATE_OPENENDED)
+    if PROMPT_VERSION == "singleturn":
+        # Singleturn format: Question → ThinkingInstructions → OutputTemplate
+        user_content_parts.append(f"{question}\n")
+        user_content_parts.append(SYSTEM_PROMPT)
+        user_content_parts.append("\n")
+        output_template = get_singleturn_output_template(question_type)
+        user_content_parts.append(output_template)
+    else:
+        # Multiturn format: SystemPrompt → Question → OutputTemplate
+        user_content_parts.append(SYSTEM_PROMPT)
+        user_content_parts.append(f"\nQuestion:\n{question}\n")
+        user_content_parts.append(OUTPUT_TEMPLATE_OPENENDED)
 
     user_content = "".join(user_content_parts)
 
@@ -201,7 +212,7 @@ def process_sample(sample: Dict[str, Any], video_base_path: str, skip_missing: b
     video_id = os.path.splitext(video_filename)[0]
 
     # Create prompt messages (open-ended format, no options)
-    prompt_messages = create_prompt_messages(question, duration=duration)
+    prompt_messages = create_prompt_messages(question, duration=duration, question_type="free-form")
 
     # Videos field - only path, no resolution params (injected at training time)
     videos = [{"video": video_path}]
@@ -257,7 +268,22 @@ def process_sample(sample: Dict[str, Any], video_base_path: str, skip_missing: b
 
 
 def main():
+    global SYSTEM_PROMPT, OUTPUT_TEMPLATE_OPENENDED, PROMPT_VERSION
     args = parse_args()
+
+    # Set global prompt version
+    PROMPT_VERSION = args.prompt_version
+
+    # Load custom prompts if specified
+    SYSTEM_PROMPT, _, OUTPUT_TEMPLATE_OPENENDED = get_prompts(
+        prompt_file=args.prompt_file,
+        prompt_version=args.prompt_version,
+        output_template_openended_file=args.output_template_openended_file,
+    )
+    if args.prompt_file:
+        print(f"Loaded custom system prompt from: {args.prompt_file}")
+    else:
+        print(f"Using prompt version: {args.prompt_version}")
 
     # Load input JSON
     print(f"Loading data from {args.input_json}...")

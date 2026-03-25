@@ -18,11 +18,19 @@ Usage:
 
 import json
 import argparse
+import sys
 from pathlib import Path
 from typing import Dict, List, Any
 import pandas as pd
 from tqdm import tqdm
 import cv2
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "video_reasoning"))
+from prompts import get_prompts, MULTITURN_SYSTEM_PROMPT as DEFAULT_SYSTEM_PROMPT
+from prompts import OUTPUT_TEMPLATE as DEFAULT_OUTPUT_TEMPLATE
+from prompts import OUTPUT_TEMPLATE_OPENENDED as DEFAULT_OUTPUT_TEMPLATE_OPENENDED
+from prompts import get_singleturn_output_template
 
 
 def get_video_duration(video_path: str) -> float:
@@ -44,31 +52,11 @@ def get_video_duration(video_path: str) -> float:
         return 0.0
 
 
-# System prompt matching the eval script format
-MULTITURN_SYSTEM_PROMPT = """You should reason step by step and, in EACH step, FIRST analyze and THEN focus on specific video segments. Place the grounded time segments at the END of the step.
-
-Each reasoning step must be enclosed within '<think>' tags and reference specific time segments.
-
-<think>
-{Single reasoning step — analyze the question; summarize relevant findings from the currently available sampled input and any previously inspected segments; brainstorm hypotheses; verify whether current evidence is sufficient; refine errors; revisit prior steps if needed; if insufficient to answer, decide the NEXT most informative segments to inspect based on question intent and previously seen content}
-</think>
-
-When identifying relevant segments, use '<segment>' tags with time ranges in seconds:
-
-<segment>
-[(start1, end1), (start2, end2), ...]
-</segment>
-
-Your reasoning should be grounded in visual spatiotemporal evidence from the video. When mentioning any objects related to the evidence, strictly follow this format:
-<obj>object_name</obj><box>[x1,y1,x2,y2]</box>at<t>time_in_seconds</t>
-
-When ready to provide the final answer, enclose it within '<answer>' tags:
-
-<answer> {final answer} </answer>
-"""
-
-OUTPUT_TEMPLATE = "Please provide only the single option (e.g., A, B, C, D, etc.) within the <answer> </answer> tags."
-OUTPUT_TEMPLATE_OPENENDED = "Please provide your answer within the <answer> </answer> tags."
+# Global prompt variables (will be set from args or defaults based on prompt_version)
+SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT
+OUTPUT_TEMPLATE = DEFAULT_OUTPUT_TEMPLATE
+OUTPUT_TEMPLATE_OPENENDED = DEFAULT_OUTPUT_TEMPLATE_OPENENDED
+PROMPT_VERSION = "default"  # Will be set from args
 
 
 def parse_args():
@@ -109,6 +97,31 @@ def parse_args():
         default=-1,
         help="Maximum number of samples to process (-1 for all)"
     )
+    parser.add_argument(
+        "--prompt_file",
+        type=str,
+        default=None,
+        help="Path to custom system prompt file (optional, uses default if not specified)"
+    )
+    parser.add_argument(
+        "--prompt_version",
+        type=str,
+        default="default",
+        choices=["default", "multiturn", "singleturn"],
+        help="Prompt version: default/multiturn (multi-turn reasoning) or singleturn (simple think+answer)"
+    )
+    parser.add_argument(
+        "--output_template_file",
+        type=str,
+        default=None,
+        help="Path to custom output template file for multiple-choice (optional)"
+    )
+    parser.add_argument(
+        "--output_template_openended_file",
+        type=str,
+        default=None,
+        help="Path to custom output template file for open-ended (optional)"
+    )
     return parser.parse_args()
 
 
@@ -123,7 +136,8 @@ def create_prompt_messages(
     question: str,
     options: Dict[str, str],
     duration: float = None,
-    is_openended: bool = False
+    is_openended: bool = False,
+    question_type: str = "general"
 ) -> List[Dict[str, Any]]:
     """
     Create the initial prompt as a messages list for veRL.
@@ -136,6 +150,7 @@ def create_prompt_messages(
         options: Dictionary of answer options (e.g., {"A": "...", "B": "..."})
         duration: Duration of the video in seconds (optional)
         is_openended: Whether this is an open-ended question
+        question_type: Type of question (for singleturn output template selection)
 
     Returns:
         List of message dictionaries in chat format
@@ -149,17 +164,30 @@ def create_prompt_messages(
     if duration:
         user_content_parts.append(f"This is a video with duration {duration:.1f} seconds.\n")
 
-    # Add system prompt
-    user_content_parts.append(MULTITURN_SYSTEM_PROMPT)
-
-    # Add question and options (format aligned with eval script)
-    if is_openended or not options:
-        user_content_parts.append(f"\nQuestion:\n{question}\n")
-        user_content_parts.append(OUTPUT_TEMPLATE_OPENENDED)
+    if PROMPT_VERSION == "singleturn":
+        # Singleturn format: Question → Options → ThinkingInstructions → OutputTemplate
+        user_content_parts.append(f"{question}\n")
+        if options and not is_openended:
+            options_text = format_options(options)
+            user_content_parts.append(f"\nOptions:\n{options_text}\n")
+        user_content_parts.append(SYSTEM_PROMPT)
+        user_content_parts.append("\n")
+        if options and not is_openended:
+            output_template = get_singleturn_output_template("multiple choice")
+        else:
+            output_template = get_singleturn_output_template(question_type)
+        user_content_parts.append(output_template)
     else:
-        options_text = format_options(options)
-        user_content_parts.append(f"\nQuestion:\n{question}\n\nOptions:\n{options_text}\n")
-        user_content_parts.append(OUTPUT_TEMPLATE)
+        # Multiturn format: SystemPrompt → Question → Options → OutputTemplate
+        user_content_parts.append(SYSTEM_PROMPT)
+        user_content_parts.append(f"\nQuestion:\n{question}\n")
+        if options and not is_openended:
+            options_text = format_options(options)
+            user_content_parts.append(f"\nOptions:\n{options_text}\n")
+        if is_openended or not options:
+            user_content_parts.append(OUTPUT_TEMPLATE_OPENENDED)
+        else:
+            user_content_parts.append(OUTPUT_TEMPLATE)
 
     user_content = "".join(user_content_parts)
 
@@ -183,6 +211,7 @@ def process_sample(sample: Dict[str, Any], video_base_path: str) -> Dict[str, An
     correct_answer = sample["correct_answer"]
     options = sample.get("options", {})
     is_openended = sample.get("is_openended", False)
+    question_type = sample.get("question_type", "general")
 
     # Construct video path
     video_path = str(Path(video_base_path) / f"{video_id}.mp4")
@@ -192,7 +221,9 @@ def process_sample(sample: Dict[str, Any], video_base_path: str) -> Dict[str, An
 
     # Create the prompt as messages list (veRL expected format)
     # Contains <video> placeholder that will be replaced during data loading
-    prompt_messages = create_prompt_messages(question, options, duration=duration, is_openended=is_openended)
+    prompt_messages = create_prompt_messages(
+        question, options, duration=duration, is_openended=is_openended, question_type=question_type
+    )
 
     # Videos field - list of video info dicts
     # veRL's _build_messages will replace <video> placeholder with this
@@ -259,7 +290,27 @@ def process_sample(sample: Dict[str, Any], video_base_path: str) -> Dict[str, An
 
 
 def main():
+    global SYSTEM_PROMPT, OUTPUT_TEMPLATE, OUTPUT_TEMPLATE_OPENENDED, PROMPT_VERSION
     args = parse_args()
+
+    # Set global prompt version
+    PROMPT_VERSION = args.prompt_version
+
+    # Load custom prompts if specified
+    SYSTEM_PROMPT, OUTPUT_TEMPLATE, OUTPUT_TEMPLATE_OPENENDED = get_prompts(
+        prompt_file=args.prompt_file,
+        prompt_version=args.prompt_version,
+        output_template_file=args.output_template_file,
+        output_template_openended_file=args.output_template_openended_file
+    )
+    if args.prompt_file:
+        print(f"Loaded custom system prompt from: {args.prompt_file}")
+    else:
+        print(f"Using prompt version: {args.prompt_version}")
+    if args.output_template_file:
+        print(f"Loaded custom output template from: {args.output_template_file}")
+    if args.output_template_openended_file:
+        print(f"Loaded custom open-ended template from: {args.output_template_openended_file}")
 
     # Load input JSON
     print(f"Loading data from {args.input_json}...")
@@ -329,26 +380,33 @@ def main():
 
     print(f"\nDataFrame columns: {list(df.columns)}")
 
-    # Print statistics
-    print(f"\nStatistics (total):")
-    print(f"  - Unique videos: {df['video_id'].nunique()}")
-    print(f"  - Question types: {df['question_type'].value_counts().to_dict()}")
-    print(f"  - Multiple-choice: {(~df['is_openended']).sum()}, Open-ended: {df['is_openended'].sum()}")
+    # Print statistics (only if DataFrame is not empty)
+    if len(df) > 0:
+        print(f"\nStatistics (total):")
+        print(f"  - Unique videos: {df['video_id'].nunique()}")
+        print(f"  - Question types: {df['question_type'].value_counts().to_dict()}")
+        print(f"  - Multiple-choice: {(~df['is_openended']).sum()}, Open-ended: {df['is_openended'].sum()}")
 
-    # Show sample prompt
-    print(f"\n{'='*80}")
-    print("Sample prompt:")
-    print(f"{'='*80}")
-    sample_prompt = df['prompt'].iloc[0]
-    if isinstance(sample_prompt, list) and len(sample_prompt) > 0:
-        sample_content = sample_prompt[0].get('content', '')[:800]
+        # Show sample prompt
+        print(f"\n{'='*80}")
+        print("Sample prompt:")
+        print(f"{'='*80}")
+        sample_prompt = df['prompt'].iloc[0]
+        if isinstance(sample_prompt, list) and len(sample_prompt) > 0:
+            sample_content = sample_prompt[0].get('content', '')[:800]
+        else:
+            sample_content = str(sample_prompt)[:800]
+        print(sample_content)
+        print("...")
+        print(f"\nSample videos field:")
+        print(df['videos'].iloc[0])
+        print(f"{'='*80}")
     else:
-        sample_content = str(sample_prompt)[:800]
-    print(sample_content)
-    print("...")
-    print(f"\nSample videos field:")
-    print(df['videos'].iloc[0])
-    print(f"{'='*80}")
+        print("\nWARNING: No samples were processed successfully!")
+        print("Please check:")
+        print("  1. Video files exist in the specified video_base_path")
+        print("  2. Input JSON file is valid")
+        print("  3. Video IDs in JSON match video filenames")
 
 
 if __name__ == "__main__":

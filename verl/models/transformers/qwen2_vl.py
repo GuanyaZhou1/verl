@@ -42,12 +42,23 @@ logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 
 
-if is_flash_attn_2_available():
-    from flash_attn import flash_attn_func, flash_attn_varlen_func
+_flash_attn_available = False
+flash_attn_func = None
+flash_attn_varlen_func = None
+_flash_supports_window_size = False
+_flash_supports_deterministic = False
+_flash_use_top_left_mask = False
 
-    _flash_supports_window_size = "window_size" in inspect.signature(flash_attn_func).parameters
-    _flash_supports_deterministic = "deterministic" in inspect.signature(flash_attn_func).parameters
-    _flash_use_top_left_mask = not is_flash_attn_greater_or_equal_2_10()
+if is_flash_attn_2_available():
+    try:
+        from flash_attn import flash_attn_func, flash_attn_varlen_func
+
+        _flash_supports_window_size = "window_size" in inspect.signature(flash_attn_func).parameters
+        _flash_supports_deterministic = "deterministic" in inspect.signature(flash_attn_func).parameters
+        _flash_use_top_left_mask = not is_flash_attn_greater_or_equal_2_10()
+        _flash_attn_available = True
+    except (ImportError, OSError, AttributeError) as e:
+        logger.warning("flash_attn import failed (%s), using eager/sdpa fallback.", e)
 
 if is_npu_available:
     from transformers.integrations.npu_flash_attention import npu_flash_attn_func as flash_attn_func
@@ -57,6 +68,7 @@ if is_npu_available:
     _flash_supports_window_size = "window_size" in inspect.signature(flash_attn_func).parameters
     _flash_supports_deterministic = "deterministic" in inspect.signature(flash_attn_func).parameters
     _flash_use_top_left_mask = flash_attn_supports_top_left_mask()
+    _flash_attn_available = True
 
 _flash_deterministic_enabled = os.getenv("FLASH_ATTENTION_DETERMINISTIC", "0") == "1"
 
@@ -195,6 +207,19 @@ def _custom_flash_attention_forward(
     """
     Patches flash attention forward to handle 3D position ids in mrope. (3, batch_size, seq_length)
     """
+    if not _flash_attn_available or flash_attn_varlen_func is None:
+        return _flash_attention_forward(
+            query_states,
+            key_states,
+            value_states,
+            attention_mask,
+            query_length,
+            is_causal=is_causal,
+            sliding_window=sliding_window,
+            use_top_left_mask=use_top_left_mask,
+            deterministic=deterministic,
+            **kwargs,
+        )
     # Assuming 4D tensors, key_states.shape[1] is the key/value sequence length (source length).
     use_sliding_windows = (
         _flash_supports_window_size and sliding_window is not None and key_states.shape[1] > sliding_window

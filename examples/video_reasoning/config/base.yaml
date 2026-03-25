@@ -64,6 +64,9 @@ custom_reward_function:
     use_bbox_verification: false
     answer_weight: 1.0
     bbox_weight: 0.3
+    format_weight: 0.0
+    segment_weight: 0.0
+    use_strict_format: false
     bbox_coord_range: 1.0
     # 缓存配置（与上面 cache_config 保持一致）
     cache_dir: ".cache"
@@ -80,11 +83,25 @@ custom_reward_function:
 
 # DAPO filter_groups 结构（值在 shell 中覆盖）
 algorithm:
+  # 统一的 reward component 权重（grpo 和 gdpo 都使用这套权重）
+  reward_weights:
+    answer_score: 1.0
+    format_score: 0.0
+    bbox_score: 0.0
+    segment_score: 0.0
+
   filter_groups:
     _target_: verl.trainer.config.FilterGroupsConfig
     enable: False
     metric: null
     max_num_gen_batches: 0
+
+  # GDPO (Group reward-Decoupled normalization Policy Optimization) 配置
+  # 当 adv_estimator=gdpo 时生效
+  # 参考论文: https://arxiv.org/abs/2601.05242
+  gdpo:
+    # 是否在加权求和后做 batch-wise 归一化 (推荐开启，提高训练稳定性)
+    enable_batch_norm: True
 
 # DAPO overlong_buffer 结构
 reward_model:

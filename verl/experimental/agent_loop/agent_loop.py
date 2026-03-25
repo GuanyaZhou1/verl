@@ -465,9 +465,12 @@ class AgentLoopWorker:
             temperature=config.temperature,
             top_p=config.top_p,
             top_k=config.top_k,
-            repetition_penalty=1.0,
+            repetition_penalty=getattr(config, 'repetition_penalty', 1.0),
             logprobs=config.calculate_log_probs,
         )
+        # 单轮最大生成长度（如果配置了的话）
+        if hasattr(config, 'max_tokens_per_turn') and config.max_tokens_per_turn:
+            sampling_params['max_tokens'] = config.max_tokens_per_turn
 
         # override sampling params for validation
         if batch.meta_info.get("validate", False):
@@ -501,14 +504,19 @@ class AgentLoopWorker:
         else:
             traced_indices = set(range(len(batch)))
 
+        global_steps = batch.meta_info.get("global_steps", None)
         trajectory_info = await get_trajectory_info(
-            batch.meta_info.get("global_steps", -1), index.tolist(), batch.meta_info.get("validate", False)
+            global_steps if global_steps is not None else -1, index.tolist(), batch.meta_info.get("validate", False)
         )
 
         tasks = []
         for i in range(len(batch)):
             trace_this_sample = i in traced_indices
             kwargs = {k: v[i] for k, v in batch.non_tensor_batch.items()}
+            # Inject global_steps as training_step into extra_info for step-based reward logging
+            if global_steps is not None and "extra_info" in kwargs:
+                if isinstance(kwargs["extra_info"], dict):
+                    kwargs["extra_info"]["training_step"] = global_steps
             tasks.append(
                 asyncio.create_task(
                     self._run_agent_loop(sampling_params, trajectory_info[i], trace=trace_this_sample, **kwargs)
@@ -556,6 +564,38 @@ class AgentLoopWorker:
 
     async def _agent_loop_postprocess(self, output, **kwargs) -> _InternalAgentLoopOutput:
         """Perform post-processing operations on the output of each individual agent loop."""
+
+        # 检查空输出（由 try-catch 跳过的样本产生）
+        if not output.prompt_ids or not output.response_ids:
+            logger.warning("Empty output detected, returning dummy result with zero mask (won't affect training)")
+            prompt_length = self.config.actor_rollout_ref.rollout.prompt_length
+            response_length = self.config.actor_rollout_ref.rollout.response_length
+            pad_token_id = self.tokenizer.pad_token_id or 0
+
+            # 返回一个有效的空结果
+            # response_mask 全为 0，这样在计算 loss 时这个样本不会贡献梯度
+            # attention_mask 全为 0，这样模型不会处理这些 token
+            # position_ids 维度需要与正常路径一致：有 processor 时是 (1, 4, seq_len)，否则是 (1, seq_len)
+            seq_len = prompt_length + response_length
+            if self.processor is not None:
+                position_ids = torch.zeros((1, 4, seq_len), dtype=torch.long)
+            else:
+                position_ids = torch.zeros((1, seq_len), dtype=torch.long)
+
+            return _InternalAgentLoopOutput(
+                prompt_ids=torch.full((1, prompt_length), pad_token_id, dtype=torch.long),
+                response_ids=torch.full((1, response_length), pad_token_id, dtype=torch.long),
+                response_mask=torch.zeros((1, response_length), dtype=torch.long),  # 全 0，不贡献梯度
+                input_ids=torch.full((1, prompt_length + response_length), pad_token_id, dtype=torch.long),
+                attention_mask=torch.zeros((1, prompt_length + response_length), dtype=torch.long),  # 全 0
+                position_ids=position_ids,
+                response_logprobs=None,
+                multi_modal_inputs={},
+                multi_modal_inputs_no_watermark=None,
+                metrics=AgentLoopMetrics(),  # 添加空的 metrics
+                extra_fields={"raw_prompt": kwargs.get("raw_prompt", []), "__skip_sample__": True},
+            )
+
         output.extra_fields["raw_prompt"] = kwargs["raw_prompt"]
 
         # Some AgentLoop may have already computed the reward score, e.g SWE-agent.
@@ -843,6 +883,29 @@ class AgentLoopWorker:
         image_grid_thw = multi_modal_inputs.get("image_grid_thw")
         video_grid_thw = multi_modal_inputs.get("video_grid_thw")
 
+        # Fix: Ensure vision start tokens are not at the very end of the sequence.
+        # Qwen3-VL's get_rope_index expects at least one token after each vision start marker.
+        # If a vision start token is at the last position, replace it with pad token.
+        input_ids = input_ids.clone()  # avoid in-place modification
+        seq_len = input_ids.shape[1]
+        if seq_len > 0:
+            # Get vision start token id (Qwen2-VL/Qwen3-VL uses 151652 for <|vision_start|>)
+            vision_start_token_id = getattr(self.processor, "vision_start_token_id", None)
+            if vision_start_token_id is None:
+                # Fallback: try to get from tokenizer
+                vision_start_token = "<|vision_start|>"
+                vision_start_token_id = self.tokenizer.convert_tokens_to_ids(vision_start_token)
+
+            pad_token_id = getattr(self.tokenizer, "pad_token_id", 0) or 0
+
+            # Check if the last token is a vision start token
+            if input_ids[0, -1].item() == vision_start_token_id:
+                logger.warning(
+                    f"Vision start token found at last position (seq_len={seq_len}), "
+                    f"replacing with pad token to prevent get_rope_index IndexError."
+                )
+                input_ids[0, -1] = pad_token_id
+
         # Model's get_rope_index has been dynamically bind to the processor.
         vision_position_ids, _ = self.processor.get_rope_index(
             input_ids=input_ids,
@@ -920,12 +983,15 @@ class AgentLoopWorker:
         )
 
         scores = [input.reward_score for input in inputs]
-        if all(score is not None for score in scores):
-            prompt_length = prompt_ids.size(1)
-            response_length = attention_mask[:, prompt_length:].sum(dim=1) - 1
-            rm_scores = torch.zeros_like(response_mask, dtype=torch.float32)
-            rm_scores[torch.arange(response_mask.size(0)), response_length] = torch.tensor(scores, dtype=torch.float32)
-            batch["rm_scores"] = rm_scores
+        # Always add rm_scores to ensure consistent keys during DataProto.concat
+        # Use 0 for None scores to avoid key mismatch when filter_groups is enabled
+        prompt_length = prompt_ids.size(1)
+        response_length = attention_mask[:, prompt_length:].sum(dim=1) - 1
+        rm_scores = torch.zeros_like(response_mask, dtype=torch.float32)
+        # Replace None scores with 0
+        scores_filled = [s if s is not None else 0.0 for s in scores]
+        rm_scores[torch.arange(response_mask.size(0)), response_length] = torch.tensor(scores_filled, dtype=torch.float32)
+        batch["rm_scores"] = rm_scores
 
         non_tensor_batch = {
             "__num_turns__": np.array([input.num_turns for input in inputs], dtype=np.int32),
@@ -933,9 +999,28 @@ class AgentLoopWorker:
 
         # add reward_extra_info to non_tensor_batch
         reward_extra_infos = [input.extra_fields.get("reward_extra_info", {}) for input in inputs]
-        reward_extra_keys = list(reward_extra_infos[0].keys())
-        for key in reward_extra_keys:
-            non_tensor_batch[key] = np.array([info[key] for info in reward_extra_infos])
+        # 获取所有样本中出现的 keys 的并集（skip sample 可能返回空 dict）
+        all_keys = set()
+        for info in reward_extra_infos:
+            all_keys.update(info.keys())
+        reward_extra_keys = sorted(all_keys)  # 排序确保不同 worker 返回相同顺序
+        for key in all_keys:
+            # 使用 get 方法，对于没有该 key 的样本返回 None
+            values = [info.get(key, None) for info in reward_extra_infos]
+            # Fields containing variable-length structured data (lists of dicts)
+            # must always use object arrays to avoid dimension mismatch during concat
+            if key in ("bbox_details", "segment_details") or any(isinstance(v, (list, dict)) for v in values):
+                arr = np.empty(len(values), dtype=object)
+                arr[:] = values
+                non_tensor_batch[key] = arr
+            else:
+                try:
+                    non_tensor_batch[key] = np.array(values)
+                except ValueError:
+                    # Inhomogeneous shapes fallback
+                    arr = np.empty(len(values), dtype=object)
+                    arr[:] = values
+                    non_tensor_batch[key] = arr
 
         # Add multi_modal_inputs to non_tensor_batch if any samples have them
         multi_modal_inputs_list = [input.multi_modal_inputs for input in inputs]
@@ -951,14 +1036,14 @@ class AgentLoopWorker:
             temp_arr[:] = [input.extra_fields.get(key) for input in inputs]
             extra_fields[key] = temp_arr
 
+        # Ensure __skip_sample__ is always present for consistent concat across workers
+        if "__skip_sample__" not in extra_fields:
+            extra_fields["__skip_sample__"] = np.array([False] * len(inputs), dtype=object)
+
         non_tensor_batch.update(extra_fields)
 
-        # Only include reward_extra_keys in meta_info if rm_scores is in batch
-        # This avoids conflicts when reward_tensor is merged later in ray_trainer.py
-        if "rm_scores" in batch.keys():
-            meta_info = {"metrics": metrics, "reward_extra_keys": reward_extra_keys}
-        else:
-            meta_info = {"metrics": metrics}
+        # rm_scores is always added now, so always include reward_extra_keys
+        meta_info = {"metrics": metrics, "reward_extra_keys": reward_extra_keys}
 
         return DataProto(
             batch=batch,

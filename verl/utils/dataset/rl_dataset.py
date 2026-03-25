@@ -180,6 +180,7 @@ class RLHFDataset(Dataset):
 
     def maybe_filter_out_long_prompts(self, dataframe: datasets.Dataset = None):
         # filter out too long prompts
+        # breakpoint()
         if self.filter_overlong_prompts:
             tokenizer = self.tokenizer
             processor = self.processor
@@ -350,6 +351,23 @@ class RLHFDataset(Dataset):
         # add index for each prompt
         if "extra_info" not in row_dict or row_dict["extra_info"] is None:
             row_dict["extra_info"] = dict()
+
+        # Merge top-level reference_segments into extra_info for reward function access
+        if "reference_segments" in row_dict and "reference_segments" not in row_dict["extra_info"]:
+            ref_segs = row_dict["reference_segments"]
+            # Parse if it's a string (e.g., "[[69.0, 85.0], [90.0, 110.0]]")
+            if isinstance(ref_segs, str):
+                import ast
+                try:
+                    ref_segs = ast.literal_eval(ref_segs)
+                except (ValueError, SyntaxError):
+                    ref_segs = []
+            # Convert to list of tuples if needed
+            if ref_segs and isinstance(ref_segs, (list, tuple)):
+                row_dict["extra_info"]["reference_segments"] = [
+                    tuple(seg) if isinstance(seg, (list, tuple)) else seg for seg in ref_segs
+                ]
+
         index = row_dict.get("extra_info", {}).get("index", 0)
         tools_kwargs = row_dict.get("extra_info", {}).get("tools_kwargs", {})
         interaction_kwargs = row_dict.get("extra_info", {}).get("interaction_kwargs", {})

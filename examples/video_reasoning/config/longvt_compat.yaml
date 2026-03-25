@@ -1,0 +1,108 @@
+# LongVT Compatible Config for verl
+# =============================================================================
+# This config enables LongVT-style video reasoning training with:
+# - <tool_call>/<tool_response> output format (instead of <segment>/<observation>)
+# - LongVT reward function with LLM-as-judge and IoU scoring
+#
+# Usage:
+#   python3 -m verl.trainer.main_ppo \
+#       --config-path="$(pwd)/examples/video_reasoning/config" \
+#       --config-name='longvt_compat' \
+#       key=value ...
+# =============================================================================
+
+hydra:
+  searchpath:
+    - file://verl/trainer/config
+
+defaults:
+  - ppo_trainer
+  - _self_
+
+# Data configuration
+data:
+  gen_batch_size: ${data.train_batch_size}
+
+# Actor/Rollout configuration for LongVT agent loop
+actor_rollout_ref:
+  actor:
+    fsdp_config:
+      param_offload: False
+      optimizer_offload: False
+      mixed_precision:
+        reduce_dtype: bf16
+        buffer_dtype: bf16
+  ref:
+    fsdp_config:
+      param_offload: False
+      mixed_precision:
+        reduce_dtype: bf16
+        buffer_dtype: bf16
+  rollout:
+    multi_turn:
+      enable: True
+      max_assistant_turns: 5
+      max_user_turns: 5
+      # Frame cache configuration
+      cache_config:
+        cache_dir: ".cache"
+        fps: 1
+        max_frames: 512
+        max_frames_per_segment: 16
+        use_cached_initial_video: False
+      # Initial video resolution (low-res overview)
+      initial_video_config:
+        fps: 1
+        max_frames: 512
+        min_pixels: 784
+        max_pixels: 12544
+      # Segment video resolution (high-res detail)
+      segment_video_config:
+        fps: 1
+        max_frames: 32
+        min_pixels: 784
+        max_pixels: 50176
+      # Timestamp watermark configuration
+      watermark_config:
+        enable: False
+        position: "top_left"
+        font_size: 0
+        ratio: 1.0
+    # Use LongVT agent loop instead of video_reasoning
+    agent:
+      default_agent_loop: longvt
+
+# Disable reward model (using custom reward function)
+reward_model:
+  enable: False
+  overlong_buffer:
+    enable: False
+    len: 0
+    penalty_factor: 0.0
+    log: False
+
+# LongVT reward function configuration
+# Requires environment variables:
+#   LLM_AS_A_JUDGE_BASE: API endpoint for LLM judge (e.g., http://localhost:8081/v1)
+#   LLM_AS_A_JUDGE_KEY: API key for the judge model
+custom_reward_function:
+  path: pkg://verl.utils.reward_score.longvt_reward
+  name: compute_score
+  reward_kwargs:
+    # Use IoU-based time reward for video segment localization
+    # This computes IoU between predicted and ground truth time segments
+    use_iou_reward: True
+    # Alternative: use recall-based time reward
+    # use_time_reward: False
+    # Reward for tool usage (requires tool_response)
+    # tool_use_reward: False
+    # Use 1:1 acc:format ratio instead of 0.8:0.2
+    # use_new_reward: False
+
+# DAPO filter_groups configuration
+algorithm:
+  filter_groups:
+    _target_: verl.trainer.config.FilterGroupsConfig
+    enable: False
+    metric: null
+    max_num_gen_batches: 0

@@ -71,14 +71,18 @@ if _VLLM_VERSION > version.parse("0.11.0"):
     from vllm.utils.argparse_utils import FlexibleArgumentParser
     from vllm.utils.network_utils import get_tcp_uri
 
-    if _VLLM_VERSION == version.parse("0.12.0"):
-        from vllm.entrypoints.harmony_utils import get_encoding
+    if not os.environ.get("VLLM_SKIP_HARMONY_ENCODING", "0") == "1":
+        try:
+            if _VLLM_VERSION == version.parse("0.12.0"):
+                from vllm.entrypoints.harmony_utils import get_encoding
 
-        get_encoding()
-    elif _VLLM_VERSION >= version.parse("0.13.0"):
-        from vllm.entrypoints.openai.parser.harmony_utils import get_encoding
+                get_encoding()
+            elif _VLLM_VERSION >= version.parse("0.13.0"):
+                from vllm.entrypoints.openai.parser.harmony_utils import get_encoding
 
-        get_encoding()
+                get_encoding()
+        except Exception as e:
+            logger.warning(f"Failed to load harmony encoding: {e}. This is usually fine for non-OpenAI models.")
 else:
     from vllm.utils import FlexibleArgumentParser, get_tcp_uri
 if _VLLM_VERSION >= version.parse("0.12.0"):

@@ -16,7 +16,8 @@ from .agent_loop import AgentLoopBase, AgentLoopManager, AgentLoopWorker, AsyncL
 from .single_turn_agent_loop import SingleTurnAgentLoop
 from .tool_agent_loop import ToolAgentLoop
 from .video_reasoning_agent_loop import VideoReasoningAgentLoop
+from .longvt_agent_loop import LongVTAgentLoop
 
-_ = [SingleTurnAgentLoop, ToolAgentLoop, VideoReasoningAgentLoop]
+_ = [SingleTurnAgentLoop, ToolAgentLoop, VideoReasoningAgentLoop, LongVTAgentLoop]
 
-__all__ = ["AgentLoopBase", "AgentLoopManager", "AsyncLLMServerManager", "AgentLoopWorker", "VideoReasoningAgentLoop"]
+__all__ = ["AgentLoopBase", "AgentLoopManager", "AsyncLLMServerManager", "AgentLoopWorker", "VideoReasoningAgentLoop", "LongVTAgentLoop"]

@@ -160,17 +160,17 @@ def main():
             if 'error' in result:
                 print(f"  {video}: {result['error']}")
 
-    # Calculate cache size (now using directories with jpg files)
-    cache_path = Path(args.cache_dir)
-    total_size = 0
-    for cache_subdir in cache_path.iterdir():
-        if cache_subdir.is_dir():
-            for f in cache_subdir.glob("*.jpg"):
-                total_size += f.stat().st_size
+    # # Calculate cache size (now using directories with jpg files)
+    # cache_path = Path(args.cache_dir)
+    # total_size = 0
+    # for cache_subdir in cache_path.iterdir():
+    #     if cache_subdir.is_dir():
+    #         for f in cache_subdir.glob("*.jpg"):
+    #             total_size += f.stat().st_size
 
-    print("\nCache directory:", args.cache_dir)
-    print(f"Cache size: {total_size / (1024**3):.2f} GB")
-    print(f"Cache format: jpg files in {args.cache_dir}/{{video_name}}_fps{{fps}}_max{{max}}/ directories")
+    # print("\nCache directory:", args.cache_dir)
+    # print(f"Cache size: {total_size / (1024**3):.2f} GB")
+    # print(f"Cache format: jpg files in {args.cache_dir}/{{video_name}}_fps{{fps}}_max{{max}}/ directories")
 
 
 if __name__ == "__main__":

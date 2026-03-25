@@ -52,6 +52,12 @@ class DAPORewardManager(RewardManagerBase):
         valid_response_length = data_item.batch["attention_mask"][-response_length:].sum()
         valid_response_ids = response_ids[:valid_response_length]
 
+        # 解码 prompt_str
+        prompt_ids = data_item.batch["prompts"]
+        prompt_length = prompt_ids.shape[-1]
+        valid_prompt_length = data_item.batch["attention_mask"][:prompt_length].sum()
+        valid_prompt_ids = prompt_ids[-valid_prompt_length:]
+
         data_source = data_item.non_tensor_batch["data_source"]
         ground_truth = data_item.non_tensor_batch["reward_model"]["ground_truth"]
         extra_info = data_item.non_tensor_batch.get("extra_info", {})
@@ -59,6 +65,22 @@ class DAPORewardManager(RewardManagerBase):
         response_str = await self.loop.run_in_executor(
             None, lambda: self.tokenizer.decode(valid_response_ids, skip_special_tokens=True)
         )
+        # 保留 special tokens 的版本（包含视频 token），用于 Corrected Rollout SFT
+        response_str_with_tokens = await self.loop.run_in_executor(
+            None, lambda: self.tokenizer.decode(valid_response_ids, skip_special_tokens=False)
+        )
+        # 移除末尾的 eos_token
+        eos_token = self.tokenizer.eos_token
+        if eos_token and response_str_with_tokens.endswith(eos_token):
+            response_str_with_tokens = response_str_with_tokens[:-len(eos_token)]
+
+        # 保存原始输入文本信息到 extra_info，用于 reward_logs 保存
+        prompt_str = await self.loop.run_in_executor(
+            None, lambda: self.tokenizer.decode(valid_prompt_ids, skip_special_tokens=False)
+        )
+        extra_info["prompt_str"] = prompt_str
+        # 保存带 special tokens 的 response（用于 Corrected Rollout SFT，保留视频 token）
+        extra_info["response_str_with_tokens"] = response_str_with_tokens
         extra_reward_kwargs = (
             {
                 "reward_router_address": self.reward_router_address,

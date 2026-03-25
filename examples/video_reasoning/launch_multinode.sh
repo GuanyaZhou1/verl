@@ -36,7 +36,7 @@ RAY_PORT=6380   # 6379 被系统 Redis 占用，改用 6380
 EXTRA_ARGS=""
 PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 # 远程节点上激活 conda 再执行 ray/python（SSH 非交互 shell 不会自动激活 conda）
-CONDA_ACTIVATE="${CONDA_ACTIVATE:-source /share_data/gyzhou/anaconda3/etc/profile.d/conda.sh && conda activate verl_clone}"
+CONDA_ACTIVATE="${CONDA_ACTIVATE:-source /mnt/data/home/zhengshurong/miniconda3/etc/profile.d/conda.sh && conda activate verl}"
 REMOTE_PREFIX="$CONDA_ACTIVATE && "
 
 # =============================================================================
@@ -89,7 +89,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Environment (for conda users, set before running):"
             echo "  CONDA_ACTIVATE          Activate conda on remote nodes so 'ray' is in PATH."
-            echo "                          Example: export CONDA_ACTIVATE=\"source ~/miniconda3/etc/profile.d/conda.sh && conda activate verl_clone\""
+            echo "                          Example: export CONDA_ACTIVATE=\"source ~/miniconda3/etc/profile.d/conda.sh && conda activate verl\""
             echo ""
             echo "Examples:"
             echo "  bash launch_multinode.sh --nodes \"10.96.11.1,10.96.11.2\" --gpus-per-node 8"
@@ -312,13 +312,12 @@ NCCL_HYDRA_ARGS="$NCCL_HYDRA_ARGS +ray_kwargs.ray_init.runtime_env.env_vars.NCCL
 NCCL_HYDRA_ARGS="$NCCL_HYDRA_ARGS +ray_kwargs.ray_init.runtime_env.env_vars.NCCL_DEBUG=WARN"
 NCCL_HYDRA_ARGS="$NCCL_HYDRA_ARGS +ray_kwargs.ray_init.runtime_env.env_vars.TORCH_NCCL_AVOID_RECORD_STREAMS=1"
 NCCL_HYDRA_ARGS="$NCCL_HYDRA_ARGS +ray_kwargs.ray_init.runtime_env.env_vars.NCCL_CUMEM_ENABLE=0"
-NCCL_HYDRA_ARGS="$NCCL_HYDRA_ARGS +ray_kwargs.ray_init.runtime_env.env_vars.TIKTOKEN_CACHE_DIR=/data_gpu/gyzhou/tmp/tiktoken_cache"
 NCCL_HYDRA_ARGS="$NCCL_HYDRA_ARGS +ray_kwargs.ray_init.runtime_env.env_vars.TMPDIR=/tmp"
-
+#NCCL_HYDRA_ARGS="$NCCL_HYDRA_ARGS +ray_kwargs.ray_init.runtime_env.env_vars.TIKTOKEN_CACHE_DIR=/data_gpu/gyzhou/tmp/tiktoken_cache"
 ssh_cmd "$HEAD_NODE" "${REMOTE_PREFIX}cd $PROJECT_DIR && \
     $NCCL_ENVS && \
     export NNODES=$NNODES && \
     export N_GPUS=$GPUS_PER_NODE && \
     export SKIP_VIDEO_CACHE=true && \
     export RAY_ADDRESS=$HEAD_NODE:$RAY_PORT && \
-    bash examples/video_reasoning/run_video_reasoning_dapo.sh $NCCL_HYDRA_ARGS $EXTRA_ARGS"
+    bash examples/video_reasoning/run_video_reasoning_dapo_h200.sh $NCCL_HYDRA_ARGS $EXTRA_ARGS"

@@ -404,6 +404,26 @@ class VideoReasoningAgentLoop(AgentLoopBase):
         - Frames with watermarks are used for rollout generation (helps model understand time)
         - Original frames (no watermark) are tracked separately for logp calculation
         """
+        try:
+            return await self._run_impl(sampling_params, **kwargs)
+        except Exception as e:
+            # 遇到损坏图片等错误时，返回空结果而不是崩溃
+            logger.warning(f"Error in video reasoning agent loop, skipping sample: {e}")
+            # 返回一个空的 AgentLoopOutput
+            return AgentLoopOutput(
+                prompt_ids=[],
+                response_ids=[],
+                response_mask=[],
+                multi_modal_data={},
+                accumulated_multi_modal_inputs={},
+                accumulated_multi_modal_inputs_no_watermark=None,
+                num_turns=0,
+                metrics=AgentLoopMetrics(),
+            )
+
+    async def _run_impl(self, sampling_params: dict[str, Any], **kwargs) -> AgentLoopOutput:
+        # breakpoint()
+        """实际的 run 实现"""
         raw_prompt = kwargs.get("raw_prompt", [])
         extra_info = kwargs.get("extra_info", {})
 
@@ -438,6 +458,8 @@ class VideoReasoningAgentLoop(AgentLoopBase):
 
         # If use_cached_initial_video is enabled, replace video path with cached frame paths
         # This avoids video decoding and reduces CPU memory usage
+        # Also track timestamps for fixing video_metadata.frames_indices later
+        initial_timestamps = None  # List of timestamps for initial video frames
         if self.use_cached_initial_video and video_path:
             if use_watermark:
                 # Get frame paths with timestamps for watermarking
@@ -449,17 +471,31 @@ class VideoReasoningAgentLoop(AgentLoopBase):
                     # For logp: use original frame paths
                     original_frame_paths = [fp for fp, _ in initial_frame_paths_with_ts]
                     self._replace_video_with_cached_frames(messages_no_watermark, original_frame_paths)
+                    # Track timestamps for metadata fix
+                    initial_timestamps = [ts for _, ts in initial_frame_paths_with_ts]
                     logger.info(f"Using {len(watermarked_frames)} watermarked frames for initial video")
             else:
-                initial_frame_paths = self._get_initial_frame_paths(video_path)
-                if initial_frame_paths:
+                initial_frame_paths_with_ts = self._get_initial_frame_paths_with_timestamps(video_path)
+                if initial_frame_paths_with_ts:
+                    initial_frame_paths = [fp for fp, _ in initial_frame_paths_with_ts]
+                    # breakpoint()
                     self._replace_video_with_cached_frames(messages, initial_frame_paths)
+                    # Track timestamps for metadata fix
+                    initial_timestamps = [ts for _, ts in initial_frame_paths_with_ts]
                     logger.info(f"Using {len(initial_frame_paths)} cached frames for initial video")
 
         # Process initial vision info using parent class method
+        # breakpoint()
         multi_modal_data = await self.process_vision_info(messages)
         images = multi_modal_data.get("images", [])
         videos = multi_modal_data.get("videos", [])
+
+        # Fix video_metadata.frames_indices for initial video to use absolute timestamps
+        # Without this fix, frames_indices=[0,1,2,...] causes processor to generate
+        # relative timestamps <0.0s>, <1.0s> instead of absolute <0.0s>, <1.0s>, <2.0s>...
+        # This is critical for the model to understand the correct time in the video
+        if initial_timestamps and videos:
+            self._fix_video_metadata_timestamps(videos, [initial_timestamps], self.cache_fps)
 
         # Process non-watermark version if needed
         multi_modal_data_no_watermark = None
@@ -469,6 +505,9 @@ class VideoReasoningAgentLoop(AgentLoopBase):
             multi_modal_data_no_watermark = await self.process_vision_info(messages_no_watermark)
             images_no_watermark = multi_modal_data_no_watermark.get("images", [])
             videos_no_watermark = multi_modal_data_no_watermark.get("videos", [])
+            # Fix video_metadata.frames_indices for non-watermark initial video too
+            if initial_timestamps and videos_no_watermark:
+                self._fix_video_metadata_timestamps(videos_no_watermark, [initial_timestamps], self.cache_fps)
 
         metrics = {}
         request_id = uuid4().hex
@@ -484,6 +523,7 @@ class VideoReasoningAgentLoop(AgentLoopBase):
         assistant_turns = 0
 
         # Tokenize initial prompt and get multi_modal_inputs (with watermark for rollout)
+        # breakpoint()
         prompt_ids, initial_mm_inputs = await self.apply_chat_template(
             messages,
             images=images if images else None,
@@ -503,6 +543,7 @@ class VideoReasoningAgentLoop(AgentLoopBase):
             )
 
         # Main reasoning loop
+        # breakpoint()
         for turn in range(self.max_assistant_turns):
             if user_turns >= self.max_user_turns:
                 break
@@ -650,12 +691,14 @@ class VideoReasoningAgentLoop(AgentLoopBase):
 
             # Process observation message to extract videos in correct format
             # process_vision_info will load jpg files and return (tensor, metadata) tuples
+            # breakpoint()
             obs_multi_modal = await self.process_vision_info([observation_message])
             obs_videos = obs_multi_modal.get("videos", [])
 
             # Fix video_metadata.frames_indices to use absolute timestamps.
             # fetch_video sets frames_indices=[0,1,2,...] for frame lists, causing
             # the processor to generate relative <0.2s> tokens instead of <34.0s>.
+            # breakpoint()
             self._fix_video_metadata_timestamps(obs_videos, all_absolute_timestamps, self.cache_fps)
 
             # Accumulate videos for output
@@ -664,6 +707,7 @@ class VideoReasoningAgentLoop(AgentLoopBase):
             videos = videos + obs_videos
 
             # Tokenize observation message with processed videos
+            # breakpoint()
             obs_ids, obs_mm_inputs = await self.apply_chat_template(
                 [observation_message],
                 images=None,

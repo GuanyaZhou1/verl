@@ -25,6 +25,14 @@
 # 可选参数:
 #   --skip-preprocess   跳过预处理，只做合并（子文件夹已有 parquet 时用）
 #   --only <name>       只预处理指定数据集 (longvideo_reason|video_holmes|longvt_selfqa)
+#   --prompt-file <path>                    自定义 system prompt 文件路径
+#   --output-template-file <path>           自定义多选题 output template 文件路径
+#   --output-template-openended-file <path> 自定义开放题 output template 文件路径
+#
+# 示例:
+#   # 使用自定义 prompt
+#   bash examples/video_reasoning/preprocess_all_and_merge.sh \
+#       --prompt-file examples/video_reasoning/my_prompt.txt
 # =============================================================================
 
 set -e
@@ -47,6 +55,11 @@ source "$SCRIPT_DIR/env.sh"
 OUTPUT_BASE="./long_video_data"
 VAL_RATIO=0.05
 SEED=42
+
+# Prompt 配置 (可通过 --prompt_file 参数覆盖)
+PROMPT_FILE=""
+OUTPUT_TEMPLATE_FILE=""
+OUTPUT_TEMPLATE_OPENENDED_FILE=""
 
 # 数据集1: LongVideo-Reason
 DS1_NAME="longvideo_reason"
@@ -82,13 +95,40 @@ while [[ $# -gt 0 ]]; do
             ONLY_DATASET="$2"
             shift 2
             ;;
+        --prompt-file)
+            PROMPT_FILE="$2"
+            shift 2
+            ;;
+        --output-template-file)
+            OUTPUT_TEMPLATE_FILE="$2"
+            shift 2
+            ;;
+        --output-template-openended-file)
+            OUTPUT_TEMPLATE_OPENENDED_FILE="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 [--skip-preprocess] [--only <dataset_name>]"
+            echo "Usage: $0 [--skip-preprocess] [--only <dataset_name>] [--prompt-file <path>] [--output-template-file <path>] [--output-template-openended-file <path>]"
             exit 1
             ;;
     esac
 done
+
+# Build prompt arguments
+PROMPT_ARGS=""
+if [ -n "$PROMPT_FILE" ]; then
+    PROMPT_ARGS="$PROMPT_ARGS --prompt_file $PROMPT_FILE"
+    echo "Using custom system prompt: $PROMPT_FILE"
+fi
+if [ -n "$OUTPUT_TEMPLATE_FILE" ]; then
+    PROMPT_ARGS="$PROMPT_ARGS --output_template_file $OUTPUT_TEMPLATE_FILE"
+    echo "Using custom output template (MC): $OUTPUT_TEMPLATE_FILE"
+fi
+if [ -n "$OUTPUT_TEMPLATE_OPENENDED_FILE" ]; then
+    PROMPT_ARGS="$PROMPT_ARGS --output_template_openended_file $OUTPUT_TEMPLATE_OPENENDED_FILE"
+    echo "Using custom output template (open-ended): $OUTPUT_TEMPLATE_OPENENDED_FILE"
+fi
 
 # =============================================================================
 # 预处理函数
@@ -112,7 +152,8 @@ preprocess_longvideo_reason() {
         --video_base_path "$DS1_VIDEO_BASE" \
         --output_dir "$DS1_OUTPUT" \
         --val_ratio "$VAL_RATIO" \
-        --seed "$SEED"
+        --seed "$SEED" \
+        $PROMPT_ARGS
 
     echo "[1/3] Done: $(python3 -c "import pandas as pd; print(len(pd.read_parquet('$DS1_OUTPUT/train.parquet')))"
 ) train samples"
@@ -137,7 +178,8 @@ preprocess_video_holmes() {
         --video_base_path "$DS2_VIDEO_BASE" \
         --output_dir "$DS2_OUTPUT" \
         --val_ratio "$VAL_RATIO" \
-        --seed "$SEED"
+        --seed "$SEED" \
+        $PROMPT_ARGS
 
     echo "[2/3] Done: $(python3 -c "import pandas as pd; print(len(pd.read_parquet('$DS2_OUTPUT/train.parquet')))"
 ) train samples"
@@ -163,7 +205,8 @@ preprocess_longvt_selfqa() {
         --output_dir "$DS3_OUTPUT" \
         --val_ratio "$VAL_RATIO" \
         --seed "$SEED" \
-        --skip_missing_videos
+        --skip_missing_videos \
+        $PROMPT_ARGS
 
     echo "[3/3] Done: $(python3 -c "import pandas as pd; print(len(pd.read_parquet('$DS3_OUTPUT/train.parquet')))"
 ) train samples"

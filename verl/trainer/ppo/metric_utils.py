@@ -101,6 +101,7 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
             - response_length/mean, max, min, clip_ratio: Statistics about response lengths
             - prompt_length/mean, max, min, clip_ratio: Statistics about prompt lengths
             - num_turns/mean, max, min: Statistics about the number of multi-turn conversations
+            - reward_components/*: Statistics about individual reward components (if available)
     """
     sequence_score = batch.batch["token_level_scores"].sum(-1)
     sequence_reward = batch.batch["token_level_rewards"].sum(-1)
@@ -221,6 +222,73 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
         metrics["tool_call_counts/min"] = tool_call_counts.min()
         metrics["tool_call_counts/max"] = tool_call_counts.max()
         metrics["tool_call_counts/mean"] = tool_call_counts.mean()
+
+    # reward components (from custom reward function)
+    # Auto-detect all *_score keys and boolean metrics for flexible logging
+    for key in batch.non_tensor_batch.keys():
+        # Log all *_score keys (e.g., answer_score, bbox_score, segment_score, etc.)
+        # Also log known boolean metrics (acc, format)
+        if key.endswith("_score") or key in ("acc", "format"):
+            values = batch.non_tensor_batch[key]
+            try:
+                if isinstance(values, np.ndarray):
+                    # Convert boolean to float for mean calculation
+                    if values.dtype == bool or values.dtype == np.bool_:
+                        values = values.astype(float)
+                    if values.size > 0:
+                        metrics[f"reward_components/{key}/mean"] = float(np.mean(values))
+                        metrics[f"reward_components/{key}/min"] = float(np.min(values))
+                        metrics[f"reward_components/{key}/max"] = float(np.max(values))
+                        metrics[f"reward_components/{key}/std"] = float(np.std(values))
+                elif isinstance(values, (list, tuple)) and len(values) > 0:
+                    float_values = [float(v) for v in values]
+                    metrics[f"reward_components/{key}/mean"] = float(np.mean(float_values))
+                    metrics[f"reward_components/{key}/min"] = float(np.min(float_values))
+                    metrics[f"reward_components/{key}/max"] = float(np.max(float_values))
+                    metrics[f"reward_components/{key}/std"] = float(np.std(float_values))
+                elif isinstance(values, torch.Tensor) and values.numel() > 0:
+                    values_np = values.detach().cpu().numpy().astype(float)
+                    metrics[f"reward_components/{key}/mean"] = float(np.mean(values_np))
+                    metrics[f"reward_components/{key}/min"] = float(np.min(values_np))
+                    metrics[f"reward_components/{key}/max"] = float(np.max(values_np))
+                    metrics[f"reward_components/{key}/std"] = float(np.std(values_np))
+            except (TypeError, ValueError):
+                # Skip keys that can't be converted to metrics
+                pass
+
+    # GDPO-specific metrics: per-component normalized advantages
+    # These are stored in non_tensor_batch by compute_advantage when using GDPO
+    for key in batch.non_tensor_batch.keys():
+        if key.endswith("_adv_normalized"):
+            values = batch.non_tensor_batch[key]
+            try:
+                if isinstance(values, np.ndarray) and values.size > 0:
+                    metrics[f"gdpo/{key}/mean"] = float(np.mean(values))
+                    metrics[f"gdpo/{key}/std"] = float(np.std(values))
+                elif isinstance(values, torch.Tensor) and values.numel() > 0:
+                    values_np = values.detach().cpu().numpy()
+                    metrics[f"gdpo/{key}/mean"] = float(np.mean(values_np))
+                    metrics[f"gdpo/{key}/std"] = float(np.std(values_np))
+            except (TypeError, ValueError):
+                pass
+
+    # Token placement metrics
+    if "token_placement_info" in batch.meta_info:
+        tp_info = batch.meta_info["token_placement_info"]
+        if isinstance(tp_info, dict):
+            for k, v in tp_info.items():
+                if isinstance(v, (int, float, bool)):
+                    metrics[f"token_placement/{k}"] = float(v) if isinstance(v, bool) else v
+
+    # Turn-level advantage stats (for per_turn / per_turn_gae methods)
+    if "bbox_turn_adv_mean" in batch.meta_info:
+        metrics["token_placement/bbox_turn_adv_mean"] = float(batch.meta_info["bbox_turn_adv_mean"])
+    if "bbox_turn_adv_std" in batch.meta_info:
+        metrics["token_placement/bbox_turn_adv_std"] = float(batch.meta_info["bbox_turn_adv_std"])
+    if "segment_turn_adv_mean" in batch.meta_info:
+        metrics["token_placement/segment_turn_adv_mean"] = float(batch.meta_info["segment_turn_adv_mean"])
+    if "segment_turn_adv_std" in batch.meta_info:
+        metrics["token_placement/segment_turn_adv_std"] = float(batch.meta_info["segment_turn_adv_std"])
 
     return metrics
 
@@ -595,6 +663,14 @@ def process_validation_metrics(
             for var_name, var_vals in var2vals.items():
                 # skip empty or string values
                 if not var_vals or isinstance(var_vals[0], str):
+                    continue
+
+                # skip non-numeric types (e.g., bbox_details, segment_details which are lists of dicts)
+                if isinstance(var_vals[0], (dict, list)):
+                    continue
+
+                # skip if first value is None (e.g., corrected_solution_str when answer is wrong)
+                if var_vals[0] is None:
                     continue
 
                 # compute mean and std

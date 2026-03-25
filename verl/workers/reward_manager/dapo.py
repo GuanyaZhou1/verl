@@ -80,15 +80,24 @@ class DAPORewardManager(AbstractRewardManager):
             # decode
             prompt_str = self.tokenizer.decode(valid_prompt_ids, skip_special_tokens=True)
             response_str = self.tokenizer.decode(valid_response_ids, skip_special_tokens=True)
+            # 保留 special tokens 的版本（包含视频 token），用于 Corrected Rollout SFT
+            response_str_with_tokens = self.tokenizer.decode(valid_response_ids, skip_special_tokens=False)
             eos_token = self.tokenizer.eos_token
             if response_str.endswith(eos_token):
                 response_str = response_str[: -len(eos_token)]
+            if eos_token and response_str_with_tokens.endswith(eos_token):
+                response_str_with_tokens = response_str_with_tokens[: -len(eos_token)]
 
             ground_truth = data_item.non_tensor_batch["reward_model"]["ground_truth"]
 
             data_source = data_item.non_tensor_batch[self.reward_fn_key]
 
             extra_info = data_item.non_tensor_batch.get("extra_info", {})
+
+            # 保存原始输入文本信息到 extra_info，用于 reward_logs 保存
+            extra_info["prompt_str"] = prompt_str
+            # 保存带 special tokens 的 response（用于 Corrected Rollout SFT，保留视频 token）
+            extra_info["response_str_with_tokens"] = response_str_with_tokens
 
             rollout_reward_scores = data_item.non_tensor_batch.get("reward_scores", {})
 
@@ -113,7 +122,7 @@ class DAPORewardManager(AbstractRewardManager):
 
             reward = score
 
-            if self.overlong_buffer_cfg.enable:
+            if self.overlong_buffer_cfg is not None and self.overlong_buffer_cfg.enable:
                 overlong_buffer_len = self.overlong_buffer_cfg.len
                 expected_len = self.max_resp_len - overlong_buffer_len
                 exceed_len = valid_response_length - expected_len

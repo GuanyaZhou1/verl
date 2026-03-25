@@ -8,6 +8,7 @@
 **/playground
 **/wandb
 .codeatlas/
+checkpoints_zsr/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -16,11 +17,12 @@ dataset/*
 tensorflow/my_graph/*
 .idea/
 # C extensions
+
 *.so
 reward_logs/
 reward_logs_zsr/
 tensorboard_log/
-
+.cache_new/
 # Distribution / packaging
 .Python
 # env/

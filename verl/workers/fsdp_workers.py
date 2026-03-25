@@ -151,6 +151,26 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         import torch.distributed
 
         if not torch.distributed.is_initialized():
+            # 自动检测 InfiniBand 接口（ibs10f0 或 ibs12f0）
+            if "GLOO_SOCKET_IFNAME" not in os.environ:
+                import subprocess
+                try:
+                    result = subprocess.run(
+                        ["ip", "addr", "show"],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    for line in result.stdout.split('\n'):
+                        if 'inet 10.1.' in line:  # 匹配 10.1.x.x 网段
+                            parts = line.strip().split()
+                            if len(parts) >= 2:
+                                ifname = parts[-1]  # 接口名在最后
+                                os.environ["GLOO_SOCKET_IFNAME"] = ifname
+                                os.environ["NCCL_SOCKET_IFNAME"] = ifname
+                                os.environ["TP_SOCKET_IFNAME"] = ifname
+                                break
+                except Exception:
+                    pass  # 忽略错误，使用默认值
+
             rank = int(os.environ.get("RANK", 0))
             world_size = int(os.environ.get("WORLD_SIZE", 1))
             torch.distributed.init_process_group(
