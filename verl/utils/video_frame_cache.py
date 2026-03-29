@@ -406,10 +406,12 @@ class VideoFrameCache:
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             pil_image = Image.fromarray(frame_rgb)
 
-            # Save as jpg with integer timestamp
+            # Save as jpg with integer timestamp (atomic write to avoid corruption)
             frame_filename = f"frame_{saved_count:04d}_{int(target_ts)}s.jpg"
             frame_path = cache_dir / frame_filename
-            pil_image.save(frame_path, "JPEG", quality=95)
+            tmp_path = cache_dir / f".tmp_{frame_filename}.{os.getpid()}"
+            pil_image.save(tmp_path, "JPEG", quality=95)
+            tmp_path.replace(frame_path)  # atomic on POSIX
 
             frames_info.append({
                 'path': frame_filename,
@@ -419,7 +421,7 @@ class VideoFrameCache:
 
         cap.release()
 
-        # Save metadata
+        # Save metadata (atomic write)
         metadata = {
             'video_path': video_path,
             'duration': duration,
@@ -428,8 +430,12 @@ class VideoFrameCache:
             'frames': frames_info,
         }
 
-        with open(metadata_path, 'w') as f:
+        tmp_metadata = metadata_path.parent / f".tmp_metadata.{os.getpid()}.json"
+        with open(tmp_metadata, 'w') as f:
             json.dump(metadata, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        tmp_metadata.replace(metadata_path)
 
         return {'duration': duration, 'num_frames': len(frames_info)}
 

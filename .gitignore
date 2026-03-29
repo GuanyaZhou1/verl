@@ -17,12 +17,14 @@ dataset/*
 tensorflow/my_graph/*
 .idea/
 # C extensions
-
+.cache*/
 *.so
 reward_logs/
 reward_logs_zsr/
 tensorboard_log/
 .cache_new/
+.claude/
+checkpoints_zsr_ablate/
 # Distribution / packaging
 .Python
 # env/

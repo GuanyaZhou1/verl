@@ -8,5 +8,5 @@
 #   bash launch_multinode.sh --node-file nodes.txt
 # 10.96.11.2  # 无 InfiniBand，bond0 桥接，NCCL 通信失败，暂时排除
 
-10.96.11.1
-10.96.11.10
+10.96.11.14
+10.96.11.18

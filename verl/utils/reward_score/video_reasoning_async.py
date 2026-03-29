@@ -25,6 +25,50 @@ import aiohttp
 from PIL import Image, ImageDraw
 
 
+def _compress_special_token_runs(text: str) -> str:
+    """Compress repeated special vision tokens like <|video_pad|> into xN form."""
+    if not text:
+        return text
+
+    def _compress_token(token: str, source: str) -> str:
+        pattern = rf"(?:{re.escape(token)})+"
+
+        def repl(match):
+            count = len(match.group(0)) // len(token)
+            return f"{token}x{count}" if count > 1 else token
+
+        return re.sub(pattern, repl, source)
+
+    text = _compress_token("<|video_pad|>", text)
+    text = _compress_token("<|image_pad|>", text)
+    return text
+
+
+def _build_debug_text(full_text_with_tokens: str, attention_mask: List[int]) -> str:
+    """
+    构建多轮调试文本：
+    1. 连续的 <|video_pad|> 压缩为 <|video_pad|>xN
+    2. attention_mask=0 的区域用 <mask0>...</mask0> 标注
+    3. attention_mask=1 的区域用 <mask1>...</mask1> 标注
+    """
+    if not full_text_with_tokens or not attention_mask:
+        return full_text_with_tokens
+
+    # 压缩连续的视觉 special tokens
+    text = _compress_special_token_runs(full_text_with_tokens)
+
+    # 添加 mask 标注（简化版：只在开头/结尾标注，不逐字符）
+    # 因为 tokenizer decode 后的文本长度与 token 数不一致，这里只做粗略标注
+    if len(attention_mask) > 0:
+        # 统计 mask0 和 mask1 的数量
+        mask0_count = attention_mask.count(0)
+        mask1_count = attention_mask.count(1)
+        mask_info = f"\n[MASK_INFO] mask0_tokens={mask0_count}, mask1_tokens={mask1_count}, total_tokens={len(attention_mask)}\n"
+        text = mask_info + text
+
+    return text
+
+
 # ============== 默认配置常量 ==============
 # 修改这里的值会影响所有使用默认参数的调用
 
@@ -1532,13 +1576,18 @@ def format_reward(predict_str: str, strict_segment: bool = False) -> float:
             # Expect </segment>
             if tag_name != "segment" or not is_close:
                 return 0.0
-            state = "obs_open"
+            state = "post_segment"
 
-        elif state == "obs_open":
-            # Expect <observation>
-            if tag_name != "observation" or is_close:
+        elif state == "post_segment":
+            # After </segment>, expect <observation> (optional) or <think>
+            if is_close:
                 return 0.0
-            state = "obs_close"
+            if tag_name == "observation":
+                state = "obs_close"
+            elif tag_name == "think":
+                state = "think_close"
+            else:
+                return 0.0
 
         elif state == "obs_close":
             # Expect </observation>
@@ -1795,78 +1844,48 @@ def compute_per_turn_segment_score(
     gt_segments: List[Tuple[float, float]],
 ) -> List[float]:
     """
-    计算每轮预测 segments 与 GT segments 的匹配分数
+    计算每轮预测 segments 的增量评分（marginal gain）
 
-    对每个 turn 独立计算其 segments 与 GT 的重叠程度。
-    使用公式: (2*IoU + IoP + IoG) / 4
-    其中:
-    - IoU = turn 的 segments 与 GT 的交集 / 并集
-    - IoP = 交集 / turn 预测长度
-    - IoG = 交集 / GT 长度
+    每轮只奖励"新增覆盖"，重复覆盖已有区域不得分。
+    这样可以防止模型通过多轮重复输出相同时间段来获取高分。
+
+    具体做法：
+    1. 累积前面所有 turn 的 segments
+    2. 计算加入当前 turn 后的全局 segment_score
+    3. 当前 turn 的分数 = 新 score - 旧 score（即 marginal gain）
+    4. 如果当前 turn 的 segment 数量超过 MAX_SEGMENTS_PER_TURN，按比例折扣
 
     Args:
         pred_segments: 模型预测的所有轮次的 segments，格式为 [[(start, end), ...], ...]
         gt_segments: GT 的 reference_segments，格式为 [(start, end), ...]
 
     Returns:
-        per_turn_scores: 每轮的分数列表
+        per_turn_scores: 每轮的增量分数列表
     """
     if not gt_segments:
         return [0.0] * len(pred_segments)
 
-    def segments_to_intervals(segments):
-        if not segments:
-            return []
-        sorted_segs = sorted(segments, key=lambda x: x[0])
-        merged = [sorted_segs[0]]
-        for start, end in sorted_segs[1:]:
-            if start <= merged[-1][1]:
-                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
-            else:
-                merged.append((start, end))
-        return merged
-
-    def total_length(intervals):
-        return sum(end - start for start, end in intervals)
-
-    def compute_intersection(intervals1, intervals2):
-        if not intervals1 or not intervals2:
-            return 0.0
-        intersection = 0.0
-        i, j = 0, 0
-        while i < len(intervals1) and j < len(intervals2):
-            start1, end1 = intervals1[i]
-            start2, end2 = intervals2[j]
-            inter_start = max(start1, start2)
-            inter_end = min(end1, end2)
-            if inter_start < inter_end:
-                intersection += inter_end - inter_start
-            if end1 < end2:
-                i += 1
-            else:
-                j += 1
-        return intersection
-
-    gt_intervals = segments_to_intervals(gt_segments)
-    gt_length = total_length(gt_intervals)
-
+    MAX_SEGMENTS_PER_TURN = 3
+    cumulative_segments = []
+    prev_score = 0.0
     per_turn_scores = []
+
     for turn_segments in pred_segments:
         if not turn_segments:
             per_turn_scores.append(0.0)
             continue
 
-        turn_intervals = segments_to_intervals(turn_segments)
-        turn_length = total_length(turn_intervals)
-        intersection = compute_intersection(turn_intervals, gt_intervals)
-        union = turn_length + gt_length - intersection
+        cumulative_segments = cumulative_segments + turn_segments
+        curr_score, _, _, _ = compute_segment_score([cumulative_segments], gt_segments)
+        marginal_gain = max(0.0, curr_score - prev_score)
 
-        iou = intersection / union if union > 0 else 0.0
-        iop = intersection / turn_length if turn_length > 0 else 0.0
-        iog = intersection / gt_length if gt_length > 0 else 0.0
+        # 段数惩罚：超过 MAX_SEGMENTS_PER_TURN 按比例折扣
+        raw_count = len(turn_segments)
+        if raw_count > MAX_SEGMENTS_PER_TURN:
+            marginal_gain *= MAX_SEGMENTS_PER_TURN / raw_count
 
-        score = (2 * iou + iop + iog) / 4
-        per_turn_scores.append(score)
+        per_turn_scores.append(marginal_gain)
+        prev_score = curr_score
 
     return per_turn_scores
 
@@ -1906,6 +1925,12 @@ async def compute_score(
     bbox_per_turn: int = DEFAULT_BBOX_PER_TURN,      # 每个 think turn 期望输出的 bbox 数量
     # Coverage 惩罚参数 (GRPO) [已废弃，保留兼容]
     min_coverage_factor: float = DEFAULT_MIN_COVERAGE_FACTOR,  # 不输出bbox时保留的最低分数比例 (已废弃)
+    # Accuracy Gate: 答案不正确时，清零 bbox/segment reward
+    # 参考 Video-TwG: R = R_acc + R_fmt + I(R_acc >= threshold) × (R_bbox + R_seg)
+    # 设为 0 表示关闭 gate (始终给 bbox/segment reward)
+    # 设为 0.5 表示开放题 ROUGE>=0.5 或选择题答对才给 grounding reward
+    # 设为 1.0 表示只有完全答对才给 grounding reward (最严格，仅适用于选择题)
+    accuracy_gate_threshold: float = 0.0,
     # 日志相关参数
     enable_logging: bool = True,
     save_samples: bool = True,
@@ -2086,10 +2111,33 @@ async def compute_score(
             vlm_api_key=vlm_api_key,
         )
     elif predicted_answer:
-        # 回退：规则匹配（仅适用于选择题）
-        predicted = extract_option_letter(predicted_answer)
-        correct = extract_option_letter(ground_truth)
-        answer_score = 1.0 if predicted == correct else 0.0
+        # 规则匹配：选择题 EM + 开放题 ROUGE
+        # 判断是否为选择题：GT 是单个字母 (A-Z) 时为选择题
+        gt_stripped = ground_truth.strip()
+        is_multiple_choice = len(gt_stripped) == 1 and gt_stripped.isalpha()
+
+        if is_multiple_choice:
+            # 选择题: 提取选项字母后 exact match
+            predicted = extract_option_letter(predicted_answer)
+            correct = gt_stripped.upper()
+            answer_score = 1.0 if predicted == correct else 0.0
+        else:
+            # 开放题: ROUGE F1 (无需 VLM)
+            try:
+                from rouge_score import rouge_scorer
+                scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
+                scores = scorer.score(gt_stripped, predicted_answer.strip())
+                answer_score = (scores['rouge1'].fmeasure + scores['rouge2'].fmeasure + scores['rougeL'].fmeasure) / 3.0
+            except ImportError:
+                # rouge_score 未安装时，用简单的 token overlap F1
+                pred_tokens = set(predicted_answer.lower().split())
+                gt_tokens = set(gt_stripped.lower().split())
+                if pred_tokens and gt_tokens:
+                    precision = len(pred_tokens & gt_tokens) / len(pred_tokens)
+                    recall = len(pred_tokens & gt_tokens) / len(gt_tokens)
+                    answer_score = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+                else:
+                    answer_score = 0.0
 
     # 6.5. Segment 分数计算
     segment_score = 0.0
@@ -2099,6 +2147,20 @@ async def compute_score(
     gt_segments = extra_info.get("reference_segments", [])
     if gt_segments and all_segments:
         segment_score, segment_iou, segment_iop, segment_iog = compute_segment_score(all_segments, gt_segments)
+
+        # 段数惩罚：每轮最多 MAX_SEGMENTS_PER_TURN 个 segment，超出按比例折扣
+        MAX_SEGMENTS_PER_TURN = 3
+        total_raw_segments = sum(len(turn) for turn in all_segments)
+        total_allowed = MAX_SEGMENTS_PER_TURN * len(all_segments)
+        if total_raw_segments > total_allowed and total_allowed > 0:
+            segment_score *= total_allowed / total_raw_segments
+
+    # 6.8 Accuracy Gate: 答案不正确时，清零 bbox/segment reward
+    # 参考 Video-TwG: R = R_acc + R_fmt + I(R_acc >= threshold) × (R_bbox + R_seg)
+    # 防止模型学到"乱定位但答错"来获取 grounding 分数
+    if accuracy_gate_threshold > 0 and answer_score < accuracy_gate_threshold:
+        bbox_score = 0.0
+        segment_score = 0.0
 
     # 7. 计算最终分数
     # bbox_score 已经融合了数量惩罚（未输出的 bbox 视为 0 分），不再需要 coverage_factor
@@ -2156,12 +2218,24 @@ async def compute_score(
     if should_save_sample:
         # 获取原始输入文本 (prompt_str)
         prompt_str = extra_info.get("prompt_str", "")
+        prompt_str_with_tokens_raw = extra_info.get("prompt_str_with_tokens", "")
+        prompt_str_with_tokens = _compress_special_token_runs(prompt_str_with_tokens_raw)
+
+        # 优先使用 reward manager 基于真实 token/mask 构建的 debug 文本
+        full_text_with_tokens_raw = extra_info.get("full_text_with_tokens", "")
+        full_text_with_tokens = _compress_special_token_runs(full_text_with_tokens_raw)
+        solution_str_with_tokens_raw = extra_info.get("response_str_with_tokens", solution_str) if extra_info else solution_str
+        solution_str_with_tokens = _compress_special_token_runs(solution_str_with_tokens_raw)
+        response_mask = extra_info.get("response_mask", [])
+        debug_text = extra_info.get("debug_full_text") or _build_debug_text(full_text_with_tokens_raw, response_mask)
 
         sample_data = {
             "video_id": video_id,
             "video_path": video_path,
             "question": question[:500] if question else "",
-            "input_text": prompt_str,  # 原始输入的完整文本
+            "input_text": prompt_str,  # 原始输入的完整文本 (skip_special_tokens=True)
+            "input_text_with_tokens": prompt_str_with_tokens,  # 保留 <|video_pad|> 等 special tokens
+            "input_text_with_tokens_raw": prompt_str_with_tokens_raw,
             "ground_truth": ground_truth,
             "predicted_answer": predicted_answer,
             "answer_correct": answer_score == 1.0,  # 二元分类
@@ -2171,8 +2245,15 @@ async def compute_score(
             "num_turns": turn_counts["think"],
             # 完整的 solution_str (保存更多内容以便调试)
             "solution_str_preview": solution_str[:1000],  # 前1000字符预览
-            "solution_str_full": solution_str,  # 完整内容
+            "solution_str_full": solution_str,  # 完整内容 (skip_special_tokens=True)
+            "solution_str_with_tokens": solution_str_with_tokens,  # 保留 <|video_pad|> 等 special tokens
+            "solution_str_with_tokens_raw": solution_str_with_tokens_raw,
             "solution_str_length": len(solution_str),
+            # 多轮调试：完整文本 + mask 标注 + video_pad 压缩
+            "full_text_with_tokens": full_text_with_tokens,
+            "full_text_with_tokens_raw": full_text_with_tokens_raw,
+            "debug_full_text": debug_text,
+            "observation_debug": extra_info.get("observation_debug", []),
             # 所有轮次的 segments
             "all_segments": all_segments,
             "last_segment": segments,
@@ -2191,7 +2272,8 @@ async def compute_score(
                 "segment_iog": segment_iog,
                 "bbox_coverage": bbox_coverage,
                 "expected_bbox_count": expected_bbox_count,
-                "actual_bbox_count": len(bbox_details),
+                "actual_bbox_count": len(bboxes),
+                "verified_bbox_count": len(bbox_details),
                 "partial_bbox_count": partial_bbox_count,
                 "final_score": final_score,
             },

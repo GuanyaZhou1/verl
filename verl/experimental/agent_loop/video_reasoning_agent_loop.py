@@ -430,6 +430,7 @@ class VideoReasoningAgentLoop(AgentLoopBase):
         # Extract video info from extra_info
         video_path = extra_info.get("video_path")
         video_duration = extra_info.get("video_duration")
+        observation_debug: list[dict[str, Any]] = []
 
         # Per-sample watermark decision based on ratio
         # ratio=1.0: always use watermark; ratio=0.0: never; ratio=0.5: 50% chance
@@ -722,6 +723,23 @@ class VideoReasoningAgentLoop(AgentLoopBase):
             if len(response_mask) + len(obs_ids) >= self.response_length:
                 break
 
+            observation_debug.append(
+                {
+                    "turn_index": turn,
+                    "segments": [[float(start), float(end)] for start, end in segments],
+                    "frame_groups": [
+                        {
+                            "segment": [float(start), float(end)],
+                            "frame_paths": [fp for fp, _ in seg_frames_with_ts],
+                            "timestamps": [ts for _, ts in seg_frames_with_ts],
+                        }
+                        for (start, end), seg_frames_with_ts in zip(segments, per_segment_frames)
+                        if seg_frames_with_ts
+                    ],
+                    "obs_token_len": len(obs_ids),
+                }
+            )
+
             # Accumulate multi_modal_inputs from observation (only after length check passes)
             accumulated_mm_inputs = _merge_multi_modal_inputs(accumulated_mm_inputs, obs_mm_inputs)
 
@@ -774,4 +792,5 @@ class VideoReasoningAgentLoop(AgentLoopBase):
             accumulated_multi_modal_inputs_no_watermark=accumulated_mm_inputs_no_watermark if use_watermark else None,
             num_turns=user_turns + assistant_turns + 1,
             metrics=AgentLoopMetrics(**metrics) if isinstance(metrics, dict) else metrics,
+            extra_fields={"observation_debug": observation_debug},
         )

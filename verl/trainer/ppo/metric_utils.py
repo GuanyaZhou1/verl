@@ -280,6 +280,13 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
                 if isinstance(v, (int, float, bool)):
                     metrics[f"token_placement/{k}"] = float(v) if isinstance(v, bool) else v
 
+    if "gdpo_weight_check" in batch.meta_info:
+        gdpo_weight_check = batch.meta_info["gdpo_weight_check"]
+        if isinstance(gdpo_weight_check, dict):
+            for k, v in gdpo_weight_check.items():
+                if isinstance(v, (int, float, bool)):
+                    metrics[f"gdpo_weight_check/{k}"] = float(v) if isinstance(v, bool) else v
+
     # Turn-level advantage stats (for per_turn / per_turn_gae methods)
     if "bbox_turn_adv_mean" in batch.meta_info:
         metrics["token_placement/bbox_turn_adv_mean"] = float(batch.meta_info["bbox_turn_adv_mean"])

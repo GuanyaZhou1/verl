@@ -443,6 +443,7 @@ def compute_advantage(
                 response_mask=response_mask,
                 **tp_config,
             )
+            advantages_before_batch_norm = advantages.clone()
 
             # =================================================================
             # Step 5: Optional batch-wise normalization
@@ -488,6 +489,69 @@ def compute_advantage(
                     within_sample_vars.append(sample_advs.var().item())
             avg_within_sample_var = np.mean(within_sample_vars) if within_sample_vars else 0.0
 
+            def _abs_mean(values):
+                if isinstance(values, torch.Tensor):
+                    if values.numel() == 0:
+                        return 0.0
+                    return float(values.abs().mean().item())
+                if not values:
+                    return 0.0
+                arr = np.asarray(values, dtype=np.float32)
+                return float(np.mean(np.abs(arr)))
+
+            def _scale_ratio(raw_abs_mean, weighted_abs_mean):
+                if raw_abs_mean <= epsilon:
+                    return 0.0
+                return float(weighted_abs_mean / raw_abs_mean)
+
+            answer_adv_abs_mean = _abs_mean(answer_adv)
+            format_adv_abs_mean = _abs_mean(format_adv)
+            bbox_turn_adv_abs_mean = _abs_mean(all_bbox_advs)
+            segment_turn_adv_abs_mean = _abs_mean(all_segment_advs)
+
+            answer_adv_weighted_abs_mean = _abs_mean(answer_adv * tp_config["answer_weight"])
+            format_adv_weighted_abs_mean = _abs_mean(format_adv * tp_config["format_weight"])
+            bbox_turn_adv_weighted_abs_mean = _abs_mean(
+                [tp_config["bbox_weight"] * adv for adv in all_bbox_advs]
+            )
+            segment_turn_adv_weighted_abs_mean = _abs_mean(
+                [tp_config["segment_weight"] * adv for adv in all_segment_advs]
+            )
+
+            valid_mask = response_mask.bool()
+            pre_bn_valid_advs = advantages_before_batch_norm[valid_mask]
+            post_bn_valid_advs = advantages[valid_mask]
+            pre_bn_abs_mean = _abs_mean(pre_bn_valid_advs)
+            pre_bn_std = float(pre_bn_valid_advs.std().item()) if pre_bn_valid_advs.numel() > 1 else 0.0
+            post_bn_abs_mean = _abs_mean(post_bn_valid_advs)
+            post_bn_std = float(post_bn_valid_advs.std().item()) if post_bn_valid_advs.numel() > 1 else 0.0
+
+            gdpo_weight_check = {
+                "answer_weight": float(tp_config["answer_weight"]),
+                "format_weight": float(tp_config["format_weight"]),
+                "bbox_weight": float(tp_config["bbox_weight"]),
+                "segment_weight": float(tp_config["segment_weight"]),
+                "answer_adv_abs_mean": answer_adv_abs_mean,
+                "answer_adv_weighted_abs_mean": answer_adv_weighted_abs_mean,
+                "answer_scale_ratio": _scale_ratio(answer_adv_abs_mean, answer_adv_weighted_abs_mean),
+                "format_adv_abs_mean": format_adv_abs_mean,
+                "format_adv_weighted_abs_mean": format_adv_weighted_abs_mean,
+                "format_scale_ratio": _scale_ratio(format_adv_abs_mean, format_adv_weighted_abs_mean),
+                "bbox_turn_adv_abs_mean": bbox_turn_adv_abs_mean,
+                "bbox_turn_adv_weighted_abs_mean": bbox_turn_adv_weighted_abs_mean,
+                "bbox_scale_ratio": _scale_ratio(bbox_turn_adv_abs_mean, bbox_turn_adv_weighted_abs_mean),
+                "segment_turn_adv_abs_mean": segment_turn_adv_abs_mean,
+                "segment_turn_adv_weighted_abs_mean": segment_turn_adv_weighted_abs_mean,
+                "segment_scale_ratio": _scale_ratio(segment_turn_adv_abs_mean, segment_turn_adv_weighted_abs_mean),
+                "bbox_turn_adv_count": len(all_bbox_advs),
+                "segment_turn_adv_count": len(all_segment_advs),
+                "pre_batch_norm_adv_abs_mean": pre_bn_abs_mean,
+                "pre_batch_norm_adv_std": pre_bn_std,
+                "post_batch_norm_adv_abs_mean": post_bn_abs_mean,
+                "post_batch_norm_adv_std": post_bn_std,
+            }
+            data.meta_info["gdpo_weight_check"] = gdpo_weight_check
+
             tp_info = {
                 "method": tp_method,
                 "total_turns_detected": total_turns,
@@ -510,6 +574,22 @@ def compute_advantage(
                       f"batch_norm={enable_batch_norm}")
                 print(f"[GDPO] Local rewards use turn-level group normalization")
                 compute_advantage._tp_logged = True
+            print(
+                "[GDPO-CHECK] "
+                f"weights(ans={tp_config['answer_weight']:.3f}, fmt={tp_config['format_weight']:.3f}, "
+                f"bbox={tp_config['bbox_weight']:.3f}, seg={tp_config['segment_weight']:.3f}) | "
+                f"scale_ratio(ans={gdpo_weight_check['answer_scale_ratio']:.3f}, "
+                f"fmt={gdpo_weight_check['format_scale_ratio']:.3f}, "
+                f"bbox={gdpo_weight_check['bbox_scale_ratio']:.3f}, "
+                f"seg={gdpo_weight_check['segment_scale_ratio']:.3f}) | "
+                f"weighted_abs_mean(ans={gdpo_weight_check['answer_adv_weighted_abs_mean']:.4f}, "
+                f"fmt={gdpo_weight_check['format_adv_weighted_abs_mean']:.4f}, "
+                f"bbox={gdpo_weight_check['bbox_turn_adv_weighted_abs_mean']:.4f}, "
+                f"seg={gdpo_weight_check['segment_turn_adv_weighted_abs_mean']:.4f}) | "
+                f"counts(bbox={len(all_bbox_advs)}, seg={len(all_segment_advs)}) | "
+                f"pre_bn(abs_mean={pre_bn_abs_mean:.4f}, std={pre_bn_std:.4f}) | "
+                f"post_bn(abs_mean={post_bn_abs_mean:.4f}, std={post_bn_std:.4f})"
+            )
         else:
             # Original GDPO: broadcast advantages to all tokens
             result = core_algos.compute_gdpo_outcome_advantage(

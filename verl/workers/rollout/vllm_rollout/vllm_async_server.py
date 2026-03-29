@@ -82,7 +82,7 @@ if _VLLM_VERSION > version.parse("0.11.0"):
 
                 get_encoding()
         except Exception as e:
-            logger.warning(f"Failed to load harmony encoding: {e}. This is usually fine for non-OpenAI models.")
+            logging.warning(f"Failed to load harmony encoding: {e}. This is usually fine for non-OpenAI models.")
 else:
     from vllm.utils import FlexibleArgumentParser, get_tcp_uri
 if _VLLM_VERSION >= version.parse("0.12.0"):
