@@ -7,6 +7,7 @@ This module provides an async reward function that evaluates:
 2. BBox accuracy (via VLM verification)
 3. Answer quality (via VLM scoring)
 """
+import ast
 import re
 import os
 import io
@@ -67,6 +68,190 @@ def _build_debug_text(full_text_with_tokens: str, attention_mask: List[int]) -> 
         text = mask_info + text
 
     return text
+
+
+def _compute_acc_format_score(
+    answer_score: float,
+    format_score: float,
+    answer_weight: float,
+    format_weight: float,
+) -> float:
+    """Compute the combined global acc+format score for turn-level debugging."""
+    total_weight = answer_weight + format_weight
+    if total_weight <= 0:
+        return 0.0
+    return (answer_weight * answer_score + format_weight * format_score) / total_weight
+
+
+def _build_turn_score_debug(
+    num_turns: int,
+    answer_score: float,
+    format_score: float,
+    answer_weight: float,
+    format_weight: float,
+    bbox_weight: float,
+    segment_weight: float,
+    bbox_details: List[Dict[str, Any]],
+    all_segments: List[List[Tuple[float, float]]],
+    gt_segments: List[Tuple[float, float]],
+) -> List[Dict[str, Any]]:
+    """Build per-turn raw score summaries for debugging token placement."""
+    bbox_scores_by_turn = defaultdict(list)
+    for bd in bbox_details or []:
+        bbox_info = bd.get("bbox_info", {}) or {}
+        turn_idx = bd.get("turn_idx", bbox_info.get("turn_idx", -1))
+        if turn_idx is None or turn_idx < 0:
+            continue
+        bbox_scores_by_turn[int(turn_idx)].append(float(bd.get("score", bd.get("total_score", 0.0))))
+
+    per_turn_segment_scores: List[float] = []
+    if all_segments:
+        if gt_segments:
+            per_turn_segment_scores = compute_per_turn_segment_score(all_segments, gt_segments)
+        else:
+            per_turn_segment_scores = [0.0] * len(all_segments)
+
+    acc_format_score = _compute_acc_format_score(answer_score, format_score, answer_weight, format_weight)
+
+    turn_debug = []
+    for turn_idx in range(num_turns):
+        turn_bbox_scores = bbox_scores_by_turn.get(turn_idx, [])
+        turn_bbox_score = sum(turn_bbox_scores) / len(turn_bbox_scores) if turn_bbox_scores else 0.0
+        turn_segments = all_segments[turn_idx] if turn_idx < len(all_segments) else []
+        turn_segment_score = per_turn_segment_scores[turn_idx] if turn_idx < len(per_turn_segment_scores) else 0.0
+        turn_debug.append(
+            {
+                "turn_idx": turn_idx,
+                "acc_format": {
+                    "type": "acc+format",
+                    "scope": "global",
+                    "score": acc_format_score,
+                    "answer_score": answer_score,
+                    "format_score": format_score,
+                    "answer_weight": answer_weight,
+                    "format_weight": format_weight,
+                },
+                "bbox": {
+                    "type": "bbox",
+                    "scope": "per_turn",
+                    "score": turn_bbox_score,
+                    "weighted_score": bbox_weight * turn_bbox_score,
+                    "weight": bbox_weight,
+                    "count": len(turn_bbox_scores),
+                },
+                "segment": {
+                    "type": "segment",
+                    "scope": "per_turn",
+                    "score": turn_segment_score,
+                    "weighted_score": segment_weight * turn_segment_score,
+                    "weight": segment_weight,
+                    "count": len(turn_segments),
+                    "segments": turn_segments,
+                },
+            }
+        )
+
+    return turn_debug
+
+
+def _find_turn_boundaries_in_debug_response(response_text: str) -> List[Tuple[int, int]]:
+    """Find turn spans in response debug text using the same turn semantics as token placement."""
+    think_starts = [m.start() for m in re.finditer(r"<think>", response_text, re.IGNORECASE)]
+    think_ends = [m.end() for m in re.finditer(r"</think>", response_text, re.IGNORECASE)]
+    segment_starts = [m.start() for m in re.finditer(r"<segment>", response_text, re.IGNORECASE)]
+    segment_ends = [m.end() for m in re.finditer(r"</segment>", response_text, re.IGNORECASE)]
+    tool_call_starts = [m.start() for m in re.finditer(r"<tool_call>", response_text, re.IGNORECASE)]
+    tool_call_ends = [m.end() for m in re.finditer(r"</tool_call>", response_text, re.IGNORECASE)]
+    answer_starts = [m.start() for m in re.finditer(r"<answer>", response_text, re.IGNORECASE)]
+    answer_ends = [m.end() for m in re.finditer(r"</answer>", response_text, re.IGNORECASE)]
+
+    turn_boundaries = []
+    num_turns = len(think_starts)
+    for i in range(num_turns):
+        think_start = think_starts[i]
+        think_end = think_ends[i] if i < len(think_ends) else think_start
+        next_think_start = think_starts[i + 1] if i + 1 < len(think_starts) else len(response_text)
+
+        seg_end = -1
+        for j, seg_start in enumerate(segment_starts):
+            if think_end <= seg_start < next_think_start:
+                seg_end = segment_ends[j] if j < len(segment_ends) else seg_start
+                break
+
+        tool_call_end = -1
+        for j, tool_start in enumerate(tool_call_starts):
+            if think_end <= tool_start < next_think_start:
+                tool_call_end = tool_call_ends[j] if j < len(tool_call_ends) else tool_start
+
+        ans_end = -1
+        for j, ans_start in enumerate(answer_starts):
+            if think_end <= ans_start < next_think_start:
+                ans_end = answer_ends[j] if j < len(answer_ends) else ans_start
+                break
+
+        turn_end = seg_end if seg_end >= 0 else tool_call_end if tool_call_end >= 0 else ans_end if ans_end >= 0 else think_end
+        turn_boundaries.append((think_start, turn_end))
+
+    return turn_boundaries
+
+
+def _format_turn_score_block(turn_info: Dict[str, Any]) -> str:
+    """Render per-turn scores as inline XML-like debug tags."""
+    acc_format = turn_info["acc_format"]
+    bbox = turn_info["bbox"]
+    segment = turn_info["segment"]
+    turn_idx = turn_info["turn_idx"]
+
+    lines = [f'<turn index="{turn_idx}">']
+    lines.append(
+        f'<turn_score type="acc+format" scope="{acc_format["scope"]}" score="{acc_format["score"]:.4f}" '
+        f'answer_score="{acc_format["answer_score"]:.4f}" format_score="{acc_format["format_score"]:.4f}" '
+        f'answer_weight="{acc_format["answer_weight"]:.4f}" format_weight="{acc_format["format_weight"]:.4f}" />'
+    )
+    lines.append(
+        f'<turn_score type="bbox" scope="{bbox["scope"]}" score="{bbox["score"]:.4f}" '
+        f'weighted_score="{bbox["weighted_score"]:.4f}" weight="{bbox["weight"]:.4f}" count="{bbox["count"]}" />'
+    )
+    lines.append(
+        f'<turn_score type="segment" scope="{segment["scope"]}" score="{segment["score"]:.4f}" '
+        f'weighted_score="{segment["weighted_score"]:.4f}" weight="{segment["weight"]:.4f}" '
+        f'count="{segment["count"]}" segments="{segment["segments"]}" />'
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _annotate_debug_text_with_turn_scores(debug_text: str, turn_score_debug: List[Dict[str, Any]]) -> str:
+    """Inject per-turn score tags into the response section of debug text."""
+    if not debug_text or not turn_score_debug:
+        return debug_text
+
+    response_match = re.search(r"<response\b[^>]*>", debug_text, re.IGNORECASE)
+    response_close = re.search(r"</response>", debug_text, re.IGNORECASE)
+    if not response_match or not response_close or response_match.end() >= response_close.start():
+        return debug_text
+
+    response_body = debug_text[response_match.end():response_close.start()]
+    turn_boundaries = _find_turn_boundaries_in_debug_response(response_body)
+    if not turn_boundaries:
+        return debug_text
+
+    rendered = []
+    cursor = 0
+    for turn_idx, (turn_start, turn_end) in enumerate(turn_boundaries):
+        rendered.append(response_body[cursor:turn_start])
+        turn_info = turn_score_debug[turn_idx] if turn_idx < len(turn_score_debug) else {"turn_idx": turn_idx}
+        rendered.append(_format_turn_score_block(turn_info))
+        rendered.append(response_body[turn_start:turn_end])
+        rendered.append("</turn>")
+        cursor = turn_end
+    rendered.append(response_body[cursor:])
+
+    annotated_response = "".join(rendered)
+    return (
+        debug_text[:response_match.end()]
+        + annotated_response
+        + debug_text[response_close.start():]
+    )
 
 
 # ============== 默认配置常量 ==============
@@ -1506,14 +1691,180 @@ async def score_answer_with_vlm(
 
 # Regex to extract structural tags for format validation
 _FORMAT_TAG_RE = re.compile(r"<(/?)(think|segment|observation|answer)>", re.IGNORECASE)
+_LONGVT_FORMAT_TAG_RE = re.compile(r"<(/?)(think|tool_call|tool_response|answer)>", re.IGNORECASE)
 
 # Regex to validate segment content: [(start, end), ...] or [[start, end], ...]
 _SEGMENT_CONTENT_RE = re.compile(r'<segment>\s*\[(.*?)\]\s*</segment>', re.DOTALL | re.IGNORECASE)
 # Match both (start, end) and [start, end] formats
 _SEGMENT_TUPLE_RE = re.compile(r'[\(\[]\s*([\d.]+)\s*,\s*([\d.]+)\s*[\)\]]')
+_LONGVT_TOOL_CALL_RE = re.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", re.DOTALL | re.IGNORECASE)
+_LONGVT_TOOL_FIELD_RE = re.compile(r'["\']name["\']\s*:\s*["\']crop_video["\']', re.IGNORECASE)
+_LONGVT_TOOL_TIME_RE = re.compile(r'["\'](start_time|end_time)["\']\s*:\s*(-?\d+(?:\.\d+)?)', re.IGNORECASE)
 
 # Regex to validate object grounding format: <obj>...</obj><box>[...]</box>at<t>...</t>
 _OBJ_BOX_RE = re.compile(r'<obj>([^<]+)</obj>\s*<box>\s*\[([^\]]+)\]\s*</box>\s*at\s*<t>\s*([\d.]+)\s*</t>', re.IGNORECASE)
+
+
+def _parse_longvt_tool_call_segment(payload: str) -> Optional[Tuple[float, float]]:
+    """Extract (start_time, end_time) from a LongVT crop_video tool call payload."""
+    payload = (payload or "").strip()
+    if not payload:
+        return None
+
+    tool_data = None
+    for parser in (json.loads, ast.literal_eval):
+        try:
+            candidate = parser(payload)
+        except (TypeError, ValueError, SyntaxError, json.JSONDecodeError):
+            continue
+        if isinstance(candidate, dict):
+            tool_data = candidate
+            break
+
+    if isinstance(tool_data, dict):
+        if tool_data.get("name") != "crop_video":
+            return None
+        arguments = tool_data.get("arguments", {})
+        if not isinstance(arguments, dict):
+            return None
+        if "start_time" not in arguments or "end_time" not in arguments:
+            return None
+        try:
+            return float(arguments["start_time"]), float(arguments["end_time"])
+        except (TypeError, ValueError):
+            return None
+
+    if not _LONGVT_TOOL_FIELD_RE.search(payload):
+        return None
+
+    time_fields = {}
+    for field, value in _LONGVT_TOOL_TIME_RE.findall(payload):
+        try:
+            time_fields[field.lower()] = float(value)
+        except ValueError:
+            return None
+
+    if "start_time" not in time_fields or "end_time" not in time_fields:
+        return None
+    return time_fields["start_time"], time_fields["end_time"]
+
+
+def _extract_longvt_segments_by_turn(text: str) -> List[List[Tuple[float, float]]]:
+    """Extract crop_video tool-call segments grouped by assistant turn."""
+    tool_call_matches = list(_LONGVT_TOOL_CALL_RE.finditer(text))
+    if not tool_call_matches:
+        return []
+
+    think_starts = [m.start() for m in re.finditer(r"<think>", text, re.IGNORECASE)]
+    think_ends = [m.end() for m in re.finditer(r"</think>", text, re.IGNORECASE)]
+
+    all_segments: List[List[Tuple[float, float]]] = []
+    for turn_idx, think_start in enumerate(think_starts):
+        think_end = think_ends[turn_idx] if turn_idx < len(think_ends) else think_start
+        next_think_start = think_starts[turn_idx + 1] if turn_idx + 1 < len(think_starts) else len(text)
+
+        turn_segments: List[Tuple[float, float]] = []
+        for match in tool_call_matches:
+            if think_end <= match.start() < next_think_start:
+                segment = _parse_longvt_tool_call_segment(match.group(1))
+                if segment is not None:
+                    turn_segments.append(segment)
+        if turn_segments:
+            all_segments.append(turn_segments)
+
+    return all_segments
+
+
+def _format_reward_longvt(predict_str: str, strict_segment: bool = False) -> float:
+    """Validate LongVT-style <tool_call>/<tool_response>/<answer> output."""
+    s = predict_str.strip()
+
+    if not re.search(r"</answer>\s*(<\|im_end\|>)?\s*$", s, re.DOTALL):
+        return 0.0
+
+    state = "think_open"
+    for match in _LONGVT_FORMAT_TAG_RE.finditer(s):
+        is_close = match.group(1) == "/"
+        tag_name = match.group(2).lower()
+
+        if state == "think_open":
+            if tag_name != "think" or is_close:
+                return 0.0
+            state = "think_close"
+
+        elif state == "think_close":
+            if tag_name != "think" or not is_close:
+                return 0.0
+            state = "post_think"
+
+        elif state == "post_think":
+            if is_close:
+                return 0.0
+            if tag_name == "tool_call":
+                state = "tool_call_close"
+            elif tag_name == "answer":
+                state = "answer_close"
+            else:
+                return 0.0
+
+        elif state == "tool_call_close":
+            if tag_name != "tool_call" or not is_close:
+                return 0.0
+            state = "after_tool_call"
+
+        elif state == "after_tool_call":
+            if is_close:
+                return 0.0
+            if tag_name == "tool_call":
+                state = "tool_call_close"
+            elif tag_name == "tool_response":
+                state = "tool_response_close"
+            elif tag_name == "think":
+                state = "think_close"
+            elif tag_name == "answer":
+                state = "answer_close"
+            else:
+                return 0.0
+
+        elif state == "tool_response_close":
+            if tag_name != "tool_response" or not is_close:
+                return 0.0
+            state = "after_tool_response"
+
+        elif state == "after_tool_response":
+            if is_close:
+                return 0.0
+            if tag_name == "think":
+                state = "think_close"
+            elif tag_name == "answer":
+                state = "answer_close"
+            else:
+                return 0.0
+
+        elif state == "answer_close":
+            if tag_name != "answer" or not is_close:
+                return 0.0
+            state = "end"
+
+        elif state == "end":
+            return 0.0
+
+    if state != "end":
+        return 0.0
+
+    if strict_segment:
+        tool_call_matches = list(_LONGVT_TOOL_CALL_RE.finditer(s))
+        if not tool_call_matches:
+            return 0.0
+        for match in tool_call_matches:
+            segment = _parse_longvt_tool_call_segment(match.group(1))
+            if segment is None:
+                return 0.0
+            start, end = segment
+            if start < 0 or end < 0 or start > end:
+                return 0.0
+
+    return 1.0
 
 
 def format_reward(predict_str: str, strict_segment: bool = False) -> float:
@@ -1536,6 +1887,9 @@ def format_reward(predict_str: str, strict_segment: bool = False) -> float:
         1.0 if format is valid, 0.0 otherwise
     """
     s = predict_str.strip()
+
+    if "<tool_call>" in s and "<segment>" not in s:
+        return _format_reward_longvt(s, strict_segment=strict_segment)
 
     # 1) Must finish with </answer> (optionally followed by EOS token)
     if not re.search(r"</answer>\s*(<\|im_end\|>)?\s*$", s, re.DOTALL):
@@ -1683,7 +2037,8 @@ def extract_segments(text: str) -> List[Tuple[float, float]]:
     """提取 <segment>[(start, end), ...]</segment> 或 <segment>[[start, end], ...]</segment> 中的时间段"""
     match = re.search(r'<segment>\s*\[(.*?)\]\s*</segment>', text, re.DOTALL | re.IGNORECASE)
     if not match:
-        return []
+        longvt_segments = _extract_longvt_segments_by_turn(text)
+        return longvt_segments[-1] if longvt_segments else []
 
     segments = []
     # 匹配 (start, end) 或 [start, end] 格式
@@ -1707,8 +2062,14 @@ def count_turns(text: str) -> Dict[str, int]:
     """
     return {
         "think": len(re.findall(r'<think>', text, re.IGNORECASE)),
-        "segment": len(re.findall(r'<segment>', text, re.IGNORECASE)),
-        "observation": len(re.findall(r'<observation>', text, re.IGNORECASE)),
+        "segment": (
+            len(re.findall(r'<segment>', text, re.IGNORECASE))
+            + len(re.findall(r'<tool_call>', text, re.IGNORECASE))
+        ),
+        "observation": (
+            len(re.findall(r'<observation>', text, re.IGNORECASE))
+            + len(re.findall(r'<tool_response>', text, re.IGNORECASE))
+        ),
         "answer": len(re.findall(r'<answer>', text, re.IGNORECASE)),
     }
 
@@ -1736,7 +2097,10 @@ def extract_all_segments(text: str) -> List[List[Tuple[float, float]]]:
                 continue
         all_segments.append(segments)
 
-    return all_segments
+    if all_segments:
+        return all_segments
+
+    return _extract_longvt_segments_by_turn(text)
 
 
 def compute_segment_score(
@@ -2214,6 +2578,46 @@ async def compute_score(
         if _reward_stats[stats_key]["total_calls"] % log_every_n == 0:
             print_reward_stats()
 
+    # 构建 segment_details (每轮的 segment 分数)
+    # 使用 per-turn 独立评分：每个 turn 的 segments 独立与 GT 比较
+    segment_details = []
+    if all_segments:
+        if gt_segments:
+            per_turn_scores = compute_per_turn_segment_score(all_segments, gt_segments)
+            for turn_idx, (turn_segments, turn_score) in enumerate(zip(all_segments, per_turn_scores)):
+                segment_details.append({
+                    "turn_idx": turn_idx,
+                    "segments": turn_segments,
+                    "score": turn_score,
+                })
+        else:
+            for turn_idx, turn_segments in enumerate(all_segments):
+                segment_details.append({
+                    "turn_idx": turn_idx,
+                    "segments": turn_segments,
+                    "score": 0.0,
+                })
+
+    # 为 bbox_details 添加归一化的 score 字段 (用于 token placement 和调试)
+    for bd in bbox_details:
+        bd["score"] = bd.get("total_score", 0.0)
+        bbox_info = bd.get("bbox_info", {})
+        bd["char_pos"] = bbox_info.get("char_pos", -1)
+        bd["turn_idx"] = bbox_info.get("turn_idx", -1)
+
+    turn_score_debug = _build_turn_score_debug(
+        num_turns=turn_counts.get("think", 0),
+        answer_score=answer_score,
+        format_score=format_score,
+        answer_weight=answer_weight,
+        format_weight=format_weight,
+        bbox_weight=bbox_weight,
+        segment_weight=segment_weight,
+        bbox_details=bbox_details,
+        all_segments=all_segments,
+        gt_segments=gt_segments,
+    )
+
     # 保存样本 (使用预先计算的 should_save_sample，确保与可视化保存同步)
     if should_save_sample:
         # 获取原始输入文本 (prompt_str)
@@ -2224,10 +2628,14 @@ async def compute_score(
         # 优先使用 reward manager 基于真实 token/mask 构建的 debug 文本
         full_text_with_tokens_raw = extra_info.get("full_text_with_tokens", "")
         full_text_with_tokens = _compress_special_token_runs(full_text_with_tokens_raw)
-        solution_str_with_tokens_raw = extra_info.get("response_str_with_tokens", solution_str) if extra_info else solution_str
-        solution_str_with_tokens = _compress_special_token_runs(solution_str_with_tokens_raw)
+        solution_str_with_tokens_uncompressed = (
+            extra_info.get("response_str_with_tokens", solution_str) if extra_info else solution_str
+        )
+        solution_str_with_tokens = _compress_special_token_runs(solution_str_with_tokens_uncompressed)
+        solution_str_with_tokens_raw = solution_str_with_tokens
         response_mask = extra_info.get("response_mask", [])
-        debug_text = extra_info.get("debug_full_text") or _build_debug_text(full_text_with_tokens_raw, response_mask)
+        debug_text_base = extra_info.get("debug_full_text") or _build_debug_text(full_text_with_tokens_raw, response_mask)
+        debug_text = _annotate_debug_text_with_turn_scores(debug_text_base, turn_score_debug)
 
         sample_data = {
             "video_id": video_id,
@@ -2248,16 +2656,20 @@ async def compute_score(
             "solution_str_full": solution_str,  # 完整内容 (skip_special_tokens=True)
             "solution_str_with_tokens": solution_str_with_tokens,  # 保留 <|video_pad|> 等 special tokens
             "solution_str_with_tokens_raw": solution_str_with_tokens_raw,
+            "solution_str_with_tokens_uncompressed": solution_str_with_tokens_uncompressed,
             "solution_str_length": len(solution_str),
             # 多轮调试：完整文本 + mask 标注 + video_pad 压缩
             "full_text_with_tokens": full_text_with_tokens,
             "full_text_with_tokens_raw": full_text_with_tokens_raw,
+            "debug_full_text_base": debug_text_base,
             "debug_full_text": debug_text,
             "observation_debug": extra_info.get("observation_debug", []),
+            "turn_score_debug": turn_score_debug,
             # 所有轮次的 segments
             "all_segments": all_segments,
             "last_segment": segments,
             "gt_segments": gt_segments,
+            "segment_details": segment_details,
             # bboxes
             "bboxes": bboxes,
             "bbox_details": bbox_details,
@@ -2312,39 +2724,6 @@ async def compute_score(
     # - answer_score/format_score/bbox_score/segment_score: 各组件分数 (float，用于 GDPO)
     # - bbox_details: 每个 bbox 的详细信息和分数 (用于 token placement)
     # - segment_details: 每轮的 segment 分数 (用于 token placement)
-
-    # 构建 segment_details (每轮的 segment 分数)
-    # 使用 per-turn 独立评分：每个 turn 的 segments 独立与 GT 比较
-    segment_details = []
-    gt_segments = extra_info.get("reference_segments", [])
-    if all_segments:
-        if gt_segments:
-            # 计算每轮独立的 segment 分数
-            per_turn_scores = compute_per_turn_segment_score(all_segments, gt_segments)
-            for turn_idx, (turn_segments, turn_score) in enumerate(zip(all_segments, per_turn_scores)):
-                segment_details.append({
-                    "turn_idx": turn_idx,
-                    "segments": turn_segments,
-                    "score": turn_score,  # 每轮独立评分
-                })
-        else:
-            # 没有 GT，所有 turn 的 segment 分数都是 0
-            for turn_idx, turn_segments in enumerate(all_segments):
-                segment_details.append({
-                    "turn_idx": turn_idx,
-                    "segments": turn_segments,
-                    "score": 0.0,
-                })
-
-    # 为 bbox_details 添加归一化的 score 字段 (用于 token placement)
-    # bbox_details 中已经有 total_score，直接使用
-    for bd in bbox_details:
-        # 添加统一的 score 字段 (token placement 会读取这个)
-        bd["score"] = bd.get("total_score", 0.0)
-        # 添加位置信息 (从 bbox_info 中获取)
-        bbox_info = bd.get("bbox_info", {})
-        bd["char_pos"] = bbox_info.get("char_pos", -1)
-        bd["turn_idx"] = bbox_info.get("turn_idx", -1)
 
     # 计算 corrected_solution_str (用于 Corrected Rollout SFT)
     # 只有答案正确且有 bbox_details 时才生成

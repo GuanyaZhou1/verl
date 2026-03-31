@@ -520,6 +520,19 @@ class DataParallelPPOActor(BasePPOActor):
 
         data = data.select(batch_keys=select_keys, non_tensor_batch_keys=non_tensor_select_keys)
 
+        local_batch_size = data.batch.batch_size[0] if len(data.batch.batch_size) > 0 else 0
+        if local_batch_size == 0:
+            response_length = data.batch["responses"].size(-1)
+            log_probs = torch.empty((0, response_length), device=get_device_id(), dtype=torch.float32)
+            outputs = {"log_probs": log_probs}
+            if calculate_entropy:
+                outputs["entropys"] = torch.empty((0, response_length), device=get_device_id(), dtype=torch.float32)
+            if calculate_sum_pi_squared:
+                outputs["sum_pi_squared"] = torch.empty(
+                    (0, response_length), device=get_device_id(), dtype=torch.float32
+                )
+            return outputs
+
         if use_dynamic_bsz:
             max_token_len = data.meta_info["max_token_len"] * self.ulysses_sequence_parallel_size
             micro_batches, batch_idx_list = prepare_dynamic_batch(data, max_token_len=max_token_len)

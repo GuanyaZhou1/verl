@@ -19,6 +19,7 @@ import datetime
 import json
 import logging
 import os
+import socket
 import warnings
 from dataclasses import asdict
 from typing import Any, Optional
@@ -96,6 +97,56 @@ logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 device_name = get_device_name()
 
 
+def _list_ipv4_interfaces() -> list[tuple[str, str]]:
+    interfaces = []
+    interface_stats = psutil.net_if_stats()
+    for ifname, addrs in psutil.net_if_addrs().items():
+        if ifname == "lo":
+            continue
+        if_stats = interface_stats.get(ifname)
+        if if_stats is not None and not if_stats.isup:
+            continue
+        for addr in addrs:
+            if addr.family == socket.AF_INET:
+                interfaces.append((ifname, addr.address))
+                break
+    return interfaces
+
+
+def _configured_socket_ifnames(env_value: Optional[str]) -> list[str]:
+    if not env_value:
+        return []
+    return [token.strip() for token in env_value.split(",") if token.strip() and not token.strip().startswith("^")]
+
+
+def _is_valid_socket_ifname(env_value: Optional[str]) -> bool:
+    available_ifnames = {ifname for ifname, _ in _list_ipv4_interfaces()}
+    return any(ifname in available_ifnames for ifname in _configured_socket_ifnames(env_value))
+
+
+def _resolve_dist_socket_ifname(*env_values: Optional[str]) -> Optional[str]:
+    interfaces = _list_ipv4_interfaces()
+    if not interfaces:
+        return None
+
+    available_ifnames = {ifname for ifname, _ in interfaces}
+    for env_value in env_values:
+        for ifname in _configured_socket_ifnames(env_value):
+            if ifname in available_ifnames:
+                return ifname
+
+    for preferred_ifname in ("bond0.1573", "bond0", "bond1", "br0", "eth0"):
+        if preferred_ifname in available_ifnames:
+            return preferred_ifname
+
+    for prefix in ("10.1.", "10.96.", "10.97.", "10.0."):
+        for ifname, ip_addr in interfaces:
+            if ip_addr.startswith(prefix):
+                return ifname
+
+    return interfaces[0][0]
+
+
 def create_device_mesh(world_size, fsdp_size):
     if fsdp_size < 0 or fsdp_size >= world_size:
         device_mesh = init_device_mesh(device_name, mesh_shape=(world_size,), mesh_dim_names=["fsdp"])
@@ -151,25 +202,23 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         import torch.distributed
 
         if not torch.distributed.is_initialized():
-            # 自动检测 InfiniBand 接口（ibs10f0 或 ibs12f0）
-            if "GLOO_SOCKET_IFNAME" not in os.environ:
-                import subprocess
-                try:
-                    result = subprocess.run(
-                        ["ip", "addr", "show"],
-                        capture_output=True, text=True, timeout=5
-                    )
-                    for line in result.stdout.split('\n'):
-                        if 'inet 10.1.' in line:  # 匹配 10.1.x.x 网段
-                            parts = line.strip().split()
-                            if len(parts) >= 2:
-                                ifname = parts[-1]  # 接口名在最后
-                                os.environ["GLOO_SOCKET_IFNAME"] = ifname
-                                os.environ["NCCL_SOCKET_IFNAME"] = ifname
-                                os.environ["TP_SOCKET_IFNAME"] = ifname
-                                break
-                except Exception:
-                    pass  # 忽略错误，使用默认值
+            resolved_ifname = _resolve_dist_socket_ifname(
+                os.environ.get("GLOO_SOCKET_IFNAME"),
+                os.environ.get("NCCL_SOCKET_IFNAME"),
+                os.environ.get("TP_SOCKET_IFNAME"),
+            )
+            if resolved_ifname is not None:
+                for env_key in ("GLOO_SOCKET_IFNAME", "NCCL_SOCKET_IFNAME", "TP_SOCKET_IFNAME"):
+                    env_value = os.environ.get(env_key)
+                    if env_value is None or not _is_valid_socket_ifname(env_value):
+                        if env_value and env_value != resolved_ifname:
+                            logger.warning(
+                                "Configured %s=%s is unavailable; falling back to %s",
+                                env_key,
+                                env_value,
+                                resolved_ifname,
+                            )
+                        os.environ[env_key] = resolved_ifname
 
             rank = int(os.environ.get("RANK", 0))
             world_size = int(os.environ.get("WORLD_SIZE", 1))

@@ -371,13 +371,13 @@ echo "  Ray Dashboard: http://$HEAD_NODE:$RAY_DASHBOARD_PORT"
 echo ""
 
 # 通过 Hydra config 注入 NCCL 变量到 ray.init(runtime_env)
-NCCL_HYDRA_ARGS="+ray_kwargs.ray_init.runtime_env.env_vars.NCCL_SOCKET_IFNAME=$NCCL_IFNAME"
-NCCL_HYDRA_ARGS="$NCCL_HYDRA_ARGS +ray_kwargs.ray_init.runtime_env.env_vars.NCCL_SOCKET_FAMILY=AF_INET"
-NCCL_HYDRA_ARGS="$NCCL_HYDRA_ARGS +ray_kwargs.ray_init.runtime_env.env_vars.NCCL_IB_DISABLE=0"
-NCCL_HYDRA_ARGS="$NCCL_HYDRA_ARGS +ray_kwargs.ray_init.runtime_env.env_vars.NCCL_DEBUG=WARN"
-NCCL_HYDRA_ARGS="$NCCL_HYDRA_ARGS +ray_kwargs.ray_init.runtime_env.env_vars.TORCH_NCCL_AVOID_RECORD_STREAMS=1"
-NCCL_HYDRA_ARGS="$NCCL_HYDRA_ARGS +ray_kwargs.ray_init.runtime_env.env_vars.NCCL_CUMEM_ENABLE=0"
-NCCL_HYDRA_ARGS="$NCCL_HYDRA_ARGS +ray_kwargs.ray_init.runtime_env.env_vars.TIKTOKEN_RS_CACHE_DIR=/data_gpu/gyzhou/harmony_cache"
+NCCL_HYDRA_ARGS="+ray_kwargs.ray_init.runtime_env.env_vars.NCCL_SOCKET_IFNAME='$NCCL_IFNAME'"
+NCCL_HYDRA_ARGS="$NCCL_HYDRA_ARGS +ray_kwargs.ray_init.runtime_env.env_vars.NCCL_SOCKET_FAMILY='AF_INET'"
+NCCL_HYDRA_ARGS="$NCCL_HYDRA_ARGS +ray_kwargs.ray_init.runtime_env.env_vars.NCCL_IB_DISABLE='0'"
+NCCL_HYDRA_ARGS="$NCCL_HYDRA_ARGS +ray_kwargs.ray_init.runtime_env.env_vars.NCCL_DEBUG='WARN'"
+NCCL_HYDRA_ARGS="$NCCL_HYDRA_ARGS +ray_kwargs.ray_init.runtime_env.env_vars.TORCH_NCCL_AVOID_RECORD_STREAMS='1'"
+NCCL_HYDRA_ARGS="$NCCL_HYDRA_ARGS +ray_kwargs.ray_init.runtime_env.env_vars.NCCL_CUMEM_ENABLE='0'"
+NCCL_HYDRA_ARGS="$NCCL_HYDRA_ARGS +ray_kwargs.ray_init.runtime_env.env_vars.TIKTOKEN_RS_CACHE_DIR='/data_gpu/gyzhou/harmony_cache'"
 
 ssh_cmd "$HEAD_NODE" "${REMOTE_PREFIX}cd $PROJECT_DIR && \
     $NCCL_ENVS && \

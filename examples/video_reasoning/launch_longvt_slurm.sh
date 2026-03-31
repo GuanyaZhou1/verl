@@ -77,8 +77,17 @@ echo "Total nodes:   $NNODES (${NODE_LIST[*]})"
 echo "GPUs per node: $GPUS_PER_NODE"
 echo "================================="
 
-# 获取 head IP（使用 bond0 接口，确保所有节点都能访问）
-HEAD_IP=$(srun --jobid=$JOBID --overlap -w "$HEAD_NODE" -N1 -n1 bash -c "ip -4 addr show bond0.1573 2>/dev/null | grep -oP 'inet \K[0-9.]+' || hostname -I | awk '{print \$1}'")
+# 获取 head IP（优先使用训练网络接口）
+HEAD_IP=$(srun --jobid=$JOBID --overlap -w "$HEAD_NODE" -N1 -n1 bash -lc '
+for nic in bond0.1573 bond0 bond1 br0 eth0; do
+    ip=$(ip -o -4 addr show dev "$nic" up scope global 2>/dev/null | awk "NR==1 {print \$4}" | cut -d/ -f1)
+    if [ -n "$ip" ]; then
+        echo "$ip"
+        exit 0
+    fi
+done
+ip -o -4 addr show up scope global | awk "NR==1 {print \$4}" | cut -d/ -f1
+')
 echo "Head IP: $HEAD_IP"
 
 # =============================================================================

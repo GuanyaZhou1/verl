@@ -141,8 +141,8 @@ ADV_ESTIMATOR=${ADV_ESTIMATOR:-grpo}
 # 设为 0 可排除该 component。grpo 和 gdpo 模式都使用这套权重。
 REWARD_WEIGHT_ANSWER=${REWARD_WEIGHT_ANSWER:-0.8}     # 答案正确性权重
 REWARD_WEIGHT_FORMAT=${REWARD_WEIGHT_FORMAT:-0.2}     # 格式正确性权重
-REWARD_WEIGHT_BBOX=${REWARD_WEIGHT_BBOX:-0.0}         # BBox 验证权重
-REWARD_WEIGHT_SEGMENT=${REWARD_WEIGHT_SEGMENT:-0.0}   # Segment 定位权重
+REWARD_WEIGHT_BBOX=${REWARD_WEIGHT_BBOX:-0.3}         # BBox 验证权重
+REWARD_WEIGHT_SEGMENT=${REWARD_WEIGHT_SEGMENT:-0.3}   # Segment 定位权重
 
 # GDPO batch norm（仅 adv_estimator=gdpo 时生效）
 GDPO_ENABLE_BATCH_NORM=${GDPO_ENABLE_BATCH_NORM:-true}
@@ -205,7 +205,7 @@ VLM_MODEL_NAME="Qwen3-VL-235B-A22B-Instruct"
 VLM_API_KEY="123456"
 
 USE_VLM_SCORING=true
-USE_BBOX_VERIFICATION=false
+USE_BBOX_VERIFICATION=true
 BBOX_COORD_RANGE=1.0                     # bbox 坐标范围 [0, 1]
 
 # BBox 评分指标选择

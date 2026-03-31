@@ -384,7 +384,9 @@ def rearrange_micro_batches(
     )
     total_seqlen = seq_len_effective.sum().item()
     # NOTE: num_microbatches <= batch_size, so take the min of this two.
-    num_micro_batches = min(len(seq_len_effective), ceildiv(total_seqlen, max_token_len))
+    # Ensure at least 1 micro-batch when there are items (total_seqlen can be 0 in edge cases,
+    # e.g. with sequence parallelism or multi-turn data, leading to ceildiv returning 0).
+    num_micro_batches = max(1, min(len(seq_len_effective), ceildiv(total_seqlen, max_token_len)))
     if min_num_micro_batch is not None:
         # used to support pp
         num_micro_batches = max(min_num_micro_batch, num_micro_batches)

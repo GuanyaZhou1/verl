@@ -104,7 +104,7 @@ NNODES=${NNODES:-1}
 # =============================================================================
 ENABLE_FILTER_GROUPS=${ENABLE_FILTER_GROUPS:-true}   # 过滤组内全对/全错的样本
 FILTER_GROUPS_METRIC=${FILTER_GROUPS_METRIC:-acc}   # 用总分做组过滤
-FILTER_GROUPS_STD_THRESHOLD=${FILTER_GROUPS_STD_THRESHOLD:-0.35}  # 最小std阈值
+FILTER_GROUPS_STD_THRESHOLD=${FILTER_GROUPS_STD_THRESHOLD:-0.0}  # 最小std阈值
 MAX_NUM_GEN_BATCHES=${MAX_NUM_GEN_BATCHES:-5}         # 最多重采样轮数
 
 CLIP_RATIO_LOW=${CLIP_RATIO_LOW:-0.2}                 # Clip-Higher: 非对称 clip ratio
@@ -146,10 +146,10 @@ ADV_ESTIMATOR=${ADV_ESTIMATOR:-gdpo}
 # 统一的 Reward 权重配置（同时用于 grpo 和 gdpo）
 # =============================================================================
 # 设为 0 可排除该 component。grpo 和 gdpo 模式都使用这套权重。
-REWARD_WEIGHT_ANSWER=${REWARD_WEIGHT_ANSWER:-0.8}     # 答案正确性权重
+REWARD_WEIGHT_ANSWER=${REWARD_WEIGHT_ANSWER:-1.0}     # 答案正确性权重
 REWARD_WEIGHT_FORMAT=${REWARD_WEIGHT_FORMAT:-0.2}     # 格式正确性权重
-REWARD_WEIGHT_BBOX=${REWARD_WEIGHT_BBOX:-0.3}         # BBox 验证权重
-REWARD_WEIGHT_SEGMENT=${REWARD_WEIGHT_SEGMENT:-0.3}   # Segment 定位权重
+REWARD_WEIGHT_BBOX=${REWARD_WEIGHT_BBOX:-0.5}         # BBox 验证权重
+REWARD_WEIGHT_SEGMENT=${REWARD_WEIGHT_SEGMENT:-0.5}   # Segment 定位权重
 
 # GDPO batch norm（仅 adv_estimator=gdpo 时生效）
 GDPO_ENABLE_BATCH_NORM=${GDPO_ENABLE_BATCH_NORM:-true} 
@@ -214,7 +214,7 @@ VLM_ENDPOINT="10.96.11.3:8081"
 VLM_MODEL_NAME="Qwen3-VL-30B-A3B-Instruct"
 VLM_API_KEY="123456"
 
-USE_VLM_SCORING=${USE_VLM_SCORING:- true}   # 关闭 VLM 打分, 改用规则化: 选择题 EM + 开放题 ROUGE
+USE_VLM_SCORING=${USE_VLM_SCORING:-false}   # 关闭 VLM 打分: 设 false，改用规则化 EM+ROUGE
 USE_BBOX_VERIFICATION=true
 
 # BBox 评分指标选择
@@ -248,11 +248,11 @@ RESUME_MODE=disable                      # disable / resume_path / auto
 # =============================================================================
 TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
 PROJECT_NAME="${PROJECT_NAME:-video-reasoning-dapo}"
-
+BBOX_COORD_RANGE=1.0
 # 如果未设置 EXPERIMENT_NAME，则根据当前参数自动生成
 if [ -z "$EXPERIMENT_NAME" ]; then
     # 自动生成实验名：包含关键超参数
-    EXPERIMENT_NAME="Qwen3_8B_${ADV_ESTIMATOR}_acc${REWARD_WEIGHT_ANSWER}_fmt${REWARD_WEIGHT_FORMAT}_bbox${REWARD_WEIGHT_BBOX}_seg${REWARD_WEIGHT_SEGMENT}_kl${KL_LOSS_COEF}_lr${LEARNING_RATE}_$(date +%m%d)_bs${TRAIN_BATCH_SIZE}_test"
+    EXPERIMENT_NAME="Qwen3_8B_${ADV_ESTIMATOR}_acc${REWARD_WEIGHT_ANSWER}_fmt${REWARD_WEIGHT_FORMAT}_bbox${REWARD_WEIGHT_BBOX}_seg${REWARD_WEIGHT_SEGMENT}_kl${KL_LOSS_COEF}_lr${LEARNING_RATE}_$(date +%m%d)_bs${TRAIN_BATCH_SIZE}_GATE${ACCURACY_GATE_THRESHOLD}_warmup10_gspo_minibs8"
 fi
 # 示例手动设置：
 # export EXPERIMENT_NAME="my_custom_exp_name"
@@ -381,8 +381,10 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.model.use_fused_kernels=True \
     actor_rollout_ref.actor.optim.lr=$LEARNING_RATE \
     actor_rollout_ref.actor.optim.weight_decay=$WEIGHT_DECAY \
+    ++actor_rollout_ref.actor.optim.lr_warmup_steps=10 \
+    ++actor_rollout_ref.actor.policy_loss.loss_mode=gspo \
     actor_rollout_ref.actor.grad_clip=$MAX_GRAD_NORM \
-    actor_rollout_ref.actor.ppo_mini_batch_size=16 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=8 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.actor.clip_ratio_low=$CLIP_RATIO_LOW \
     actor_rollout_ref.actor.clip_ratio_high=$CLIP_RATIO_HIGH \
@@ -410,7 +412,7 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=True \
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=65536 \
-    actor_rollout_ref.rollout.calculate_log_probs=true \
+    actor_rollout_ref.rollout.calculate_log_probs=True \
     actor_rollout_ref.rollout.over_sample_rate=0.1 \
     actor_rollout_ref.rollout.update_weights_bucket_megabytes=512 \
     actor_rollout_ref.rollout.multi_turn.enable=True \
@@ -434,7 +436,6 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.rollout.multi_turn.watermark_config.position=$WATERMARK_POSITION \
     actor_rollout_ref.rollout.multi_turn.watermark_config.font_size=$WATERMARK_FONT_SIZE \
     actor_rollout_ref.rollout.multi_turn.watermark_config.ratio=$WATERMARK_RATIO \
-    actor_rollout_ref.rollout.multi_turn.single_turn_no_observation=$SINGLE_TURN_NO_OBSERVATION \
     actor_rollout_ref.rollout.agent.default_agent_loop=video_reasoning \
     actor_rollout_ref.rollout.agent.num_workers=$AGENT_NUM_WORKERS \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1 \
@@ -486,7 +487,7 @@ python3 -m recipe.dapo.main_dapo \
     custom_reward_function.reward_kwargs.cache_max_frames=$CACHE_MAX_FRAMES \
     custom_reward_function.reward_kwargs.save_bbox_visualization=$SAVE_BBOX_VISUALIZATION \
     custom_reward_function.reward_kwargs.bbox_vis_sample_rate=$BBOX_VIS_SAMPLE_RATE \
-    custom_reward_function.reward_kwargs.enable_logging=true \
+    custom_reward_function.reward_kwargs.enable_logging=True \
     custom_reward_function.reward_kwargs.save_samples=$SAVE_SAMPLES \
     custom_reward_function.reward_kwargs.save_every_n=$SAVE_EVERY_N \
     custom_reward_function.reward_kwargs.log_dir="$REWARD_LOG_DIR" \

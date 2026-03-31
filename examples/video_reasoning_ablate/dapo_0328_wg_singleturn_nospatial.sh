@@ -105,7 +105,7 @@ NNODES=${NNODES:-1}
 ENABLE_FILTER_GROUPS=${ENABLE_FILTER_GROUPS:-true}   # 过滤组内全对/全错的样本
 FILTER_GROUPS_METRIC=${FILTER_GROUPS_METRIC:-acc}   # 用总分做组过滤
 FILTER_GROUPS_STD_THRESHOLD=${FILTER_GROUPS_STD_THRESHOLD:-0.35}  # 最小std阈值
-MAX_NUM_GEN_BATCHES=${MAX_NUM_GEN_BATCHES:-5}         # 最多重采样轮数
+MAX_NUM_GEN_BATCHES=${MAX_NUM_GEN_BATCHES:-10}         # 最多重采样轮数
 
 CLIP_RATIO_LOW=${CLIP_RATIO_LOW:-0.2}                 # Clip-Higher: 非对称 clip ratio
 CLIP_RATIO_HIGH=${CLIP_RATIO_HIGH:-0.28}              # > low，鼓励正向更新
@@ -247,7 +247,7 @@ RESUME_MODE=disable                      # disable / resume_path / auto
 # =============================================================================
 TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
 PROJECT_NAME="${PROJECT_NAME:-video-reasoning-dapo}"
-
+BBOX_COORD_RANGE=1.0
 # 如果未设置 EXPERIMENT_NAME，则根据当前参数自动生成
 if [ -z "$EXPERIMENT_NAME" ]; then
     # 自动生成实验名：包含关键超参数
@@ -328,7 +328,7 @@ echo ""
 # =============================================================================
 # Step 1: 缓存视频帧
 # =============================================================================
-if [ "${SKIP_VIDEO_CACHE:-false}" != "true" ]; then
+if [ "${SKIP_VIDEO_CACHE:-true}" != "true" ]; then
     echo "===== Step 1: Caching video frames ====="
     python examples/video_reasoning/cache_video_frames.py \
         --input_parquet "$DATA_DIR/train.parquet" \

@@ -126,13 +126,17 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
     non_aborted_sequence_score = sequence_score[non_aborted_mask]
     non_aborted_sequence_reward = sequence_reward[non_aborted_mask]
 
-    score_mean = torch.mean(non_aborted_sequence_score).detach().item()
-    score_max = torch.max(non_aborted_sequence_score).detach().item()
-    score_min = torch.min(non_aborted_sequence_score).detach().item()
+    if non_aborted_sequence_score.numel() > 0:
+        score_mean = torch.mean(non_aborted_sequence_score).detach().item()
+        score_max = torch.max(non_aborted_sequence_score).detach().item()
+        score_min = torch.min(non_aborted_sequence_score).detach().item()
 
-    reward_mean = torch.mean(non_aborted_sequence_reward).detach().item()
-    reward_max = torch.max(non_aborted_sequence_reward).detach().item()
-    reward_min = torch.min(non_aborted_sequence_reward).detach().item()
+        reward_mean = torch.mean(non_aborted_sequence_reward).detach().item()
+        reward_max = torch.max(non_aborted_sequence_reward).detach().item()
+        reward_min = torch.min(non_aborted_sequence_reward).detach().item()
+    else:
+        score_mean = score_max = score_min = 0.0
+        reward_mean = reward_max = reward_min = 0.0
 
     valid_adv = torch.masked_select(advantages, response_mask)
     valid_returns = torch.masked_select(returns, response_mask)
@@ -156,7 +160,10 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
             torch.mean(torch.eq(non_aborted_response_length, max_response_length).float()).detach().item()
         )
     else:
-        raise ValueError("All samples are aborted, this should not happen.")
+        non_aborted_response_length_mean = 0.0
+        non_aborted_response_length_max = 0.0
+        non_aborted_response_length_min = 0.0
+        non_aborted_response_length_clip_ratio = 0.0
 
     metrics = {
         # score
@@ -168,13 +175,13 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
         "critic/rewards/max": reward_max,
         "critic/rewards/min": reward_min,
         # adv
-        "critic/advantages/mean": torch.mean(valid_adv).detach().item(),
-        "critic/advantages/max": torch.max(valid_adv).detach().item(),
-        "critic/advantages/min": torch.min(valid_adv).detach().item(),
+        "critic/advantages/mean": torch.mean(valid_adv).detach().item() if valid_adv.numel() > 0 else 0.0,
+        "critic/advantages/max": torch.max(valid_adv).detach().item() if valid_adv.numel() > 0 else 0.0,
+        "critic/advantages/min": torch.min(valid_adv).detach().item() if valid_adv.numel() > 0 else 0.0,
         # returns
-        "critic/returns/mean": torch.mean(valid_returns).detach().item(),
-        "critic/returns/max": torch.max(valid_returns).detach().item(),
-        "critic/returns/min": torch.min(valid_returns).detach().item(),
+        "critic/returns/mean": torch.mean(valid_returns).detach().item() if valid_returns.numel() > 0 else 0.0,
+        "critic/returns/max": torch.max(valid_returns).detach().item() if valid_returns.numel() > 0 else 0.0,
+        "critic/returns/min": torch.min(valid_returns).detach().item() if valid_returns.numel() > 0 else 0.0,
         **(
             {
                 # values
@@ -338,6 +345,7 @@ def compute_timing_metrics(batch: DataProto, timing_raw: dict[str, float]) -> di
         **{
             f"timing_per_token_ms/{name}": timing_raw[name] * 1000 / num_tokens_of_section[name]
             for name in set(num_tokens_of_section.keys()) & set(timing_raw.keys())
+            if num_tokens_of_section[name] > 0
         },
     }
 

@@ -9,20 +9,64 @@
 set -x
 set -eo pipefail
 export HYDRA_FULL_ERROR=1
-
+export LD_LIBRARY_PATH="/usr/local/cuda-13.1/compat:${LD_LIBRARY_PATH:-}"
+# Triton 缓存放到本地磁盘，避免 NFS 上多进程并发编译的竞争条件
+export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-/tmp/.triton_cache_$USER}"
 # =============================================================================
 # 环境配置（与 LongVT 一致）
 # =============================================================================
 ulimit -n 65535
 
+detect_socket_ifname() {
+    local candidate
+    local ifname
+
+    for candidate in bond0.1573 bond0 bond1 br0 eth0; do
+        if ip -o -4 addr show dev "$candidate" up scope global >/dev/null 2>&1; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+
+    ifname=$(ip -o route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i <= NF; ++i) if ($i == "dev") {print $(i + 1); exit}}')
+    if [ -n "$ifname" ] && ip -o -4 addr show dev "$ifname" up scope global >/dev/null 2>&1; then
+        echo "$ifname"
+        return 0
+    fi
+
+    ifname=$(ip -o -4 addr show up scope global | awk '{print $2}' | sort -u | head -n 1)
+    if [ -n "$ifname" ]; then
+        echo "$ifname"
+        return 0
+    fi
+
+    return 1
+}
+
+detect_ipv4_for_ifname() {
+    local ifname="$1"
+    ip -o -4 addr show dev "$ifname" up scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n 1
+}
+
 # NCCL 配置
 export NCCL_IB_DISABLE=0
 export NCCL_IB_HCA="${NCCL_IB_HCA:-^mlx5_bond,mlx5_6}"
 export NCCL_CROSS_NIC=${NCCL_CROSS_NIC:-1}
-export NCCL_SOCKET_IFNAME=${NCCL_SOCKET_IFNAME:-bond0.1573}
-export GLOO_SOCKET_IFNAME=${GLOO_SOCKET_IFNAME:-bond0.1573}
+DEFAULT_SOCKET_IFNAME="${DEFAULT_SOCKET_IFNAME:-$(detect_socket_ifname || true)}"
+if [ -z "${NCCL_SOCKET_IFNAME:-}" ] && [ -n "$DEFAULT_SOCKET_IFNAME" ]; then
+    export NCCL_SOCKET_IFNAME="$DEFAULT_SOCKET_IFNAME"
+fi
+if [ -z "${GLOO_SOCKET_IFNAME:-}" ] && [ -n "${NCCL_SOCKET_IFNAME:-}" ]; then
+    export GLOO_SOCKET_IFNAME="$NCCL_SOCKET_IFNAME"
+fi
+if [ -z "${TP_SOCKET_IFNAME:-}" ] && [ -n "${GLOO_SOCKET_IFNAME:-}" ]; then
+    export TP_SOCKET_IFNAME="$GLOO_SOCKET_IFNAME"
+fi
 export NCCL_SOCKET_FAMILY=${NCCL_SOCKET_FAMILY:-AF_INET}
-export MASTER_ADDR=${MASTER_ADDR:-10.0.1.33}
+if [ -z "${MASTER_ADDR:-}" ] && [ -n "${GLOO_SOCKET_IFNAME:-}" ]; then
+    MASTER_ADDR="$(detect_ipv4_for_ifname "$GLOO_SOCKET_IFNAME")"
+fi
+export MASTER_ADDR=${MASTER_ADDR:-127.0.0.1}
 export MASTER_PORT=${MASTER_PORT:-29500}
 
 # LLM-as-judge 配置（必需）
@@ -36,14 +80,13 @@ export FORCE_QWENVL_VIDEO_READER=decord
 export RAY_DEBUG=0
 export PYDEVD_DISABLE_FILE_VALIDATION=1
 export TMPDIR=/tmp
-export RAY_TMPDIR=/tmp/ray_$USER
 
 # =============================================================================
 # 路径配置（与 LongVT 一致）
 # =============================================================================
-PROJECT_DIR="/mnt/data/home/zhengshurong/project/verl"
-MODEL_PATH='/mnt/data/home/zhengshurong/model/LongVT-SFT'
-DATA_PATH='/mnt/data/home/zhengshurong/dataset/LongVT-Parquet'
+PROJECT_DIR="/data_gpu/gyzhou/prj/verl"
+MODEL_PATH='/data_gpu/zhengshurong/data/hf_cache/LongVT/LongVT-SFT'
+DATA_PATH="${DATA_PATH:-$PROJECT_DIR/long_video_data_ablate/longvt}"
 CONFIG_PATH="$PROJECT_DIR/examples/video_reasoning/config"
 CKPT_DIR="$PROJECT_DIR/checkpoints"
 
@@ -53,6 +96,10 @@ CKPT_DIR="$PROJECT_DIR/checkpoints"
 PROJECT_NAME="LongVT"
 EXPERIMENT_NAME="${EXPERIMENT_NAME:-longvt-verl-compat-$(date +%Y%m%d_%H%M%S)}"
 NNODES=${NNODES:-2}
+ROLLOUT_GPU_MEMORY_UTILIZATION=${ROLLOUT_GPU_MEMORY_UTILIZATION:-0.7}
+ROLLOUT_MAX_MODEL_LEN=${ROLLOUT_MAX_MODEL_LEN:-65536}
+ROLLOUT_LOGPROB_MAX_TOKEN_LEN_PER_GPU=${ROLLOUT_LOGPROB_MAX_TOKEN_LEN_PER_GPU:-65536}
+REF_LOGPROB_MAX_TOKEN_LEN_PER_GPU=${REF_LOGPROB_MAX_TOKEN_LEN_PER_GPU:-65536}
 
 # =============================================================================
 # 日志配置
@@ -82,8 +129,8 @@ python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
     algorithm.use_kl_in_reward=False \
     \
-    data.train_files=$DATA_PATH/longvt_rl_selfqa_1k6_fixed.parquet \
-    data.val_files=$DATA_PATH/longvt_rl_val_114_fixed.parquet \
+    data.train_files=$DATA_PATH/longvt_rl_selfqa_1k6.parquet \
+    data.val_files=$DATA_PATH/longvt_rl_val_114.parquet \
     data.train_batch_size=16 \
     data.max_prompt_length=36000 \
     data.max_response_length=16384 \
@@ -110,15 +157,20 @@ python3 -m verl.trainer.main_ppo \
     \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.n=16 \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.4 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=$ROLLOUT_GPU_MEMORY_UTILIZATION \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
+    actor_rollout_ref.rollout.max_model_len=$ROLLOUT_MAX_MODEL_LEN \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=1 \
+    actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=True \
+    actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=$ROLLOUT_LOGPROB_MAX_TOKEN_LEN_PER_GPU \
     actor_rollout_ref.rollout.multi_turn.enable=True \
     actor_rollout_ref.rollout.multi_turn.max_assistant_turns=5 \
     actor_rollout_ref.rollout.multi_turn.tokenization_sanity_check_mode=disable \
     actor_rollout_ref.rollout.agent.default_agent_loop=longvt \
     \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1 \
+    actor_rollout_ref.ref.log_prob_use_dynamic_bsz=True \
+    actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=$REF_LOGPROB_MAX_TOKEN_LEN_PER_GPU \
     \
     custom_reward_function.path=pkg://verl.utils.reward_score.longvt_reward \
     custom_reward_function.name=compute_score \

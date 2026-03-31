@@ -658,15 +658,16 @@ def find_turn_boundaries(
     """
     Find turn boundaries and bbox positions in the response.
 
-    Identifies turn boundaries based on <think>, <segment>, and <answer> tags.
+    Identifies turn boundaries based on <think>, <segment>/<tool_call>, and <answer> tags.
 
     Format expected:
     - Intermediate turns: <think>...</think><segment>...</segment>
+      or <think>...</think><tool_call>...</tool_call>
     - Final turn: <think>...</think><answer>...</answer>
 
     Turn boundaries:
-    - segment reward: <think> to </segment> (or </answer> for final turn)
-    - bbox reward: previous turn's <segment> + current turn's <think>
+    - segment reward: <think> to </segment> / </tool_call> (or </answer> for final turn)
+    - bbox reward: previous turn's <segment>/<tool_call> + current turn's <think>
 
     Args:
         response_str: Decoded response string
@@ -676,6 +677,7 @@ def find_turn_boundaries(
     Returns:
         Dictionary with:
         - turns: List of turn info dicts with think_start, think_end, segment_start, segment_end,
+                 tool_call_start, tool_call_end,
                  answer_start, answer_end, turn_end (effective end for this turn)
         - bbox_positions: List of bbox position dicts with token_pos, turn_idx, char_pos
     """
@@ -694,10 +696,12 @@ def find_turn_boundaries(
     think_ends = [m.end() for m in re.finditer(r'</think>', response_str, re.IGNORECASE)]
     segment_starts = [m.start() for m in re.finditer(r'<segment>', response_str, re.IGNORECASE)]
     segment_ends = [m.end() for m in re.finditer(r'</segment>', response_str, re.IGNORECASE)]
+    tool_call_starts = [m.start() for m in re.finditer(r'<tool_call>', response_str, re.IGNORECASE)]
+    tool_call_ends = [m.end() for m in re.finditer(r'</tool_call>', response_str, re.IGNORECASE)]
     answer_starts = [m.start() for m in re.finditer(r'<answer>', response_str, re.IGNORECASE)]
     answer_ends = [m.end() for m in re.finditer(r'</answer>', response_str, re.IGNORECASE)]
 
-    # Build turn info - match each <think> with its following <segment> or <answer>
+    # Build turn info - match each <think> with its following <segment>/<tool_call> or <answer>
     num_turns = len(think_starts)
     for i in range(num_turns):
         think_start_char = think_starts[i] if i < len(think_starts) else -1
@@ -715,6 +719,16 @@ def find_turn_boundaries(
                 seg_end_char = segment_ends[j] if j < len(segment_ends) else -1
                 break
 
+        # LongVT compatibility: allow one or more <tool_call> tags instead of <segment>.
+        # We treat the whole tool-call span as the effective segment region for token placement.
+        tool_call_start_char = -1
+        tool_call_end_char = -1
+        for j, tool_start in enumerate(tool_call_starts):
+            if think_end_char >= 0 and think_end_char <= tool_start < next_think_start:
+                if tool_call_start_char < 0:
+                    tool_call_start_char = tool_start
+                tool_call_end_char = tool_call_ends[j] if j < len(tool_call_ends) else -1
+
         # Find the <answer> that comes after this </think> (if any)
         # Usually only the last turn has an answer
         ans_start_char = -1
@@ -727,20 +741,28 @@ def find_turn_boundaries(
 
         # Determine the effective turn end:
         # - If this turn has a <segment>, turn ends at </segment>
+        # - Else if this turn has <tool_call>, turn ends at the last </tool_call>
         # - If this turn has an <answer>, turn ends at </answer>
         # - Otherwise, turn ends at </think>
         if seg_end_char >= 0:
             turn_end_char = seg_end_char
+        elif tool_call_end_char >= 0:
+            turn_end_char = tool_call_end_char
         elif ans_end_char >= 0:
             turn_end_char = ans_end_char
         else:
             turn_end_char = think_end_char
 
+        effective_segment_start_char = seg_start_char if seg_start_char >= 0 else tool_call_start_char
+        effective_segment_end_char = seg_end_char if seg_end_char >= 0 else tool_call_end_char
+
         turn = {
             "think_start_char": think_start_char,
             "think_end_char": think_end_char,
-            "segment_start_char": seg_start_char,
-            "segment_end_char": seg_end_char,
+            "segment_start_char": effective_segment_start_char,
+            "segment_end_char": effective_segment_end_char,
+            "tool_call_start_char": tool_call_start_char,
+            "tool_call_end_char": tool_call_end_char,
             "answer_start_char": ans_start_char,
             "answer_end_char": ans_end_char,
             "turn_end_char": turn_end_char,
@@ -751,6 +773,8 @@ def find_turn_boundaries(
         turn["think_end"] = char_to_token_position(turn["think_end_char"], token_char_offsets) if turn["think_end_char"] >= 0 else -1
         turn["segment_start"] = char_to_token_position(turn["segment_start_char"], token_char_offsets) if turn["segment_start_char"] >= 0 else -1
         turn["segment_end"] = char_to_token_position(turn["segment_end_char"], token_char_offsets) if turn["segment_end_char"] >= 0 else -1
+        turn["tool_call_start"] = char_to_token_position(turn["tool_call_start_char"], token_char_offsets) if turn["tool_call_start_char"] >= 0 else -1
+        turn["tool_call_end"] = char_to_token_position(turn["tool_call_end_char"], token_char_offsets) if turn["tool_call_end_char"] >= 0 else -1
         turn["answer_start"] = char_to_token_position(turn["answer_start_char"], token_char_offsets) if turn["answer_start_char"] >= 0 else -1
         turn["answer_end"] = char_to_token_position(turn["answer_end_char"], token_char_offsets) if turn["answer_end_char"] >= 0 else -1
         turn["turn_end"] = char_to_token_position(turn["turn_end_char"], token_char_offsets) if turn["turn_end_char"] >= 0 else -1

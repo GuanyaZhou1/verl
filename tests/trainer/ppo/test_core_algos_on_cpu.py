@@ -26,6 +26,7 @@ from verl.trainer.ppo.core_algos import (
     compute_grpo_vectorized_outcome_advantage,
     compute_rloo_outcome_advantage,
     compute_rloo_vectorized_outcome_advantage,
+    find_turn_boundaries,
     get_adv_estimator_fn,
     register_adv_est,
 )
@@ -257,6 +258,42 @@ def test_rloo_and_vectorized_equivalence(batch_size: int, seq_len: int, num_grou
     assert ret1.shape == ret2.shape == (batch_size, seq_len)
     assert torch.allclose(adv1, adv2, rtol=1e-5, atol=1e-6)
     assert torch.allclose(ret1, ret2, rtol=1e-5, atol=1e-6)
+
+
+class _CharTokenizer:
+    def decode(self, token_ids, skip_special_tokens=False):
+        if isinstance(token_ids, int):
+            token_ids = [token_ids]
+        return "".join(chr(token_id) for token_id in token_ids)
+
+
+def test_find_turn_boundaries_longvt_tool_calls():
+    response_str = (
+        '<think>overview</think>'
+        '<tool_call>{"name":"crop_video","arguments":{"start_time":1,"end_time":2}}</tool_call>'
+        '<tool_call>{"name":"crop_video","arguments":{"start_time":3,"end_time":4}}</tool_call>'
+        '<tool_response>frames</tool_response>'
+        '<think>final</think><answer>done</answer>'
+    )
+    response_ids = torch.tensor([ord(ch) for ch in response_str], dtype=torch.long)
+
+    result = find_turn_boundaries(response_str, _CharTokenizer(), response_ids)
+
+    assert len(result["turns"]) == 2
+
+    first_turn = result["turns"][0]
+    first_tool_call_start = response_str.index("<tool_call>")
+    last_tool_call_end = response_str.rindex("</tool_call>") + len("</tool_call>")
+    assert first_turn["segment_start_char"] == first_tool_call_start
+    assert first_turn["segment_end_char"] == last_tool_call_end
+    assert first_turn["tool_call_start_char"] == first_tool_call_start
+    assert first_turn["tool_call_end_char"] == last_tool_call_end
+    assert first_turn["turn_end_char"] == last_tool_call_end
+
+    second_turn = result["turns"][1]
+    answer_end = response_str.index("</answer>") + len("</answer>")
+    assert second_turn["answer_end_char"] == answer_end
+    assert second_turn["turn_end_char"] == answer_end
 
 
 @pytest.mark.parametrize(
