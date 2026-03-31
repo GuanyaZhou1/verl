@@ -663,30 +663,8 @@ def get_frame_path_for_timestamp(
     from verl.utils.video_frame_cache import VideoFrameCache
 
     cache = VideoFrameCache(cache_dir=cache_dir, fps=fps, max_frames=max_frames)
-
-    # 尝试加载帧
     try:
-        frame_paths = cache.load_frame_paths(video_path, segments=None, auto_cache=False)
-        if not frame_paths:
-            return None
-
-        # 找到最接近指定时间戳的帧
-        # 帧文件名格式: frame_0010_10s.jpg
-        best_path = None
-        best_diff = float('inf')
-
-        for path in frame_paths:
-            # 从文件名解析时间戳
-            filename = os.path.basename(path)
-            match = re.search(r'_(\d+)s\.jpg$', filename)
-            if match:
-                frame_ts = float(match.group(1))
-                diff = abs(frame_ts - timestamp)
-                if diff < best_diff:
-                    best_diff = diff
-                    best_path = path
-
-        return best_path
+        return cache.get_nearest_frame_path(video_path, timestamp)
     except Exception:
         return None
 

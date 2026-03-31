@@ -37,8 +37,11 @@ def add_timestamp_watermark(
     draw = ImageDraw.Draw(image)
     img_width, img_height = image.size
 
-    # Format timestamp with 1 decimal (e.g., "12.5s")
-    text = f"{timestamp:.1f}s"
+    # Format timestamp: .1f for integer seconds (backward compat), .2f for sub-second
+    if timestamp == int(timestamp):
+        text = f"{timestamp:.1f}s"
+    else:
+        text = f"{timestamp:.2f}s"
 
     # Auto-scale font size based on image height if not specified
     if font_size <= 0:
@@ -268,6 +271,21 @@ class VideoFrameCache:
             return [all_results[i] for i in indices]
         return all_results
 
+    def get_nearest_frame_path(self, video_path: str, timestamp: float) -> Optional[str]:
+        """Get the cached frame path closest to the given timestamp (via metadata)."""
+        frames_with_ts = self.load_frame_paths_with_timestamps(
+            video_path, segments=None, auto_cache=False, max_frames_per_segment=0,
+        )
+        if not frames_with_ts:
+            return None
+        best_path, best_diff = None, float('inf')
+        for path, ts in frames_with_ts:
+            diff = abs(ts - timestamp)
+            if diff < best_diff:
+                best_diff = diff
+                best_path = path
+        return best_path
+
     def load_frames(
         self,
         video_path: str,
@@ -330,7 +348,7 @@ class VideoFrameCache:
             result.append((frame_info['timestamp'], img))
         return result
 
-    def cache_video(self, video_path: str) -> Dict:
+    def cache_video(self, video_path: str, force: bool = False) -> Dict:
         """
         Cache all frames from a video file as jpg files.
 
@@ -347,8 +365,8 @@ class VideoFrameCache:
         cache_dir = self._get_cache_dir_for_video(video_path)
         metadata_path = self._get_metadata_path(video_path)
 
-        # Check if already cached
-        if metadata_path.exists():
+        # Check if already cached (skip if force rebuild)
+        if metadata_path.exists() and not force:
             with open(metadata_path, 'r') as f:
                 metadata = json.load(f)
             return {'duration': metadata['duration'], 'num_frames': len(metadata['frames'])}
@@ -373,21 +391,23 @@ class VideoFrameCache:
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         duration = frame_count / video_fps if video_fps > 0 else 0
 
+        # Clamp to video's native fps to avoid caching duplicate frames
+        effective_fps = min(self.fps, video_fps) if video_fps > 0 else self.fps
+
         # Sample frames by timestamp
         # When max_frames is None, cache all frames at the specified fps
         # When total frames exceed max_frames, uniformly sample across entire video
         # to ensure coverage of the full video duration
-        total_frames = int(duration * self.fps) + 1
+        total_frames = int(duration * effective_fps) + 1
         if self.max_frames is None:
             # No limit, cache all frames at specified fps
-            target_timestamps = [i / self.fps for i in range(total_frames)]
+            target_timestamps = [i / effective_fps for i in range(total_frames)]
         elif total_frames > self.max_frames:
             # Uniformly sample across entire video duration
             indices = np.linspace(0, total_frames - 1, self.max_frames, dtype=int)
-            target_timestamps = [i / self.fps for i in indices]
+            target_timestamps = [i / effective_fps for i in indices]
         else:
-            # Use all frames: 0, 1, 2, 3, ... seconds
-            target_timestamps = [i / self.fps for i in range(total_frames)]
+            target_timestamps = [i / effective_fps for i in range(total_frames)]
 
         frames_info = []
         for saved_count, target_ts in enumerate(target_timestamps):
@@ -399,15 +419,12 @@ class VideoFrameCache:
             if not ret:
                 break
 
-            # Use clean integer timestamp
-            timestamp = int(target_ts) if target_ts == int(target_ts) else target_ts
-
             # Convert BGR to RGB
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             pil_image = Image.fromarray(frame_rgb)
 
-            # Save as jpg with integer timestamp (atomic write to avoid corruption)
-            frame_filename = f"frame_{saved_count:04d}_{int(target_ts)}s.jpg"
+            # Save as jpg (atomic write to avoid corruption)
+            frame_filename = f"frame_{saved_count:04d}.jpg"
             frame_path = cache_dir / frame_filename
             tmp_path = cache_dir / f".tmp_{frame_filename}.{os.getpid()}"
             pil_image.save(tmp_path, "JPEG", quality=95)
@@ -415,7 +432,7 @@ class VideoFrameCache:
 
             frames_info.append({
                 'path': frame_filename,
-                'timestamp': float(int(target_ts)),  # Clean integer timestamp
+                'timestamp': round(target_ts, 3),  # sub-second precision for fps>1
                 'index': saved_count,
             })
 
@@ -425,7 +442,8 @@ class VideoFrameCache:
         metadata = {
             'video_path': video_path,
             'duration': duration,
-            'fps': self.fps,
+            'fps': effective_fps,  # actual fps used (may be clamped to video's native fps)
+            'requested_fps': self.fps,
             'max_frames': self.max_frames,
             'frames': frames_info,
         }

@@ -2033,23 +2033,8 @@ class RayPPOTrainer:
             from verl.utils.video_frame_cache import VideoFrameCache
             cache = VideoFrameCache(cache_dir=cache_dir, fps=cache_fps, max_frames=cache_max_frames)
 
-            frame_paths = cache.load_frame_paths(video_path, segments=None, auto_cache=False)
-            if not frame_paths:
-                return None
-
-            # Find closest frame to timestamp
-            best_path = None
-            best_diff = float('inf')
-            for fp in frame_paths:
-                # Extract timestamp from filename (e.g., frame_0010_10s.jpg)
-                try:
-                    frame_time = float(os.path.basename(fp).split('_')[-1].replace('s.jpg', ''))
-                    diff = abs(frame_time - timestamp)
-                    if diff < best_diff:
-                        best_diff = diff
-                        best_path = fp
-                except:
-                    continue
+            # Find closest frame to timestamp (via metadata, not filename parsing)
+            best_path = cache.get_nearest_frame_path(video_path, timestamp)
 
             if not best_path or not os.path.exists(best_path):
                 return None

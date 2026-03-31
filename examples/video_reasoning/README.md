@@ -134,8 +134,8 @@ verl/
 | `DATA_DIR` | `./long_video_data` | 训练数据目录 |
 | `VIDEO_BASE_PATH` | - | 视频文件目录 |
 | `CACHE_DIR` | `.cache` | 帧缓存目录 |
-| `CACHE_FPS` | `1` | 帧采样率 |
-| `CACHE_MAX_FRAMES` | `512` | 最大缓存帧数 |
+| `CACHE_FPS` | `1` | 帧采样率（支持>1，如4表示每秒4帧） |
+| `CACHE_MAX_FRAMES` | `512` | 最大缓存帧数（0表示按 CACHE_FPS 全量缓存） |
 | `CACHE_MAX_FRAMES_PER_SEGMENT` | `16` | 每 segment 最大帧数 |
 | `TRAIN_BATCH_SIZE` | `32/64` | 训练批大小 |
 | `N_GPUS` | `8` | GPU 数量 |

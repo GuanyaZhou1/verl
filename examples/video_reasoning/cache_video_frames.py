@@ -30,11 +30,11 @@ from functools import partial
 from verl.utils.video_frame_cache import VideoFrameCache
 
 
-def cache_single_video(video_path: str, cache_dir: str, fps: int, max_frames: int) -> tuple:
+def cache_single_video(video_path: str, cache_dir: str, fps: int, max_frames: int, force: bool = False) -> tuple:
     """Cache a single video. Used for multiprocessing."""
     try:
         cache = VideoFrameCache(cache_dir=cache_dir, fps=fps, max_frames=max_frames)
-        info = cache.cache_video(video_path)
+        info = cache.cache_video(video_path, force=force)
         return (video_path, info)
     except Exception as e:
         return (video_path, {'error': str(e)})
@@ -81,6 +81,11 @@ def parse_args():
         type=int,
         default=8,
         help="Number of parallel workers for caching (default: 8)"
+    )
+    parser.add_argument(
+        "--force-rebuild",
+        action="store_true",
+        help="Force rebuild cache even if it already exists"
     )
     return parser.parse_args()
 
@@ -132,7 +137,8 @@ def main():
         cache_single_video,
         cache_dir=args.cache_dir,
         fps=args.fps,
-        max_frames=args.max_frames
+        max_frames=args.max_frames,
+        force=args.force_rebuild,
     )
 
     results = {}

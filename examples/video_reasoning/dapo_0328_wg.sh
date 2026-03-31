@@ -76,7 +76,7 @@ export NCCL_CUMEM_ENABLE=${NCCL_CUMEM_ENABLE:-0}
 # MODEL_PATH="${MODEL_PATH:-/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-stgr-turn_llm_freeze25_freeze_mlp-lr1e-5-epo5}"
 MODEL_PATH="/data_gpu/zhengshurong/data/project/Qwen3-VL/qwen-vl-finetune/checkpoints/video/ablate_reasoning_format/Qwen3-VL-8B-Instruct-openo3video_stgr_singleturn_7k-self_holmes_multiturn_1k5-self_longvideoreason_multiturn_5k3_abscoord-sft-lr5e-5-bs32"
 DATA_DIR="${DATA_DIR:-/data_gpu/gyzhou/prj/verl/long_video_data/video_holmes}"
-CACHE_DIR="${CACHE_DIR:-./.cache_new}"
+CACHE_DIR="${CACHE_DIR:-./.cache_fps4}"
 CONFIG_PATH="$(pwd)/examples/video_reasoning/config"
 LOG_DIR="./logs"
 # =============================================================================
@@ -179,10 +179,11 @@ SINGLE_TURN_NO_OBSERVATION=${SINGLE_TURN_NO_OBSERVATION:-false}  # 单轮消融:
 # =============================================================================
 # 视频缓存参数
 # =============================================================================
-CACHE_FPS=1
-CACHE_MAX_FRAMES=0  # 0表示不限制，全部缓存（每秒1帧）
-CACHE_MAX_FRAMES_PER_SEGMENT=32
+CACHE_FPS=4
+CACHE_MAX_FRAMES=0  # 0表示不限制，按 CACHE_FPS 采样全部缓存
+CACHE_MAX_FRAMES_PER_SEGMENT=64
 USE_CACHED_INITIAL_VIDEO=True            # 使用缓存帧而非原始视频，减少 CPU 内存
+FORCE_REBUILD_CACHE=${FORCE_REBUILD_CACHE:-false}  # 强制重建缓存（代码更新后首次需要）
 
 # 初始视频分辨率（低分辨率概览）
 INITIAL_VIDEO_FPS=1
@@ -191,8 +192,8 @@ INITIAL_VIDEO_MIN_PIXELS=784             # 28*28
 INITIAL_VIDEO_MAX_PIXELS=12544           # ~112x112
 
 # Segment 视频分辨率（高分辨率细节）
-SEGMENT_VIDEO_FPS=1
-SEGMENT_VIDEO_MAX_FRAMES=32
+SEGMENT_VIDEO_FPS=4
+SEGMENT_VIDEO_MAX_FRAMES=64
 SEGMENT_VIDEO_MIN_PIXELS=784             # 28*28
 SEGMENT_VIDEO_MAX_PIXELS=50176           # ~224x224 
 
@@ -252,7 +253,7 @@ BBOX_COORD_RANGE=1.0
 # 如果未设置 EXPERIMENT_NAME，则根据当前参数自动生成
 if [ -z "$EXPERIMENT_NAME" ]; then
     # 自动生成实验名：包含关键超参数
-    EXPERIMENT_NAME="Qwen3_8B_${ADV_ESTIMATOR}_acc${REWARD_WEIGHT_ANSWER}_fmt${REWARD_WEIGHT_FORMAT}_bbox${REWARD_WEIGHT_BBOX}_seg${REWARD_WEIGHT_SEGMENT}_kl${KL_LOSS_COEF}_lr${LEARNING_RATE}_$(date +%m%d)_bs${TRAIN_BATCH_SIZE}_GATE${ACCURACY_GATE_THRESHOLD}_warmup10_gspo_minibs8"
+    EXPERIMENT_NAME="Qwen3_8B_${ADV_ESTIMATOR}_acc${REWARD_WEIGHT_ANSWER}_fmt${REWARD_WEIGHT_FORMAT}_bbox${REWARD_WEIGHT_BBOX}_seg${REWARD_WEIGHT_SEGMENT}_kl${KL_LOSS_COEF}_lr${LEARNING_RATE}_$(date +%m%d)_bs${TRAIN_BATCH_SIZE}_GATE${ACCURACY_GATE_THRESHOLD}_segfps${SEGMENT_VIDEO_FPS}_frams${SEGMENT_VIDEO_MAX_FRAMES}_warmup10_gspo_minibs8"
 fi
 # 示例手动设置：
 # export EXPERIMENT_NAME="my_custom_exp_name"
@@ -332,12 +333,18 @@ echo ""
 # =============================================================================
 if [ "${SKIP_VIDEO_CACHE:-false}" != "true" ]; then
     echo "===== Step 1: Caching video frames ====="
+    CACHE_EXTRA_ARGS=""
+    if [ "$FORCE_REBUILD_CACHE" = "true" ]; then
+        CACHE_EXTRA_ARGS="--force-rebuild"
+        echo "  Force rebuild enabled"
+    fi
     python examples/video_reasoning/cache_video_frames.py \
         --input_parquet "$DATA_DIR/train.parquet" \
         --cache_dir "$CACHE_DIR" \
         --fps "$CACHE_FPS" \
         --max_frames "$CACHE_MAX_FRAMES" \
-        --num_workers 64
+        --num_workers 128 \
+        $CACHE_EXTRA_ARGS
 
     # set -eo pipefail 已确保上述命令失败时脚本自动退出
     echo "===== Step 1 Complete ====="

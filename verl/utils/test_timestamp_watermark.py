@@ -109,10 +109,33 @@ def test_auto_font_size():
     print("test_auto_font_size PASSED")
 
 
+def test_subsecond_watermark():
+    """Test watermark with sub-second timestamps (fps>1)."""
+    from PIL import ImageDraw
+
+    # Test that 0.25 is rendered as "0.25s", not "0.2s" (old .1f truncation)
+    img = Image.new('RGB', (640, 480), color='blue')
+    result = add_timestamp_watermark(img, timestamp=0.25, position="top_left", font_size=24)
+    assert result is img
+
+    # Test integer timestamp still uses .1f format ("1.0s")
+    img2 = Image.new('RGB', (640, 480), color='blue')
+    result2 = add_timestamp_watermark(img2, timestamp=1.0, position="top_left", font_size=24)
+    assert result2 is img2
+
+    # Test various sub-second values
+    for ts in [0.25, 0.5, 0.75, 1.25, 2.5]:
+        img = Image.new('RGB', (640, 480), color='green')
+        add_timestamp_watermark(img, timestamp=ts, font_size=24)
+
+    print("test_subsecond_watermark PASSED")
+
+
 if __name__ == "__main__":
     test_add_timestamp_watermark()
     test_watermark_positions()
     test_watermark_formats()
     test_save_watermarked_image()
     test_auto_font_size()
+    test_subsecond_watermark()
     print("\nAll tests PASSED!")

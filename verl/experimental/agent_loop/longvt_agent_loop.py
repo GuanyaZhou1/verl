@@ -189,6 +189,7 @@ class LongVTAgentLoop(AgentLoopBase):
         """Fix video_metadata.frames_indices for correct absolute timestamps."""
         for (video_tensor, metadata), timestamps in zip(obs_videos, per_video_timestamps):
             n_frames = len(metadata.get("frames_indices", []))
+            # Supports fps>1: e.g., ts=0.25 with cache_fps=4 → index 1
             abs_indices = [int(round(ts * cache_fps)) for ts in timestamps]
             while len(abs_indices) < n_frames:
                 abs_indices.append(abs_indices[-1] if abs_indices else 0)

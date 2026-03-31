@@ -189,6 +189,7 @@ class VideoReasoningAgentLoop(AgentLoopBase):
         for (video_tensor, metadata), timestamps in zip(obs_videos, per_video_timestamps):
             n_frames = len(metadata.get("frames_indices", []))
             # Build absolute frame indices: idx = timestamp * fps
+            # Supports fps>1: e.g., ts=0.25 with cache_fps=4 → index 1
             abs_indices = [int(round(ts * cache_fps)) for ts in timestamps]
             # fetch_video may have padded frames (ceil_by_factor); extend to match
             while len(abs_indices) < n_frames:

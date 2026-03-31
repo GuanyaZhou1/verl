@@ -111,6 +111,7 @@ class SingleTurnAgentLoop(AgentLoopBase):
             return
         for video_tensor, metadata in videos:
             # Convert timestamps to frame indices based on cache fps
+            # Supports fps>1: e.g., ts=0.25 with cache_fps=4 → index 1
             abs_indices = [int(round(ts * cache_fps)) for ts in timestamps]
             if "frames_indices" in metadata:
                 metadata["frames_indices"] = abs_indices
