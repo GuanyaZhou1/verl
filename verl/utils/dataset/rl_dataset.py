@@ -362,10 +362,24 @@ class RLHFDataset(Dataset):
                     ref_segs = ast.literal_eval(ref_segs)
                 except (ValueError, SyntaxError):
                     ref_segs = []
+            # Handle list-of-strings case (e.g., ['[[134.0, 145.0], [152.0, 164.0]]'])
+            if isinstance(ref_segs, (list, tuple)) and ref_segs and isinstance(ref_segs[0], str):
+                import ast
+                parsed = []
+                for s in ref_segs:
+                    try:
+                        val = ast.literal_eval(s)
+                        if isinstance(val, list) and val and isinstance(val[0], list):
+                            parsed.extend(val)
+                        else:
+                            parsed.append(val)
+                    except (ValueError, SyntaxError):
+                        pass
+                ref_segs = parsed
             # Convert to list of tuples if needed
             if ref_segs and isinstance(ref_segs, (list, tuple)):
                 row_dict["extra_info"]["reference_segments"] = [
-                    tuple(seg) if isinstance(seg, (list, tuple)) else seg for seg in ref_segs
+                    tuple(float(v) for v in seg) if isinstance(seg, (list, tuple)) else seg for seg in ref_segs
                 ]
 
         index = row_dict.get("extra_info", {}).get("index", 0)

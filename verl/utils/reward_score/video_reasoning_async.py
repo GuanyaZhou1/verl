@@ -2115,12 +2115,14 @@ def compute_segment_score(
         return 0.0, 0.0, 0.0, 0.0
 
     # 将 segments 转换为时间轴上的区间集合，用于计算交集和并集
-    def segments_to_intervals(segments: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+    def segments_to_intervals(segments) -> List[Tuple[float, float]]:
         """将 segments 合并为不重叠的区间"""
         if not segments:
             return []
+        # 只取前两个元素 (start, end)，转为 float，兼容含额外字段或字符串类型的 segment
+        normalized = [(float(s[0]), float(s[1])) for s in segments]
         # 按起始时间排序
-        sorted_segs = sorted(segments, key=lambda x: x[0])
+        sorted_segs = sorted(normalized, key=lambda x: x[0])
         merged = [sorted_segs[0]]
         for start, end in sorted_segs[1:]:
             if start <= merged[-1][1]:

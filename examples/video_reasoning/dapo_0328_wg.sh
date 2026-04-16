@@ -31,7 +31,7 @@ export HYDRA_FULL_ERROR=1  # 报错时打印完整 stack trace
 # =============================================================================
 # 环境配置
 # =============================================================================
-ulimit -n 65535
+ulimit -n 1048576
 export VLLM_USE_V1=1
 #禁用 Python 断点，只在当前有效
 export RAY_DEBUG=0                                                                       
@@ -74,8 +74,8 @@ export NCCL_CUMEM_ENABLE=${NCCL_CUMEM_ENABLE:-0}
 #MODEL_PATH="/data_gpu/songlin/rl/verl/checkpoints/video-reasoning-dapo/video_reasoning_dapo_20260205-063449/merged_model"
 #MODEL_PATH="/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-self_holmes_caption_233-self_longvideoreason_caption_930-openo3video_stgr_singleturn_7k-self_holmes_multiturn_1k5-self_longvideoreason_multiturn_5k3-sft-lr5e-5-b24"
 # MODEL_PATH="${MODEL_PATH:-/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-stgr-turn_llm_freeze25_freeze_mlp-lr1e-5-epo5}"
-MODEL_PATH="/data_gpu/zhengshurong/data/project/Qwen3-VL/qwen-vl-finetune/checkpoints/video/ablate_reasoning_format/Qwen3-VL-8B-Instruct-openo3video_stgr_singleturn_7k-self_holmes_multiturn_1k5-self_longvideoreason_multiturn_5k3_abscoord-sft-lr5e-5-bs32"
-DATA_DIR="${DATA_DIR:-/data_gpu/gyzhou/prj/verl/long_video_data/video_holmes}"
+MODEL_PATH="/data_gpu/gyzhou/prj/Qwen3-VL/qwen-vl-finetune/checkpoints/video/Qwen3-VL-8B-Instruct-stgr-refined_vlm_detect-tune_llm_freeze32_mlp-lr1e-5-epo3"
+DATA_DIR="${DATA_DIR:-/data_gpu/gyzhou/prj/verl/long_video_data_new/video_holmes}"
 CACHE_DIR="${CACHE_DIR:-./.cache_fps4}"
 CONFIG_PATH="$(pwd)/examples/video_reasoning/config"
 LOG_DIR="./logs"
@@ -147,7 +147,7 @@ ADV_ESTIMATOR=${ADV_ESTIMATOR:-gdpo}
 # =============================================================================
 # 设为 0 可排除该 component。grpo 和 gdpo 模式都使用这套权重。
 REWARD_WEIGHT_ANSWER=${REWARD_WEIGHT_ANSWER:-1.0}     # 答案正确性权重
-REWARD_WEIGHT_FORMAT=${REWARD_WEIGHT_FORMAT:-0.2}     # 格式正确性权重
+REWARD_WEIGHT_FORMAT=${REWARD_WEIGHT_FORMAT:-0.1}     # 格式正确性权重
 REWARD_WEIGHT_BBOX=${REWARD_WEIGHT_BBOX:-0.5}         # BBox 验证权重
 REWARD_WEIGHT_SEGMENT=${REWARD_WEIGHT_SEGMENT:-0.5}   # Segment 定位权重
 
@@ -192,8 +192,8 @@ INITIAL_VIDEO_MIN_PIXELS=784             # 28*28
 INITIAL_VIDEO_MAX_PIXELS=12544           # ~112x112
 
 # Segment 视频分辨率（高分辨率细节）
-SEGMENT_VIDEO_FPS=4
-SEGMENT_VIDEO_MAX_FRAMES=64
+SEGMENT_VIDEO_FPS=1
+SEGMENT_VIDEO_MAX_FRAMES=32
 SEGMENT_VIDEO_MIN_PIXELS=784             # 28*28
 SEGMENT_VIDEO_MAX_PIXELS=50176           # ~224x224 
 
@@ -229,8 +229,8 @@ BBOX_PER_TURN=${BBOX_PER_TURN:-2}  # 每个 think turn 期望输出的 bbox 数�
 # 1.0 = 只有完全答对才给（最严格，仅适合纯选择题）
 ACCURACY_GATE_THRESHOLD=${ACCURACY_GATE_THRESHOLD:-0.5}
 
-SAVE_BBOX_VISUALIZATION=false
-BBOX_VIS_SAMPLE_RATE=0.001
+SAVE_BBOX_VISUALIZATION=true
+BBOX_VIS_SAMPLE_RATE=0.0001
 # REWARD_LOG_DIR 在 EXPERIMENT_NAME 后设置
 SAVE_SAMPLES=true
 SAVE_EVERY_N=1
@@ -253,7 +253,7 @@ BBOX_COORD_RANGE=1.0
 # 如果未设置 EXPERIMENT_NAME，则根据当前参数自动生成
 if [ -z "$EXPERIMENT_NAME" ]; then
     # 自动生成实验名：包含关键超参数
-    EXPERIMENT_NAME="Qwen3_8B_${ADV_ESTIMATOR}_acc${REWARD_WEIGHT_ANSWER}_fmt${REWARD_WEIGHT_FORMAT}_bbox${REWARD_WEIGHT_BBOX}_seg${REWARD_WEIGHT_SEGMENT}_kl${KL_LOSS_COEF}_lr${LEARNING_RATE}_$(date +%m%d)_bs${TRAIN_BATCH_SIZE}_GATE${ACCURACY_GATE_THRESHOLD}_segfps${SEGMENT_VIDEO_FPS}_frams${SEGMENT_VIDEO_MAX_FRAMES}_warmup10_gspo_minibs8"
+    EXPERIMENT_NAME="Qwen3_8B_${ADV_ESTIMATOR}_acc${REWARD_WEIGHT_ANSWER}_fmt${REWARD_WEIGHT_FORMAT}_bbox${REWARD_WEIGHT_BBOX}_seg${REWARD_WEIGHT_SEGMENT}_kl${KL_LOSS_COEF}_lr${LEARNING_RATE}_$(date +%m%d)_bs${TRAIN_BATCH_SIZE}_GATE${ACCURACY_GATE_THRESHOLD}_segfps${SEGMENT_VIDEO_FPS}_frams${SEGMENT_VIDEO_MAX_FRAMES}_warmup10_gspo_minibs16_broadcast_freeze4_mlp_new"
 fi
 # 示例手动设置：
 # export EXPERIMENT_NAME="my_custom_exp_name"
@@ -391,7 +391,7 @@ python3 -m recipe.dapo.main_dapo \
     ++actor_rollout_ref.actor.optim.lr_warmup_steps=10 \
     ++actor_rollout_ref.actor.policy_loss.loss_mode=gspo \
     actor_rollout_ref.actor.grad_clip=$MAX_GRAD_NORM \
-    actor_rollout_ref.actor.ppo_mini_batch_size=8 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=16 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.actor.clip_ratio_low=$CLIP_RATIO_LOW \
     actor_rollout_ref.actor.clip_ratio_high=$CLIP_RATIO_HIGH \
@@ -601,6 +601,10 @@ if [ "$RUN_EVAL" = "true" ] && [ -f "$CKPT_BASE/config.json" ]; then
         conda activate ${EVAL_CONDA_ENV}
     fi
 
+    # Fix torchinductor cache permission issue (stale UID on old cache dir)
+    export TORCHINDUCTOR_CACHE_DIR="/tmp/torchinductor_${USER}_$(id -u)"
+    mkdir -p "${TORCHINDUCTOR_CACHE_DIR}" 2>/dev/null || true
+
     # 4d: 准备评测模型路径和日志
     EVAL_MODEL_PATH=$(realpath "$CKPT_BASE")
     EVAL_LOG="${CKPT_BASE}/logs/eval_${TIMESTAMP:-$(date +%Y%m%d_%H%M%S)}.log"
@@ -632,6 +636,60 @@ if [ "$RUN_EVAL" = "true" ] && [ -f "$CKPT_BASE/config.json" ]; then
 
     echo ""
     echo "===== Step 4 Complete: Evaluation Finished ====="
+
+    # =========================================================================
+    # Step 5: Bbox visualization + quantitative metrics
+    # =========================================================================
+    LOGS_VIDVLLM="${EVAL_WORKDIR}/logs_zsr"
+
+    # -- 5a: Per-experiment multiturn visualization --
+    MT_SAMPLES_DIR="${LOGS_VIDVLLM}/${EXPERIMENT_NAME}/video_holmes"
+    ABS_CKPT_DIR="$(realpath ${CKPT_BASE})"
+    VIZ_LOG="${ABS_CKPT_DIR}/logs/visualize_${TIMESTAMP:-$(date +%Y%m%d_%H%M%S)}.log"
+
+    if [ -d "${MT_SAMPLES_DIR}" ]; then
+        echo ""
+        echo "===== Step 5a: Running bbox visualization (multiturn results) ====="
+        pushd "${EVAL_WORKDIR}" > /dev/null
+        python -m lmms_eval.visualize_bbox \
+            --samples_dir "${MT_SAMPLES_DIR}" \
+            --output_dir "${ABS_CKPT_DIR}/visualizations_multiturn" \
+            --max_samples 20 2>&1 | tee "${VIZ_LOG}"
+        popd > /dev/null
+        echo "[$(date)] Visualization complete. Output: ${ABS_CKPT_DIR}/visualizations_multiturn"
+    else
+        echo "[$(date)] No multiturn results at ${MT_SAMPLES_DIR}, skipping visualization."
+    fi
+
+    # -- 5b: Quantitative bbox metrics (single experiment, with GT) --
+    METRICS_TIMESTAMP="${TIMESTAMP:-$(date +%Y%m%d_%H%M%S)}"
+    METRICS_OUTPUT="${ABS_CKPT_DIR}/bbox_metrics_${METRICS_TIMESTAMP}"
+    METRICS_LOG="${ABS_CKPT_DIR}/logs/metrics_${METRICS_TIMESTAMP}.log"
+    mkdir -p "${METRICS_OUTPUT}"
+
+    echo ""
+    echo "===== Step 5b: Running bbox metrics analysis ====="
+    pushd "${EVAL_WORKDIR}" > /dev/null
+    python -m lmms_eval.analyze_bbox_metrics \
+        --logs_dir "${LOGS_VIDVLLM}" \
+        --experiments "${EXPERIMENT_NAME}" \
+        --task video_holmes_multiturn \
+        --output_dir "${METRICS_OUTPUT}" \
+        --num_vis_samples 50 \
+        --gt_endpoint "${VLM_ENDPOINT}" \
+        --gt_model_name "${VLM_MODEL_NAME}" \
+        --gt_api_key "${VLM_API_KEY}" \
+        --num_gt_samples 200 \
+        --gt_concurrency 16 \
+        --seed 42 2>&1 | tee "${METRICS_LOG}"
+    METRICS_EXIT=${PIPESTATUS[0]}
+    popd > /dev/null
+
+    if [ ${METRICS_EXIT} -ne 0 ]; then
+        echo "[$(date)] Metrics analysis failed (exit ${METRICS_EXIT})."
+    else
+        echo "[$(date)] Metrics saved to ${METRICS_OUTPUT}"
+    fi
 else
     if [ "$RUN_EVAL" != "true" ]; then
         echo ""
