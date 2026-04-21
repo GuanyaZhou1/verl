@@ -53,8 +53,8 @@ SKIP_PREPROCESS=false
 ONLY_DATASET=""
 
 # Dataset file names (within annotation dir)
-HOLMES_JSON="holmes_sft_twoturn_v4_validtimestamp_noduplicate_checkanswer.json"
-LONGVIDEO_JSON="longvideoreason_multiturn_5k3_validtimestamp_noduplicate_checkanswer.json"
+HOLMES_JSON="holmes_sft_twoturn_v4_validtimestamp_noduplicate_checkanswer_gemini_reasoning.json"
+LONGVIDEO_JSON="longvideoreason_multiturn_5k3_validtimestamp_noduplicate_checkanswer_gemini_reasoning.json"
 
 # =============================================================================
 # Parse arguments
@@ -112,7 +112,7 @@ preprocess_video_holmes() {
         return 1
     fi
 
-    python examples/data_preprocess/convert_sft_to_verl.py \
+    python3 examples/data_preprocess/convert_sft_to_verl.py \
         --input_json "$input_json" \
         --video_base_path "$VIDEO_HOLMES_DIR" \
         --output_dir "$output_dir" \
@@ -141,7 +141,7 @@ preprocess_longvideo_reason() {
         return 1
     fi
 
-    python examples/data_preprocess/convert_sft_to_verl.py \
+    python3 examples/data_preprocess/convert_sft_to_verl.py \
         --input_json "$input_json" \
         --video_base_path "$LONGVIDEO_REASON_DIR" \
         --output_dir "$output_dir" \

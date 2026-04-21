@@ -480,12 +480,16 @@ def compute_turn_level_group_norm(
     group_idx: np.ndarray,
     epsilon: float = 1e-6,
     norm_adv_by_std: bool = True,
+    bbox_per_turn: int = 1,
+    num_turns_list: Optional[List[int]] = None,
 ) -> Tuple[List[Dict[int, float]], List[Dict[int, float]]]:
     """
     Compute turn-level group normalization for bbox and segment scores.
 
     This function:
     1. First aggregates scores within each turn (average of all bboxes/segments in that turn)
+       For bbox: pads with zeros to match expected count (bbox_per_turn) per turn,
+       consistent with global bbox_score computation.
     2. Then pools all turn-level scores from all rollouts in the same group
     3. Normalizes at the turn level within the group
 
@@ -500,6 +504,9 @@ def compute_turn_level_group_norm(
         group_idx: (bs,) array mapping each sample to its group ID
         epsilon: Small value for numerical stability
         norm_adv_by_std: Whether to divide by std in normalization (default True)
+        bbox_per_turn: Expected number of bboxes per turn for zero-padding (default 1)
+        num_turns_list: Per-sample number of think turns. If provided, turns >= 1
+            with no bboxes will be padded with zero scores.
 
     Returns:
         bbox_advs_by_turn: Per-sample dict mapping turn_idx -> normalized turn-level bbox advantage
@@ -522,11 +529,26 @@ def compute_turn_level_group_norm(
             if turn_idx >= 0:  # valid turn
                 sample_turn_bbox_scores[i][turn_idx].append(score)
 
-    # sample_idx -> turn_idx -> aggregated (mean) score
+    # sample_idx -> turn_idx -> aggregated (mean) score with zero-padding
     sample_turn_bbox_mean = {}
     for i in range(bs):
         sample_turn_bbox_mean[i] = {}
+
+        # If num_turns_list provided, ensure turns >= 1 have entries (even if no bboxes)
+        # Turn 0 is typically for segment only, bbox is expected from turn 1 onwards
+        if num_turns_list is not None and i < len(num_turns_list):
+            num_turns = num_turns_list[i]
+            for turn_idx in range(1, num_turns):
+                if turn_idx not in sample_turn_bbox_scores[i]:
+                    # This turn was expected to have bboxes but has none -> score = 0
+                    sample_turn_bbox_scores[i][turn_idx] = []
+
         for turn_idx, scores in sample_turn_bbox_scores[i].items():
+            # Zero-pad to bbox_per_turn: if fewer bboxes than expected, pad with 0s
+            expected = max(bbox_per_turn, len(scores))
+            num_missing = expected - len(scores)
+            if num_missing > 0:
+                scores = scores + [0.0] * num_missing
             sample_turn_bbox_mean[i][turn_idx] = np.mean(scores) if scores else 0.0
 
     # =========================================================================
@@ -781,25 +803,53 @@ def find_turn_boundaries(
 
         result["turns"].append(turn)
 
-    # Find bbox positions (marked by </t> as the end of bbox)
-    bbox_pattern = r'</t>(?![a-zA-Z])'
-    for m in re.finditer(bbox_pattern, response_str, re.IGNORECASE):
-        char_pos = m.end()
-        token_pos = char_to_token_position(char_pos, token_char_offsets)
+    # Find bbox positions with full span (from <obj> to </t>)
+    bbox_full_pattern = r'<obj>.*?</obj><box>\[[\d.,\s]+\]</box>at<t>[\d.]+</t>'
+    for m in re.finditer(bbox_full_pattern, response_str, re.IGNORECASE):
+        char_start = m.start()
+        char_end = m.end()
+        token_start = char_to_token_position(char_start, token_char_offsets)
+        token_end = char_to_token_position(char_end, token_char_offsets)
 
         # Determine which turn this bbox belongs to
         turn_idx = -1
         for i, turn in enumerate(result["turns"]):
             if turn["think_start_char"] >= 0 and turn["think_end_char"] >= 0:
-                if turn["think_start_char"] <= char_pos <= turn["think_end_char"]:
+                if turn["think_start_char"] <= char_end <= turn["think_end_char"]:
                     turn_idx = i
                     break
 
         if turn_idx >= 0:
             result["bbox_positions"].append({
-                "token_pos": token_pos,
+                "token_start": token_start,
+                "token_pos": token_end,
                 "turn_idx": turn_idx,
-                "char_pos": char_pos,
+                "char_pos": char_end,
+            })
+
+    # Find segment tag positions (<segment>...</segment>)
+    result["segment_positions"] = []
+    seg_tag_pattern = r'<segment>.*?</segment>'
+    for m in re.finditer(seg_tag_pattern, response_str, re.IGNORECASE | re.DOTALL):
+        char_start = m.start()
+        char_end = m.end()
+        token_start = char_to_token_position(char_start, token_char_offsets)
+        token_end = char_to_token_position(char_end, token_char_offsets)
+
+        # Determine which turn this segment tag belongs to
+        turn_idx = -1
+        for i, turn in enumerate(result["turns"]):
+            if turn["think_start_char"] >= 0 and turn["turn_end_char"] >= 0:
+                if turn["think_start_char"] <= char_end <= turn["turn_end_char"]:
+                    turn_idx = i
+                    break
+
+        if turn_idx >= 0:
+            result["segment_positions"].append({
+                "token_start": token_start,
+                "token_pos": token_end,
+                "turn_idx": turn_idx,
+                "char_pos": char_end,
             })
 
     return result
@@ -816,7 +866,7 @@ def apply_token_placement(
     turn_info: List[Dict[str, Any]],  # Per-sample turn boundaries from find_turn_boundaries
     response_mask: torch.Tensor,  # (bs, response_length)
     # Configuration
-    method: str = "broadcast",  # broadcast / per_turn / per_turn_gae
+    method: str = "broadcast",  # broadcast / per_turn / per_turn_gae / per_tag
     global_reward_mode: str = "broadcast",  # broadcast / gae
     answer_weight: float = 1.0,
     format_weight: float = 0.5,
@@ -824,6 +874,8 @@ def apply_token_placement(
     segment_weight: float = 1.0,
     gamma: float = 0.99,
     lam: float = 0.95,
+    bbox_context_window: int = 16,
+    segment_context_window: int = 16,
 ) -> torch.Tensor:
     """
     Apply token placement strategy to distribute advantages across tokens.
@@ -839,7 +891,7 @@ def apply_token_placement(
         segment_advs: Per-sample dict mapping turn_idx -> turn-level normalized segment advantage
         turn_info: List of turn boundary dicts from find_turn_boundaries
         response_mask: (bs, response_length) mask for valid response tokens
-        method: Token placement method (broadcast/per_turn/per_turn_gae)
+        method: Token placement method (broadcast/per_turn/per_turn_gae/per_tag)
         global_reward_mode: How to distribute global rewards (broadcast/gae)
         answer_weight: Weight for answer advantage
         format_weight: Weight for format advantage
@@ -847,6 +899,8 @@ def apply_token_placement(
         segment_weight: Weight for segment advantages
         gamma: Discount factor for GAE
         lam: Lambda for GAE
+        bbox_context_window: Number of preceding context tokens for per_tag bbox placement
+        segment_context_window: Number of preceding context tokens for per_tag segment placement
 
     Returns:
         advantages: (bs, response_length) token-level advantages
@@ -882,6 +936,39 @@ def apply_token_placement(
 
         # If method is broadcast, we're done (all rewards go to all tokens equally)
         if method == "broadcast":
+            continue
+
+        if method == "per_tag":
+            # Per-tag placement: place rewards precisely on tag tokens + context window
+            sample_bbox_advs = bbox_advs[i] if i < len(bbox_advs) else {}
+            sample_segment_advs = segment_advs[i] if i < len(segment_advs) else {}
+
+            # Bbox: place on <obj>...<t>...</t> + K preceding tokens
+            bbox_tag_positions = turn_info[i].get("bbox_positions", []) if turn_info[i] else []
+            for bp in bbox_tag_positions:
+                bbox_adv_val = sample_bbox_advs.get(bp["turn_idx"], 0.0) * bbox_weight
+                if bbox_adv_val == 0:
+                    continue
+                tag_start = bp.get("token_start", bp["token_pos"])
+                tag_end = bp["token_pos"]
+                region_start = max(tag_start - bbox_context_window, 0)
+                for t in range(region_start, min(tag_end + 1, response_length)):
+                    if response_mask[i, t] > 0:
+                        advantages[i, t] += bbox_adv_val
+
+            # Segment: place on <segment>...</segment> + K preceding tokens
+            segment_tag_positions = turn_info[i].get("segment_positions", []) if turn_info[i] else []
+            for sp in segment_tag_positions:
+                seg_adv_val = sample_segment_advs.get(sp["turn_idx"], 0.0) * segment_weight
+                if seg_adv_val == 0:
+                    continue
+                tag_start = sp["token_start"]
+                tag_end = sp["token_pos"]
+                region_start = max(tag_start - segment_context_window, 0)
+                for t in range(region_start, min(tag_end + 1, response_length)):
+                    if response_mask[i, t] > 0:
+                        advantages[i, t] += seg_adv_val
+
             continue
 
         # 2. Segment reward (per-turn) - uses turn-level normalized advantage

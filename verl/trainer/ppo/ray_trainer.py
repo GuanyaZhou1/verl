@@ -399,18 +399,9 @@ def compute_advantage(
             bbox_details_list = [x if x is not None else [] for x in bbox_details_list]
             segment_details_list = [x if x is not None else [] for x in segment_details_list]
 
-            # Compute turn-level normalized advantages for bbox and segment
-            # This pools all scores from all rollouts in the same group, then normalizes
-            bbox_advs, segment_advs = compute_turn_level_group_norm(
-                bbox_details_list=bbox_details_list,
-                segment_details_list=segment_details_list,
-                group_idx=g_np,
-                epsilon=epsilon,
-                norm_adv_by_std=norm_adv_by_std_in_grpo,
-            )
-
             # =================================================================
-            # Step 3: Find turn boundaries for each sample
+            # Step 2b: Find turn boundaries for each sample (needed by both
+            # turn-level group norm and token placement)
             # =================================================================
             turn_info = []
             for i in range(bs):
@@ -418,6 +409,24 @@ def compute_advantage(
                 response_str = tokenizer.decode(response_tokens, skip_special_tokens=False)
                 boundaries = find_turn_boundaries(response_str, tokenizer, response_ids[i])
                 turn_info.append(boundaries)
+
+            # Extract num_turns per sample for bbox zero-padding
+            num_turns_list = [len(ti.get("turns", [])) for ti in turn_info]
+            bbox_per_turn = token_placement_config.get("bbox_per_turn", 1)
+
+            # Compute turn-level normalized advantages for bbox and segment
+            # This pools all scores from all rollouts in the same group, then normalizes
+            # bbox_per_turn + num_turns_list enable zero-padding for missing bboxes,
+            # consistent with global bbox_score computation
+            bbox_advs, segment_advs = compute_turn_level_group_norm(
+                bbox_details_list=bbox_details_list,
+                segment_details_list=segment_details_list,
+                group_idx=g_np,
+                epsilon=epsilon,
+                norm_adv_by_std=norm_adv_by_std_in_grpo,
+                bbox_per_turn=bbox_per_turn,
+                num_turns_list=num_turns_list,
+            )
 
             # =================================================================
             # Step 4: Apply token placement
@@ -432,6 +441,8 @@ def compute_advantage(
                 "segment_weight": reward_weights.get("segment_score", 0.0),
                 "gamma": token_placement_config.get("gamma", 0.99),
                 "lam": token_placement_config.get("lambda", 0.95),
+                "bbox_context_window": token_placement_config.get("bbox_context_window", 16),
+                "segment_context_window": token_placement_config.get("segment_context_window", 16),
             }
 
             advantages = apply_token_placement(

@@ -94,6 +94,7 @@ def _build_turn_score_debug(
     bbox_details: List[Dict[str, Any]],
     all_segments: List[List[Tuple[float, float]]],
     gt_segments: List[Tuple[float, float]],
+    bbox_per_turn: int = 1,
 ) -> List[Dict[str, Any]]:
     """Build per-turn raw score summaries for debugging token placement."""
     bbox_scores_by_turn = defaultdict(list)
@@ -116,6 +117,14 @@ def _build_turn_score_debug(
     turn_debug = []
     for turn_idx in range(num_turns):
         turn_bbox_scores = bbox_scores_by_turn.get(turn_idx, [])
+        # Zero-pad bbox scores: for turns >= 1 (expected to have bboxes),
+        # pad to bbox_per_turn to match global bbox_score computation
+        if turn_idx >= 1:
+            expected = max(bbox_per_turn, len(turn_bbox_scores))
+            num_missing = expected - len(turn_bbox_scores)
+            if num_missing > 0:
+                turn_bbox_scores = turn_bbox_scores + [0.0] * num_missing
+        actual_bbox_count = len(bbox_scores_by_turn.get(turn_idx, []))
         turn_bbox_score = sum(turn_bbox_scores) / len(turn_bbox_scores) if turn_bbox_scores else 0.0
         turn_segments = all_segments[turn_idx] if turn_idx < len(all_segments) else []
         turn_segment_score = per_turn_segment_scores[turn_idx] if turn_idx < len(per_turn_segment_scores) else 0.0
@@ -137,7 +146,8 @@ def _build_turn_score_debug(
                     "score": turn_bbox_score,
                     "weighted_score": bbox_weight * turn_bbox_score,
                     "weight": bbox_weight,
-                    "count": len(turn_bbox_scores),
+                    "count": actual_bbox_count,
+                    "expected": len(turn_bbox_scores),
                 },
                 "segment": {
                     "type": "segment",
@@ -2596,97 +2606,45 @@ async def compute_score(
         bbox_details=bbox_details,
         all_segments=all_segments,
         gt_segments=gt_segments,
+        bbox_per_turn=bbox_per_turn,
     )
 
     # 保存样本 (使用预先计算的 should_save_sample，确保与可视化保存同步)
     if should_save_sample:
-        # 获取原始输入文本 (prompt_str)
-        prompt_str = extra_info.get("prompt_str", "")
-        prompt_str_with_tokens_raw = extra_info.get("prompt_str_with_tokens", "")
-        prompt_str_with_tokens = _compress_special_token_runs(prompt_str_with_tokens_raw)
-
-        # 优先使用 reward manager 基于真实 token/mask 构建的 debug 文本
-        full_text_with_tokens_raw = extra_info.get("full_text_with_tokens", "")
-        full_text_with_tokens = _compress_special_token_runs(full_text_with_tokens_raw)
-        solution_str_with_tokens_uncompressed = (
-            extra_info.get("response_str_with_tokens", solution_str) if extra_info else solution_str
-        )
-        solution_str_with_tokens = _compress_special_token_runs(solution_str_with_tokens_uncompressed)
-        solution_str_with_tokens_raw = solution_str_with_tokens
-        response_mask = extra_info.get("response_mask", [])
-        debug_text_base = extra_info.get("debug_full_text") or _build_debug_text(full_text_with_tokens_raw, response_mask)
+        # 构建 debug 文本 (压缩 special tokens, 无 padding)
+        full_text_with_tokens_raw = extra_info.get("full_text_with_tokens", "") if extra_info else ""
+        response_mask = extra_info.get("response_mask", []) if extra_info else []
+        debug_text_base = extra_info.get("debug_full_text", "") or _build_debug_text(full_text_with_tokens_raw, response_mask)
         debug_text = _annotate_debug_text_with_turn_scores(debug_text_base, turn_score_debug)
 
         sample_data = {
             "video_id": video_id,
             "video_path": video_path,
             "question": question[:500] if question else "",
-            "input_text": prompt_str,  # 原始输入的完整文本 (skip_special_tokens=True)
-            "input_text_with_tokens": prompt_str_with_tokens,  # 保留 <|video_pad|> 等 special tokens
-            "input_text_with_tokens_raw": prompt_str_with_tokens_raw,
+            "solution_str": solution_str,
+            "solution_str_length": len(solution_str),
             "ground_truth": ground_truth,
             "predicted_answer": predicted_answer,
-            "answer_correct": answer_score == 1.0,  # 二元分类
-            "score_method": "VLM" if use_vlm_for_answer else "rule",
-            # 多轮统计
-            "turn_counts": turn_counts,
+            "answer_correct": answer_score == 1.0,
             "num_turns": turn_counts["think"],
-            # 完整的 solution_str (保存更多内容以便调试)
-            "solution_str_preview": solution_str[:1000],  # 前1000字符预览
-            "solution_str_full": solution_str,  # 完整内容 (skip_special_tokens=True)
-            "solution_str_with_tokens": solution_str_with_tokens,  # 保留 <|video_pad|> 等 special tokens
-            "solution_str_with_tokens_raw": solution_str_with_tokens_raw,
-            "solution_str_with_tokens_uncompressed": solution_str_with_tokens_uncompressed,
-            "solution_str_length": len(solution_str),
-            # 多轮调试：完整文本 + mask 标注 + video_pad 压缩
-            "full_text_with_tokens": full_text_with_tokens,
-            "full_text_with_tokens_raw": full_text_with_tokens_raw,
-            "debug_full_text_base": debug_text_base,
-            "debug_full_text": debug_text,
-            "observation_debug": extra_info.get("observation_debug", []),
-            "turn_score_debug": turn_score_debug,
-            # 所有轮次的 segments
+            # scores
+            "answer_score": answer_score,
+            "format_score": format_score,
+            "bbox_score": bbox_score,
+            "segment_score": segment_score,
+            "final_score": final_score,
+            # per-turn score breakdown
+            "turn_scores": turn_score_debug,
+            # segments & bboxes
             "all_segments": all_segments,
-            "last_segment": segments,
             "gt_segments": gt_segments,
-            "segment_details": segment_details,
-            # bboxes
-            "bboxes": bboxes,
+            "segment_iou": segment_iou,
+            "bbox_coverage": bbox_coverage,
+            "bbox_count": len(bboxes),
             "bbox_details": bbox_details,
-            # 分数
-            "scores": {
-                "answer_score": answer_score,
-                "format_score": format_score,
-                "bbox_score": bbox_score,
-                "segment_score": segment_score,
-                "segment_iou": segment_iou,
-                "segment_iop": segment_iop,
-                "segment_iog": segment_iog,
-                "bbox_coverage": bbox_coverage,
-                "expected_bbox_count": expected_bbox_count,
-                "actual_bbox_count": len(bboxes),
-                "verified_bbox_count": len(bbox_details),
-                "partial_bbox_count": partial_bbox_count,
-                "final_score": final_score,
-            },
+            # debug (compressed, no padding)
+            "debug_text": debug_text,
             "vlm_explanation": vlm_explanation[:200] if vlm_explanation else "",
-            "config": {
-                "use_vlm_scoring": use_vlm_scoring,
-                "use_bbox_verification": use_bbox_verification,
-                "vlm_endpoint": vlm_endpoint,
-                "weights": {
-                    "answer": answer_weight,
-                    "format": format_weight,
-                    "bbox": bbox_weight,
-                    "segment": segment_weight,
-                },
-                "bbox_iou_config": {
-                    "temporal_weight": temporal_weight,
-                    "spatial_weight": spatial_weight,
-                    "iou_threshold": iou_threshold,
-                    "bbox_metric": bbox_metric,
-                }
-            },
             "elapsed_time": elapsed_time,
         }
         save_reward_sample(

@@ -74,8 +74,8 @@ export NCCL_CUMEM_ENABLE=${NCCL_CUMEM_ENABLE:-0}
 #MODEL_PATH="/data_gpu/songlin/rl/verl/checkpoints/video-reasoning-dapo/video_reasoning_dapo_20260205-063449/merged_model"
 #MODEL_PATH="/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-self_holmes_caption_233-self_longvideoreason_caption_930-openo3video_stgr_singleturn_7k-self_holmes_multiturn_1k5-self_longvideoreason_multiturn_5k3-sft-lr5e-5-b24"
 # MODEL_PATH="${MODEL_PATH:-/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-stgr-turn_llm_freeze25_freeze_mlp-lr1e-5-epo5}"
-MODEL_PATH="/data_gpu/gyzhou/prj/Qwen3-VL/qwen-vl-finetune/checkpoints/video/Qwen3-VL-8B-Instruct-stgr-refined_vlm_detect-tune_llm_freeze32_mlp-lr1e-5-epo3"
-DATA_DIR="${DATA_DIR:-/data_gpu/gyzhou/prj/verl/long_video_data_new/video_holmes}"
+MODEL_PATH="${MODEL_PATH:-/data_gpu/gyzhou/prj/Qwen3-VL/qwen-vl-finetune/checkpoints/video/Qwen3-VL-8B-Instruct-stgr-gemini_reasoning-tune_llm-lr1e-5-epo3}"
+DATA_DIR="${DATA_DIR:-/data_gpu/gyzhou/prj/verl/long_video_data_new/longvideo_reason}" #
 CACHE_DIR="${CACHE_DIR:-./.cache_fps4}"
 CONFIG_PATH="$(pwd)/examples/video_reasoning/config"
 LOG_DIR="./logs"
@@ -94,7 +94,7 @@ WEIGHT_DECAY=${WEIGHT_DECAY:-0.01}
 MAX_GRAD_NORM=${MAX_GRAD_NORM:-5.0}
 
 N_ROLLOUTS=${N_ROLLOUTS:-8}                             # 每个 prompt 生成的 response 数
-AGENT_NUM_WORKERS=${AGENT_NUM_WORKERS:-1}                      # AgentLoopWorker 数量
+AGENT_NUM_WORKERS=${AGENT_NUM_WORKERS:-2}                      # AgentLoopWorker 数量
 
 N_GPUS=${N_GPUS:-8}
 NNODES=${NNODES:-1}
@@ -140,16 +140,16 @@ MAX_SFT_SAMPLES=${MAX_SFT_SAMPLES:-32}         # 每步最多 SFT 样本数，�
 #   - gdpo: Group reward-Decoupled normalization Policy Optimization
 #           每个 reward component 独立归一化，避免 advantage collapse
 # 使用 bbox/segment 的 turn 级别 group norm 时，必须设为 gdpo。
-ADV_ESTIMATOR=${ADV_ESTIMATOR:-gdpo}
+ADV_ESTIMATOR=${ADV_ESTIMATOR:-grpo}
 
 # =============================================================================
 # 统一的 Reward 权重配置（同时用于 grpo 和 gdpo）
 # =============================================================================
 # 设为 0 可排除该 component。grpo 和 gdpo 模式都使用这套权重。
 REWARD_WEIGHT_ANSWER=${REWARD_WEIGHT_ANSWER:-1.0}     # 答案正确性权重
-REWARD_WEIGHT_FORMAT=${REWARD_WEIGHT_FORMAT:-0.1}     # 格式正确性权重
-REWARD_WEIGHT_BBOX=${REWARD_WEIGHT_BBOX:-0.5}         # BBox 验证权重
-REWARD_WEIGHT_SEGMENT=${REWARD_WEIGHT_SEGMENT:-0.5}   # Segment 定位权重
+REWARD_WEIGHT_FORMAT=${REWARD_WEIGHT_FORMAT:-0.3}     # 格式正确性权重
+REWARD_WEIGHT_BBOX=${REWARD_WEIGHT_BBOX:-0.0}         # BBox 验证权重
+REWARD_WEIGHT_SEGMENT=${REWARD_WEIGHT_SEGMENT:-0.0}   # Segment 定位权重
 
 # GDPO batch norm（仅 adv_estimator=gdpo 时生效）
 GDPO_ENABLE_BATCH_NORM=${GDPO_ENABLE_BATCH_NORM:-true} 
@@ -159,8 +159,14 @@ GDPO_ENABLE_BATCH_NORM=${GDPO_ENABLE_BATCH_NORM:-true}
 #   - broadcast: 所有 token 共享同一 advantage，不区分轮；bbox/segment 的 turn 级信号未用到
 #   - per_turn: 轮内广播，bbox/segment 使用 turn 级别 group norm 后的 advantage 分配到对应轮
 #   - per_turn_gae: 轮内 GAE 衰减传播，同样使用 turn 级别 group norm 的 bbox/segment
+#   - per_tag: 精确放置到 bbox/segment 标签 token + 前 K 个上下文 token（最细粒度）
 # 启用 bbox+segment turn 级 group norm 时，请设为 per_turn 或 per_turn_gae。
 TOKEN_PLACEMENT_METHOD=${TOKEN_PLACEMENT_METHOD:-per_turn}
+
+# per_tag 上下文窗口（仅 TOKEN_PLACEMENT_METHOD=per_tag 时生效）
+# 标签前多少个 token 也接受 advantage 信号
+BBOX_CONTEXT_WINDOW=${BBOX_CONTEXT_WINDOW:-0}
+SEGMENT_CONTEXT_WINDOW=${SEGMENT_CONTEXT_WINDOW:-0}
 
 # 全局奖励（acc, format）的传播方式
 #   - broadcast: 平均分配到所有 token（推荐，稳定）
@@ -179,7 +185,7 @@ SINGLE_TURN_NO_OBSERVATION=${SINGLE_TURN_NO_OBSERVATION:-false}  # 单轮消融:
 # =============================================================================
 # 视频缓存参数
 # =============================================================================
-CACHE_FPS=4
+CACHE_FPS=1
 CACHE_MAX_FRAMES=0  # 0表示不限制，按 CACHE_FPS 采样全部缓存
 CACHE_MAX_FRAMES_PER_SEGMENT=64
 USE_CACHED_INITIAL_VIDEO=True            # 使用缓存帧而非原始视频，减少 CPU 内存
@@ -227,7 +233,7 @@ BBOX_PER_TURN=${BBOX_PER_TURN:-2}  # 每个 think turn 期望输出的 bbox 数�
 # 0   = 关闭 gate（始终给 grounding reward）
 # 0.5 = 开放题 ROUGE>=0.5 或选择题答对才给 grounding reward（推荐）
 # 1.0 = 只有完全答对才给（最严格，仅适合纯选择题）
-ACCURACY_GATE_THRESHOLD=${ACCURACY_GATE_THRESHOLD:-0.5}
+ACCURACY_GATE_THRESHOLD=${ACCURACY_GATE_THRESHOLD:-0}
 
 SAVE_BBOX_VISUALIZATION=true
 BBOX_VIS_SAMPLE_RATE=0.0001
@@ -239,8 +245,8 @@ LOG_EVERY_N=10
 # =============================================================================
 # Checkpoint 配置
 # =============================================================================
-SAVE_FREQ=30
-TEST_FREQ=20
+SAVE_FREQ=100
+TEST_FREQ=10
 VAL_BEFORE_TRAIN=True
 RESUME_MODE=disable                      # disable / resume_path / auto
 
@@ -253,7 +259,7 @@ BBOX_COORD_RANGE=1.0
 # 如果未设置 EXPERIMENT_NAME，则根据当前参数自动生成
 if [ -z "$EXPERIMENT_NAME" ]; then
     # 自动生成实验名：包含关键超参数
-    EXPERIMENT_NAME="Qwen3_8B_${ADV_ESTIMATOR}_acc${REWARD_WEIGHT_ANSWER}_fmt${REWARD_WEIGHT_FORMAT}_bbox${REWARD_WEIGHT_BBOX}_seg${REWARD_WEIGHT_SEGMENT}_kl${KL_LOSS_COEF}_lr${LEARNING_RATE}_$(date +%m%d)_bs${TRAIN_BATCH_SIZE}_GATE${ACCURACY_GATE_THRESHOLD}_segfps${SEGMENT_VIDEO_FPS}_frams${SEGMENT_VIDEO_MAX_FRAMES}_warmup10_gspo_minibs16_broadcast_freeze4_mlp_new"
+    EXPERIMENT_NAME="Qwen3_8B_${ADV_ESTIMATOR}_acc${REWARD_WEIGHT_ANSWER}_fmt${REWARD_WEIGHT_FORMAT}_bbox${REWARD_WEIGHT_BBOX}_seg${REWARD_WEIGHT_SEGMENT}_kl${KL_LOSS_COEF}_lr${LEARNING_RATE}_$(date +%m%d)_bs${TRAIN_BATCH_SIZE}_GATE${ACCURACY_GATE_THRESHOLD}_segfps${SEGMENT_VIDEO_FPS}_frams${SEGMENT_VIDEO_MAX_FRAMES}_warmup10_gspo_minibs16_freeze4_all_new_longvideo_reason"
 fi
 # 示例手动设置：
 # export EXPERIMENT_NAME="my_custom_exp_name"
@@ -318,6 +324,10 @@ if [ "$ADV_ESTIMATOR" = "gdpo" ]; then
     echo "    single_turn_no_observation: $SINGLE_TURN_NO_OBSERVATION"
     if [ "$TOKEN_PLACEMENT_METHOD" != "broadcast" ]; then
         echo "    gae:         gamma=$TP_GAMMA, lambda=$TP_LAMBDA"
+    fi
+    if [ "$TOKEN_PLACEMENT_METHOD" = "per_tag" ]; then
+        echo "    bbox_context_window:    $BBOX_CONTEXT_WINDOW"
+        echo "    segment_context_window: $SEGMENT_CONTEXT_WINDOW"
     fi
 fi
 echo ""
@@ -467,6 +477,8 @@ python3 -m recipe.dapo.main_dapo \
     algorithm.token_placement.enable_batch_norm=$TP_ENABLE_BATCH_NORM \
     algorithm.token_placement.gamma=$TP_GAMMA \
     algorithm.token_placement.lambda=$TP_LAMBDA \
+    +algorithm.token_placement.bbox_context_window=$BBOX_CONTEXT_WINDOW \
+    +algorithm.token_placement.segment_context_window=$SEGMENT_CONTEXT_WINDOW \
     reward_model.enable=False \
     reward_model.reward_manager=dapo \
     reward_model.overlong_buffer.enable=False \

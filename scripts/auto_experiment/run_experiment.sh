@@ -38,6 +38,11 @@ N_ROLLOUTS=${N_ROLLOUTS:-8}
 TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-32}
 TOTAL_EPOCHS=${TOTAL_EPOCHS:-3}
 
+# Token placement
+TOKEN_PLACEMENT_METHOD=${TOKEN_PLACEMENT_METHOD:-broadcast}
+BBOX_CONTEXT_WINDOW=${BBOX_CONTEXT_WINDOW:-16}
+SEGMENT_CONTEXT_WINDOW=${SEGMENT_CONTEXT_WINDOW:-16}
+
 # 实验标识
 EXPERIMENT_NAME=${EXPERIMENT_NAME:-""}
 EXPERIMENT_ID=${EXPERIMENT_ID:-""}
@@ -281,6 +286,9 @@ python3 -m recipe.dapo.main_dapo \
     algorithm.filter_groups.enable=False \
     algorithm.filter_groups.metric=score \
     algorithm.filter_groups.max_num_gen_batches=5 \
+    algorithm.token_placement.method=$TOKEN_PLACEMENT_METHOD \
+    algorithm.token_placement.bbox_context_window=$BBOX_CONTEXT_WINDOW \
+    algorithm.token_placement.segment_context_window=$SEGMENT_CONTEXT_WINDOW \
     reward_model.enable=False \
     reward_model.reward_manager=dapo \
     reward_model.overlong_buffer.enable=True \
