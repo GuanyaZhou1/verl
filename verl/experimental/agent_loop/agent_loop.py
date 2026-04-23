@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import asyncio
+import concurrent.futures
 import heapq
 import logging
 import os
@@ -226,6 +227,7 @@ class AgentLoopBase(ABC):
         self.apply_chat_template_kwargs = dataset_config.get("apply_chat_template_kwargs", {})
         self.system_prompt = initialize_system_prompt(self.tokenizer, **self.apply_chat_template_kwargs)
         self.loop = get_event_loop()
+        self._cpu_executor = concurrent.futures.ThreadPoolExecutor(max_workers=min(32, os.cpu_count() or 8))
 
     async def process_vision_info(self, messages: list[dict]) -> dict:
         """Extract images and videos from messages.
@@ -238,9 +240,22 @@ class AgentLoopBase(ABC):
         """
         multi_modal_data = {}
         if self.processor is not None:
-            images, videos = await self.dataset_cls.process_vision_info(
-                messages, image_patch_size=self.processor.image_processor.patch_size, config=self.dataset_config
-            )
+            # Run CPU-intensive vision processing in thread pool to avoid blocking event loop
+            def _process_vision():
+                # dataset_cls.process_vision_info is async but internally synchronous,
+                # run it in a new event loop within the thread
+                loop = asyncio.new_event_loop()
+                try:
+                    return loop.run_until_complete(
+                        self.dataset_cls.process_vision_info(
+                            messages, image_patch_size=self.processor.image_processor.patch_size,
+                            config=self.dataset_config,
+                        )
+                    )
+                finally:
+                    loop.close()
+
+            images, videos = await self.loop.run_in_executor(self._cpu_executor, _process_vision)
             if images is not None:
                 multi_modal_data["images"] = images
             if videos is not None:
@@ -274,7 +289,7 @@ class AgentLoopBase(ABC):
 
         if self.processor is not None:
             raw_prompt = await self.loop.run_in_executor(
-                None,
+                self._cpu_executor,
                 lambda: self.processor.apply_chat_template(
                     messages,
                     tools=tools,
@@ -291,13 +306,16 @@ class AgentLoopBase(ABC):
             else:
                 video_metadatas = None
 
-            model_inputs = self.processor(
-                text=[raw_prompt],
-                images=images,
-                videos=videos,
-                video_metadata=video_metadatas,
-                return_tensors="pt",
-                do_sample_frames=False,
+            model_inputs = await self.loop.run_in_executor(
+                self._cpu_executor,
+                lambda: self.processor(
+                    text=[raw_prompt],
+                    images=images,
+                    videos=videos,
+                    video_metadata=video_metadatas,
+                    return_tensors="pt",
+                    do_sample_frames=False,
+                ),
             )
             prompt_ids = model_inputs.pop("input_ids").squeeze(0).tolist()
 
@@ -306,7 +324,7 @@ class AgentLoopBase(ABC):
             multi_modal_inputs = dict(model_inputs.convert_to_tensors("pt"))
         else:
             prompt_ids = await self.loop.run_in_executor(
-                None,
+                self._cpu_executor,
                 lambda: self.tokenizer.apply_chat_template(
                     messages,
                     tools=tools,

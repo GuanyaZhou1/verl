@@ -264,6 +264,29 @@ def _annotate_debug_text_with_turn_scores(debug_text: str, turn_score_debug: Lis
     )
 
 
+def _compute_temporal_distance_penalty(dt: float, max_seconds: float = 5.0) -> float:
+    """
+    计算时间距离惩罚因子
+
+    - dt <= 1s: 无惩罚 (penalty = 1.0)
+    - 1s < dt <= max_seconds: 线性衰减 1.0 → 0.0
+    - dt > max_seconds: penalty = 0.0
+
+    Args:
+        dt: 预测时间戳与匹配帧时间戳的绝对差值 (秒)
+        max_seconds: 惩罚上限（秒），超过此值 penalty=0
+
+    Returns:
+        惩罚因子 [0, 1]
+    """
+    if dt <= 1.0:
+        return 1.0
+    elif dt >= max_seconds:
+        return 0.0
+    else:
+        return 1.0 - (dt - 1.0) / (max_seconds - 1.0)
+
+
 # ============== 默认配置常量 ==============
 # 修改这里的值会影响所有使用默认参数的调用
 
@@ -281,6 +304,8 @@ DEFAULT_FORMAT_WEIGHT = 0.0          # 格式分数权重 (0 = 不使用, 设为
 DEFAULT_SEGMENT_WEIGHT = 0.0         # segment 分数权重 (0 = 不使用, 设为正值启用)
 DEFAULT_MIN_COVERAGE_FACTOR = 0.5    # coverage 惩罚下限 (0.5 = 不输出bbox时保留50%分数, 1.0 = 无惩罚) [已废弃，保留兼容]
 DEFAULT_BBOX_PER_TURN = 2            # 每个 think turn 期望输出的 bbox 数量（用于计算期望总数）
+DEFAULT_BBOX_MIN_SCORE = 0.3         # bbox 最低分数阈值，低于此值直接过滤（防止噪声）
+DEFAULT_BBOX_DEDUP_SECONDS = 2.0     # 同名物体在N秒内的重复bbox会被去重（保留首个）
 
 # VLM 重试配置
 DEFAULT_VLM_MAX_RETRIES = 3          # VLM 调用最大重试次数
@@ -1232,7 +1257,8 @@ async def verify_single_bbox_with_vlm(
         visualization_dir: 可视化图片保存目录
 
     Returns:
-        (total_score, temporal_score, spatial_score, gt_bbox, explanation, vlm_prompt, vlm_response, vis_path)
+        (total_score, temporal_score, spatial_score, gt_bbox, best_timestamp, corrected_time, explanation, vlm_prompt, vlm_response, vis_path)
+        best_timestamp: 实际匹配帧的时间戳 (用于计算时间距离惩罚)
         vis_path: 可视化图片的绝对路径，如果未保存则为 None
     """
     logger = get_reward_logger()
@@ -1273,15 +1299,15 @@ async def verify_single_bbox_with_vlm(
                 metric=bbox_metric,
             )
 
-        # 2. 相邻帧融合：检查相邻帧的 GT bbox，取最大相似度
-        # 这是为了处理 Qwen3-VL 的 temporal_patch_size=2 导致的时序融合问题
-        # 模型预测的 bbox 可能对应融合帧中的任一帧
+        # 2. 相邻帧融合：仅当当前帧 not found 时才搜索相邻帧
+        # 优化：如果当前帧已经找到物体，跳过相邻帧搜索以加速
         best_similarity = current_similarity
         best_gt_bbox = gt_bbox
         best_frame_info = "current"
+        best_timestamp = bbox_timestamp  # 记录实际匹配帧的时间戳
 
-        if temporal_tolerance > 0 and video_path and bbox_timestamp is not None:
-            # 获取相邻帧路径
+        if gt_bbox is None and temporal_tolerance > 0 and video_path and bbox_timestamp is not None:
+            # 当前帧 not found，搜索相邻帧
             neighbor_frames = _get_neighboring_frame_paths(
                 frame_path, video_path, bbox_timestamp,
                 cache_dir, cache_fps, cache_max_frames,
@@ -1320,6 +1346,7 @@ async def verify_single_bbox_with_vlm(
                             best_similarity = neighbor_similarity
                             best_gt_bbox = neighbor_gt
                             best_frame_info = f"neighbor@{neighbor_ts:.0f}s"
+                            best_timestamp = neighbor_ts
                             logger.debug(
                                 f"Better match in neighbor frame: {neighbor_ts}s, "
                                 f"{bbox_metric}={neighbor_similarity:.3f} > {current_similarity:.3f}"
@@ -1450,11 +1477,11 @@ async def verify_single_bbox_with_vlm(
         explanation = f"metric={bbox_metric}, score={similarity:.2f} ({best_frame_info}), temporal={temporal_score:.1f}, gt_bbox={best_gt_bbox}, vlm_response={raw_response[:100]}"
         logger.debug(f"BBox verify: obj={object_name}, pred={bbox}, {explanation}")
 
-        return total_score, temporal_score, spatial_score, best_gt_bbox, corrected_time, explanation, vlm_prompt, raw_response, saved_vis_path
+        return total_score, temporal_score, spatial_score, best_gt_bbox, best_timestamp, corrected_time, explanation, vlm_prompt, raw_response, saved_vis_path
 
     except Exception as e:
         logger.warning(f"BBox verify exception: {str(e)}")
-        return 0.0, 0.0, 0.0, None, None, f"Error: {str(e)}", vlm_prompt, "", None
+        return 0.0, 0.0, 0.0, None, None, None, f"Error: {str(e)}", vlm_prompt, "", None
 
 
 async def verify_bboxes_with_vlm(
@@ -1476,6 +1503,9 @@ async def verify_bboxes_with_vlm(
     iou_threshold: float = DEFAULT_IOU_THRESHOLD,
     bbox_metric: str = DEFAULT_BBOX_METRIC,
     temporal_tolerance: int = DEFAULT_TEMPORAL_TOLERANCE,
+    bbox_min_score: float = DEFAULT_BBOX_MIN_SCORE,
+    bbox_temporal_penalty_max: float = 5.0,
+    bbox_dedup_seconds: float = DEFAULT_BBOX_DEDUP_SECONDS,
 ) -> Tuple[float, float, float, List[Dict]]:
     """
     验证所有 bbox 并返回平均分数
@@ -1499,6 +1529,9 @@ async def verify_bboxes_with_vlm(
         iou_threshold: IOU 阈值
         bbox_metric: 评分指标 "iou" 或 "adaptive_iou"
         temporal_tolerance: 相邻帧容忍度 (0=禁用, 1=±1帧)
+        bbox_min_score: bbox 最低分数阈值，低于此值过滤（防止噪声）
+        bbox_temporal_penalty_max: 时间距离惩罚上限(秒)
+        bbox_dedup_seconds: 同名物体在N秒内的重复bbox去重（保留最高分）
 
     Returns:
         (avg_total_score, avg_temporal_score, avg_spatial_score, details)
@@ -1559,30 +1592,74 @@ async def verify_bboxes_with_vlm(
 
     if tasks:
         results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # 第一步：收集所有候选（应用时间距离惩罚）
+        candidates = []
         for (idx, frame_path), result in zip(valid_bbox_indices, results):
             bbox_info = bboxes[idx]
             if isinstance(result, Exception):
                 total_score, temporal_score, spatial_score = 0.0, 0.0, 0.0
-                gt_bbox, corrected_time, explanation, vlm_prompt, vlm_response, vis_path = None, None, str(result), "", "", None
+                gt_bbox, best_timestamp, corrected_time = None, None, None
+                explanation, vlm_prompt, vlm_response, vis_path = str(result), "", "", None
             else:
-                total_score, temporal_score, spatial_score, gt_bbox, corrected_time, explanation, vlm_prompt, vlm_response, vis_path = result
+                total_score, temporal_score, spatial_score, gt_bbox, best_timestamp, corrected_time, explanation, vlm_prompt, vlm_response, vis_path = result
 
-            total_scores.append(total_score)
-            temporal_scores.append(temporal_score)
-            spatial_scores.append(spatial_score)
-            details.append({
+            # 应用时间距离惩罚：预测时间戳与实际匹配帧时间戳的偏差
+            # dt <= 1s: 无惩罚, 1~max: 线性衰减, >max: 0分
+            if best_timestamp is not None and bbox_info.get('time') is not None:
+                dt = abs(bbox_info['time'] - best_timestamp)
+                temporal_penalty = _compute_temporal_distance_penalty(dt, max_seconds=bbox_temporal_penalty_max)
+                total_score *= temporal_penalty
+            else:
+                temporal_penalty = 1.0
+
+            candidates.append({
                 "bbox_info": bbox_info,
                 "total_score": total_score,
                 "temporal_score": temporal_score,
                 "spatial_score": spatial_score,
                 "gt_bbox": gt_bbox,
-                "corrected_time": corrected_time,  # 如果在相邻帧找到，返回修正后的时间
+                "corrected_time": corrected_time,
+                "temporal_penalty": temporal_penalty,
                 "explanation": explanation[:200] if explanation else "",
                 "vlm_prompt": vlm_prompt,
                 "vlm_response": vlm_response,
-                "frame_path": os.path.abspath(frame_path),  # 原始帧图片的绝对路径
-                "vis_path": vis_path,  # 可视化图片的绝对路径 (如果保存了)
+                "frame_path": os.path.abspath(frame_path),
+                "vis_path": vis_path,
             })
+
+        # 第二步：同名物体去重 — 同一物体在 N 秒内的重复 bbox 只保留分数最高的
+        # 合法跟踪（如 t=5s, t=15s, t=25s）不受影响，只去时间邻近的重复
+        if bbox_dedup_seconds > 0:
+            deduped = []
+            for c in sorted(candidates, key=lambda x: x["total_score"], reverse=True):
+                obj_name = c["bbox_info"].get("object", "").strip().lower()
+                obj_time = c["bbox_info"].get("time", 0)
+                is_dup = False
+                for existing in deduped:
+                    ex_name = existing["bbox_info"].get("object", "").strip().lower()
+                    ex_time = existing["bbox_info"].get("time", 0)
+                    if obj_name == ex_name and abs(obj_time - ex_time) < bbox_dedup_seconds:
+                        is_dup = True
+                        logger.debug(
+                            f"BBox dedup: dropped '{c['bbox_info'].get('object')}'@{obj_time}s "
+                            f"(score={c['total_score']:.3f}), kept @{ex_time}s "
+                            f"(score={existing['total_score']:.3f})"
+                        )
+                        break
+                if not is_dup:
+                    deduped.append(c)
+            candidates = deduped
+
+        # 第三步：过滤低分 bbox，防止噪声干扰
+        for c in candidates:
+            if c["total_score"] < bbox_min_score:
+                logger.debug(f"BBox filtered (score={c['total_score']:.3f} < {bbox_min_score}): obj={c['bbox_info'].get('object')}, time={c['bbox_info'].get('time')}")
+                continue
+            total_scores.append(c["total_score"])
+            temporal_scores.append(c["temporal_score"])
+            spatial_scores.append(c["spatial_score"])
+            details.append(c)
 
     avg_total = sum(total_scores) / len(total_scores) if total_scores else 0.0
     avg_temporal = sum(temporal_scores) / len(temporal_scores) if temporal_scores else 0.0
@@ -2130,7 +2207,17 @@ def compute_segment_score(
         if not segments:
             return []
         # 只取前两个元素 (start, end)，转为 float，兼容含额外字段或字符串类型的 segment
-        normalized = [(float(s[0]), float(s[1])) for s in segments]
+        # 跳过长度 < 2 的非法条目（如单元素 tuple、空 list），防止 IndexError
+        normalized = []
+        for s in segments:
+            try:
+                if len(s) < 2:
+                    continue
+                normalized.append((float(s[0]), float(s[1])))
+            except (TypeError, ValueError):
+                continue
+        if not normalized:
+            return []
         # 按起始时间排序
         sorted_segs = sorted(normalized, key=lambda x: x[0])
         merged = [sorted_segs[0]]
@@ -2277,6 +2364,9 @@ async def compute_score(
     temporal_tolerance: int = DEFAULT_TEMPORAL_TOLERANCE,  # 相邻帧容忍度 (0=禁用, 1=±1帧)
     # BBox 期望数量参数
     bbox_per_turn: int = DEFAULT_BBOX_PER_TURN,      # 每个 think turn 期望输出的 bbox 数量
+    bbox_min_score: float = DEFAULT_BBOX_MIN_SCORE,  # bbox 最低分数阈值，低于此值过滤
+    bbox_temporal_penalty_max: float = 5.0,          # 时间距离惩罚上限(秒)，dt<=1s无惩罚，1~max线性衰减，>max=0
+    bbox_dedup_seconds: float = DEFAULT_BBOX_DEDUP_SECONDS,  # 同名物体N秒内重复bbox去重
     # Coverage 惩罚参数 (GRPO) [已废弃，保留兼容]
     min_coverage_factor: float = DEFAULT_MIN_COVERAGE_FACTOR,  # 不输出bbox时保留的最低分数比例 (已废弃)
     # Accuracy Gate: 答案不正确时，清零 bbox/segment reward
@@ -2421,6 +2511,9 @@ async def compute_score(
             iou_threshold=iou_threshold,
             bbox_metric=bbox_metric,
             temporal_tolerance=temporal_tolerance,
+            bbox_min_score=bbox_min_score,
+            bbox_temporal_penalty_max=bbox_temporal_penalty_max,
+            bbox_dedup_seconds=bbox_dedup_seconds,
         )
         bbox_verified = len(bbox_details) > 0
 

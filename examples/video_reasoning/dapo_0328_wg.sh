@@ -75,15 +75,15 @@ export NCCL_CUMEM_ENABLE=${NCCL_CUMEM_ENABLE:-0}
 #MODEL_PATH="/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-self_holmes_caption_233-self_longvideoreason_caption_930-openo3video_stgr_singleturn_7k-self_holmes_multiturn_1k5-self_longvideoreason_multiturn_5k3-sft-lr5e-5-b24"
 # MODEL_PATH="${MODEL_PATH:-/data_gpu/zhengshurong/data/project/Qwen2.5-VL/qwen-vl-finetune/checkpoints/video/Qwen2.5-VL-7B-Instruct-stgr-turn_llm_freeze25_freeze_mlp-lr1e-5-epo5}"
 MODEL_PATH="${MODEL_PATH:-/data_gpu/gyzhou/prj/Qwen3-VL/qwen-vl-finetune/checkpoints/video/Qwen3-VL-8B-Instruct-stgr-gemini_reasoning-tune_llm-lr1e-5-epo3}"
-DATA_DIR="${DATA_DIR:-/data_gpu/gyzhou/prj/verl/long_video_data_new/longvideo_reason}" #
+DATA_DIR="${DATA_DIR:-/data_gpu/gyzhou/prj/verl/long_video_data_new}" #longvideo_reason
 CACHE_DIR="${CACHE_DIR:-./.cache_fps4}"
 CONFIG_PATH="$(pwd)/examples/video_reasoning/config"
 LOG_DIR="./logs"
 # =============================================================================
 # 训练参数
 # =============================================================================
-TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-16}
-GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-32}                        # DAPO: 生成批次
+TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-32}
+GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-64}                        # DAPO: 生成批次
 MAX_PROMPT_LENGTH=${MAX_PROMPT_LENGTH:-24000}
 MAX_RESPONSE_LENGTH=${MAX_RESPONSE_LENGTH:-16384}
 
@@ -94,7 +94,7 @@ WEIGHT_DECAY=${WEIGHT_DECAY:-0.01}
 MAX_GRAD_NORM=${MAX_GRAD_NORM:-5.0}
 
 N_ROLLOUTS=${N_ROLLOUTS:-8}                             # 每个 prompt 生成的 response 数
-AGENT_NUM_WORKERS=${AGENT_NUM_WORKERS:-2}                      # AgentLoopWorker 数量
+AGENT_NUM_WORKERS=${AGENT_NUM_WORKERS:-8}                      # AgentLoopWorker 数量
 
 N_GPUS=${N_GPUS:-8}
 NNODES=${NNODES:-1}
@@ -140,7 +140,7 @@ MAX_SFT_SAMPLES=${MAX_SFT_SAMPLES:-32}         # 每步最多 SFT 样本数，�
 #   - gdpo: Group reward-Decoupled normalization Policy Optimization
 #           每个 reward component 独立归一化，避免 advantage collapse
 # 使用 bbox/segment 的 turn 级别 group norm 时，必须设为 gdpo。
-ADV_ESTIMATOR=${ADV_ESTIMATOR:-grpo}
+ADV_ESTIMATOR=${ADV_ESTIMATOR:-gdpo}
 
 # =============================================================================
 # 统一的 Reward 权重配置（同时用于 grpo 和 gdpo）
@@ -148,8 +148,8 @@ ADV_ESTIMATOR=${ADV_ESTIMATOR:-grpo}
 # 设为 0 可排除该 component。grpo 和 gdpo 模式都使用这套权重。
 REWARD_WEIGHT_ANSWER=${REWARD_WEIGHT_ANSWER:-1.0}     # 答案正确性权重
 REWARD_WEIGHT_FORMAT=${REWARD_WEIGHT_FORMAT:-0.3}     # 格式正确性权重
-REWARD_WEIGHT_BBOX=${REWARD_WEIGHT_BBOX:-0.0}         # BBox 验证权重
-REWARD_WEIGHT_SEGMENT=${REWARD_WEIGHT_SEGMENT:-0.0}   # Segment 定位权重
+REWARD_WEIGHT_BBOX=${REWARD_WEIGHT_BBOX:-1.0}         # BBox 验证权重
+REWARD_WEIGHT_SEGMENT=${REWARD_WEIGHT_SEGMENT:-1.0}   # Segment 定位权重
 
 # GDPO batch norm（仅 adv_estimator=gdpo 时生效）
 GDPO_ENABLE_BATCH_NORM=${GDPO_ENABLE_BATCH_NORM:-true} 
@@ -228,12 +228,15 @@ USE_BBOX_VERIFICATION=true
 BBOX_METRIC=${BBOX_METRIC:-iou}          # "iou" 原始指标, "adaptive_iou" 小目标宽松 (别名 "nwd")
 TEMPORAL_TOLERANCE=${TEMPORAL_TOLERANCE:-1}  # 相邻帧容忍度 (0=禁用, 1=±1帧)，对应 Qwen3-VL temporal_patch_size=2
 BBOX_PER_TURN=${BBOX_PER_TURN:-2}  # 每个 think turn 期望输出的 bbox 数量
+BBOX_MIN_SCORE=${BBOX_MIN_SCORE:-0.2}  # bbox 最低分数阈值，低于此值直接过滤（防止噪声），0.2 比 0.3 更温和
+BBOX_TEMPORAL_PENALTY_MAX=${BBOX_TEMPORAL_PENALTY_MAX:-5}  # 时间距离惩罚上限(秒)，超过此值bbox直接0分，1-此值线性衰减
+BBOX_DEDUP_SECONDS=${BBOX_DEDUP_SECONDS:-2}  # 同名物体N秒内重复bbox去重（保留最高分），合法跟踪不受影响
 
 # Accuracy Gate: 答案分数低于此阈值时，bbox/segment reward 清零
 # 0   = 关闭 gate（始终给 grounding reward）
 # 0.5 = 开放题 ROUGE>=0.5 或选择题答对才给 grounding reward（推荐）
 # 1.0 = 只有完全答对才给（最严格，仅适合纯选择题）
-ACCURACY_GATE_THRESHOLD=${ACCURACY_GATE_THRESHOLD:-0}
+ACCURACY_GATE_THRESHOLD=${ACCURACY_GATE_THRESHOLD:-0.0}
 
 SAVE_BBOX_VISUALIZATION=true
 BBOX_VIS_SAMPLE_RATE=0.0001
@@ -245,7 +248,7 @@ LOG_EVERY_N=10
 # =============================================================================
 # Checkpoint 配置
 # =============================================================================
-SAVE_FREQ=100
+SAVE_FREQ=40
 TEST_FREQ=10
 VAL_BEFORE_TRAIN=True
 RESUME_MODE=disable                      # disable / resume_path / auto
@@ -259,7 +262,7 @@ BBOX_COORD_RANGE=1.0
 # 如果未设置 EXPERIMENT_NAME，则根据当前参数自动生成
 if [ -z "$EXPERIMENT_NAME" ]; then
     # 自动生成实验名：包含关键超参数
-    EXPERIMENT_NAME="Qwen3_8B_${ADV_ESTIMATOR}_acc${REWARD_WEIGHT_ANSWER}_fmt${REWARD_WEIGHT_FORMAT}_bbox${REWARD_WEIGHT_BBOX}_seg${REWARD_WEIGHT_SEGMENT}_kl${KL_LOSS_COEF}_lr${LEARNING_RATE}_$(date +%m%d)_bs${TRAIN_BATCH_SIZE}_GATE${ACCURACY_GATE_THRESHOLD}_segfps${SEGMENT_VIDEO_FPS}_frams${SEGMENT_VIDEO_MAX_FRAMES}_warmup10_gspo_minibs16_freeze4_all_new_longvideo_reason"
+    EXPERIMENT_NAME="Qwen3_8B_${ADV_ESTIMATOR}_acc${REWARD_WEIGHT_ANSWER}_fmt${REWARD_WEIGHT_FORMAT}_bbox${REWARD_WEIGHT_BBOX}_seg${REWARD_WEIGHT_SEGMENT}_kl${KL_LOSS_COEF}_lr${LEARNING_RATE}_$(date +%m%d)_bs${TRAIN_BATCH_SIZE}_GATE${ACCURACY_GATE_THRESHOLD}_segfps${SEGMENT_VIDEO_FPS}_frams${SEGMENT_VIDEO_MAX_FRAMES}_warmup10_gspo_minibs16_freeze4_llm_new_holmes"
 fi
 # 示例手动设置：
 # export EXPERIMENT_NAME="my_custom_exp_name"
@@ -334,7 +337,7 @@ echo ""
 echo "Reward:"
 echo "  VLM scoring:   $USE_VLM_SCORING ($VLM_ENDPOINT)"
 echo "  BBox verify:   $USE_BBOX_VERIFICATION"
-echo "  BBox metric:   $BBOX_METRIC (temporal_tolerance=$TEMPORAL_TOLERANCE, bbox_per_turn=$BBOX_PER_TURN)"
+echo "  BBox metric:   $BBOX_METRIC (tolerance=$TEMPORAL_TOLERANCE, per_turn=$BBOX_PER_TURN, min_score=$BBOX_MIN_SCORE, penalty_max=${BBOX_TEMPORAL_PENALTY_MAX}s, dedup=${BBOX_DEDUP_SECONDS}s)"
 echo "================================="
 echo ""
 
@@ -499,6 +502,9 @@ python3 -m recipe.dapo.main_dapo \
     +custom_reward_function.reward_kwargs.bbox_metric=$BBOX_METRIC \
     +custom_reward_function.reward_kwargs.temporal_tolerance=$TEMPORAL_TOLERANCE \
     +custom_reward_function.reward_kwargs.bbox_per_turn=$BBOX_PER_TURN \
+    +custom_reward_function.reward_kwargs.bbox_min_score=$BBOX_MIN_SCORE \
+    +custom_reward_function.reward_kwargs.bbox_temporal_penalty_max=$BBOX_TEMPORAL_PENALTY_MAX \
+    +custom_reward_function.reward_kwargs.bbox_dedup_seconds=$BBOX_DEDUP_SECONDS \
     +custom_reward_function.reward_kwargs.accuracy_gate_threshold=$ACCURACY_GATE_THRESHOLD \
     +custom_reward_function.reward_kwargs.allow_missing_observation_between_turns=$SINGLE_TURN_NO_OBSERVATION \
     custom_reward_function.reward_kwargs.cache_dir="$CACHE_DIR" \
